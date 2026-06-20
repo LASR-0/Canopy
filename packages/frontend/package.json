@@ -1,0 +1,40 @@
+{
+  "name": "@canopy/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "main": "out/main/index.js",
+  "description": "Electron + React + TypeScript client. Connects to the controller service.",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "compile": "electron-vite build && electron-builder",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
+  },
+  "dependencies": {
+    "@canopy/shared-types": "workspace:*",
+    "@fontsource-variable/inter": "^5.2.8",
+    "@tanstack/react-query": "^5.100.14",
+    "@tanstack/react-table": "^8.21.3",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.17.0",
+    "radix-ui": "^1.4.3",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
+  }
+}

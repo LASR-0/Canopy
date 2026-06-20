@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Overview · Empty · light</title>
+<style>
+:root {
+  /* Primer light — canvas */
+  --canvas-default: #ffffff;
+  --canvas-inset: #f6f8fa;
+  --canvas-subtle: #f6f8fa;
+  --canvas-overlay: #ffffff;
+  --canvas-hover: #eef1f4;
+  /* borders */
+  --border-default: #d1d9e0;
+  --border-muted: #e4e8ec;
+  /* foreground */
+  --fg-default: #1f2328;
+  --fg-muted: #59636e;
+  --fg-subtle: #818b98;
+  /* roles */
+  --accent-fg: #0969da;
+  --accent-emphasis: #0969da;
+  --accent-muted: rgba(9,105,218,0.12);
+  --success-fg: #1a7f37;
+  --success-emphasis: #1f883d;
+  --success-muted: rgba(31,136,61,0.12);
+  --attention-fg: #9a6700;
+  --attention-muted: rgba(154,103,0,0.12);
+  --danger-fg: #cf222e;
+  --danger-muted: rgba(207,34,46,0.10);
+  --done-fg: #8250df;
+  --done-muted: rgba(130,80,223,0.10);
+  /* btn */
+  --btn-bg: #f6f8fa;
+  --btn-hover: #eef1f4;
+  --btn-border: rgba(31,35,40,0.15);
+  --shadow-sm: 0 1px 0 rgba(31,35,40,0.04);
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-default);
+  background: var(--canvas-inset);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+#root { height: 100vh; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #d1d9e0; border-radius: 6px; border: 2px solid var(--canvas-default); }
+::-webkit-scrollbar-thumb:hover { background: #b1bac4; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ============ APP FRAME ============ */
+.app { display: flex; flex-direction: column; height: 100vh; background: var(--canvas-default); }
+
+/* titlebar */
+.titlebar {
+  height: 44px; flex: 0 0 44px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 12px;
+  background: var(--canvas-subtle);
+  border-bottom: 1px solid var(--border-default);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.traffic { display: flex; gap: 8px; padding-right: 4px; }
+.traffic span { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.traffic .r { background: #ff5f57; }
+.traffic .y { background: #febc2e; }
+.traffic .g { background: #28c840; }
+.tb-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; letter-spacing: -0.1px; }
+.tb-brand .mark {
+  width: 20px; height: 20px; border-radius: 5px;
+  background: linear-gradient(160deg, #2ea043, #238636);
+  display: grid; place-items: center; color: #fff;
+}
+.tb-brand .mark svg { width: 13px; height: 13px; }
+.tb-spacer { flex: 1; }
+.cmdk {
+  -webkit-app-region: no-drag;
+  display: flex; align-items: center; gap: 8px;
+  height: 28px; width: 320px; max-width: 34vw;
+  padding: 0 8px 0 10px;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--fg-subtle); font-size: 13px;
+  cursor: text;
+}
+.cmdk:hover { border-color: var(--fg-subtle); }
+.cmdk .kbd {
+  margin-left: auto;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--fg-muted);
+  border: 1px solid var(--border-default); border-radius: 4px;
+  padding: 1px 5px; background: var(--canvas-subtle);
+}
+.tb-icon-btn {
+  -webkit-app-region: no-drag;
+  width: 30px; height: 28px; display: grid; place-items: center;
+  border: 1px solid transparent; border-radius: 6px;
+  color: var(--fg-muted); background: transparent; cursor: pointer;
+}
+.tb-icon-btn:hover { background: var(--canvas-inset); color: var(--fg-default); }
+.tb-avatar {
+  -webkit-app-region: no-drag;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: linear-gradient(150deg,#6e40c9,#3081f7);
+  display: grid; place-items: center; color: #fff; font-size: 11px; font-weight: 600;
+  cursor: pointer;
+}
+
+/* body split */
+.body { display: flex; flex: 1; min-height: 0; }
+
+/* ============ SIDEBAR ============ */
+.sidebar {
+  width: 248px; flex: 0 0 248px;
+  background: var(--canvas-inset);
+  border-right: 1px solid var(--border-default);
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+.workspace {
+  margin: 12px 12px 4px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px; cursor: pointer;
+  background: var(--canvas-default);
+}
+.workspace:hover { border-color: var(--fg-subtle); }
+.workspace .ws-ico {
+  width: 28px; height: 28px; border-radius: 6px; flex: 0 0 28px;
+  background: var(--success-muted); color: var(--success-fg);
+  display: grid; place-items: center;
+}
+.workspace .ws-meta { min-width: 0; flex: 1; }
+.workspace .ws-name { font-weight: 600; font-size: 13px; line-height: 1.3; }
+.workspace .ws-sub { font-size: 11px; color: var(--fg-muted); display: flex; align-items: center; gap: 5px; }
+.workspace .chev { color: var(--fg-muted); }
+
+.nav { padding: 8px; overflow-y: auto; flex: 1; }
+.nav-group-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--fg-subtle);
+  padding: 12px 10px 4px;
+}
+.nav-item {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left;
+  padding: 7px 10px; margin: 1px 0;
+  border-radius: 6px; border: 1px solid transparent;
+  background: transparent; cursor: pointer;
+  color: var(--fg-muted); font-size: 14px; font-weight: 500;
+  font-family: var(--sans);
+}
+.nav-item:hover { background: var(--canvas-subtle); color: var(--fg-default); }
+.nav-item .ni-ico { width: 16px; height: 16px; flex: 0 0 16px; display: grid; place-items: center; color: var(--fg-muted); }
+.nav-item:hover .ni-ico { color: var(--fg-default); }
+.nav-item .ni-count {
+  margin-left: auto; font-size: 11px; font-family: var(--mono);
+  color: var(--fg-muted); background: var(--canvas-subtle);
+  border: 1px solid var(--border-muted); border-radius: 20px; padding: 0 7px; line-height: 18px;
+}
+.nav-item.active { background: var(--canvas-subtle); color: var(--fg-default); font-weight: 600; }
+.nav-item.active .ni-ico { color: var(--fg-default); }
+.nav-item.active::before {
+  content: ""; position: absolute; left: -8px; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 22px; border-radius: 0 4px 4px 0; background: #f78166;
+}
+
+.sb-footer {
+  border-top: 1px solid var(--border-default);
+  padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--fg-muted);
+}
+.dot-live { width: 8px; height: 8px; border-radius: 50%; background: var(--success-fg); box-shadow: 0 0 0 3px var(--success-muted); flex: 0 0 8px; }
+.sb-footer .gear { margin-left: auto; color: var(--fg-muted); cursor: pointer; display: grid; place-items: center; }
+.sb-footer .gear:hover { color: var(--fg-default); }
+@keyframes pulse { 0%,100%{ opacity: 1; } 50% { opacity: 0.4; } }
+.dot-live { animation: pulse 2.4s ease-in-out infinite; }
+
+/* ============ MAIN ============ */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--canvas-default); }
+.content-header {
+  flex: 0 0 auto;
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid var(--border-default);
+  display: flex; align-items: flex-end; gap: 16px;
+}
+.ch-titles { flex: 1; min-width: 0; }
+.ch-crumb { font-size: 12px; color: var(--fg-muted); display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.ch-crumb .sep { color: var(--fg-subtle); }
+.ch-title { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px; }
+.ch-actions { display: flex; align-items: center; gap: 8px; }
+
+/* segmented */
+.segmented { display: inline-flex; border: 1px solid var(--border-default); border-radius: 6px; overflow: hidden; background: var(--canvas-default); }
+.segmented button {
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+  background: transparent; border: none; padding: 5px 11px; cursor: pointer;
+  border-left: 1px solid var(--border-default);
+}
+.segmented button:first-child { border-left: none; }
+.segmented button:hover { color: var(--fg-default); background: var(--canvas-subtle); }
+.segmented button.on { color: var(--fg-default); background: var(--canvas-subtle); font-weight: 600; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  color: var(--fg-default); background: var(--btn-bg);
+  border: 1px solid var(--btn-border); border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; line-height: 20px;
+}
+.btn:hover { background: var(--btn-hover); border-color: var(--fg-subtle); }
+.btn svg { color: var(--fg-muted); }
+.btn.primary { background: var(--success-emphasis); border-color: rgba(240,246,252,0.1); color: #fff; }
+.btn.primary:hover { background: #2ea043; }
+.btn.primary svg { color: #fff; }
+.btn-icon { padding: 6px; }
+
+.scroll { overflow-y: auto; flex: 1; }
+.canvas-pad { padding: 24px 28px 48px; max-width: 1320px; }
+
+/* section heading inside content */
+.sec-head { display: flex; align-items: center; gap: 10px; margin: 26px 0 12px; }
+.sec-head:first-child { margin-top: 0; }
+.sec-head h2 { font-size: 14px; font-weight: 600; color: var(--fg-default); }
+.sec-head .count { font-size: 12px; color: var(--fg-muted); font-family: var(--mono); }
+.sec-head .rule { flex: 1; height: 1px; background: var(--border-muted); }
+.sec-head .link { font-size: 12px; color: var(--accent-fg); cursor: pointer; }
+.sec-head .link:hover { text-decoration: underline; }
+
+/* ============ SENSOR CARDS ============ */
+.sensor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 14px; }
+.s-card {
+  border: 1px solid var(--border-default); border-radius: 8px;
+  background: var(--canvas-default); padding: 14px 14px 12px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color .12s ease;
+}
+.s-card:hover { border-color: var(--fg-subtle); }
+.s-top { display: flex; align-items: center; gap: 8px; }
+.s-ico { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; flex: 0 0 26px; }
+.s-label { font-size: 12px; color: var(--fg-muted); font-weight: 500; flex: 1; }
+.s-status { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.s-valrow { display: flex; align-items: baseline; gap: 5px; }
+.s-val { font-size: 28px; font-weight: 600; letter-spacing: -0.6px; font-feature-settings: "tnum"; line-height: 1; }
+.s-unit { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
+.s-delta { margin-left: auto; font-size: 12px; font-family: var(--mono); display: flex; align-items: center; gap: 3px; }
+.s-delta.up { color: var(--success-fg); }
+.s-delta.down { color: var(--danger-fg); }
+.s-delta.flat { color: var(--fg-muted); }
+.s-spark { height: 30px; }
+.s-foot { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); }
+.s-target { display: flex; align-items: center; gap: 5px; }
+.s-badge { font-size: 10px; font-weight: 600; letter-spacing: 0.02em; padding: 1px 6px; border-radius: 20px; text-transform: uppercase; font-family: var(--sans); }
+
+/* ============ TWO-COL ============ */
+.two-col { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 1080px) { .two-col { grid-template-columns: 1fr; } }
+
+.box { border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); overflow: hidden; }
+.box-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border-default); background: var(--canvas-subtle); }
+.box-head h3 { font-size: 13px; font-weight: 600; }
+.box-head .count { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); border: 1px solid var(--border-muted); border-radius: 20px; padding: 0 7px; }
+.box-head .h-link { margin-left: auto; font-size: 12px; color: var(--accent-fg); cursor: pointer; }
+.box-head .h-link:hover { text-decoration: underline; }
+
+/* activity feed */
+.feed { padding: 4px 0; }
+.feed-row { display: flex; gap: 12px; padding: 9px 16px; position: relative; }
+.feed-row:hover { background: var(--canvas-subtle); }
+.feed-ico { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 26px; border: 1px solid var(--border-default); background: var(--canvas-default); }
+.feed-body { flex: 1; min-width: 0; }
+.feed-text { font-size: 13px; color: var(--fg-default); }
+.feed-text b { font-weight: 600; }
+.feed-text .src { color: var(--accent-fg); }
+.feed-meta { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); margin-top: 1px; display: flex; gap: 8px; }
+.feed-time { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); white-space: nowrap; flex: 0 0 auto; padding-top: 1px; }
+
+/* automations list */
+.auto-list { display: flex; flex-direction: column; }
+.auto-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-muted); }
+.auto-row:last-child { border-bottom: none; }
+.auto-ico { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; flex: 0 0 30px; background: var(--canvas-subtle); border: 1px solid var(--border-default); color: var(--fg-muted); }
+.auto-meta { flex: 1; min-width: 0; }
+.auto-name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.auto-desc { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toggle {
+  width: 38px; height: 22px; border-radius: 20px; flex: 0 0 38px;
+  background: var(--canvas-subtle); border: 1px solid var(--border-default);
+  position: relative; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.toggle .knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--fg-muted); transition: transform .15s, background .15s; }
+.toggle.on { background: var(--success-emphasis); border-color: var(--success-emphasis); }
+.toggle.on .knob { transform: translateX(16px); background: #fff; }
+
+/* status badge variants */
+.b-ok { background: var(--success-muted); color: var(--success-fg); }
+.b-warn { background: var(--attention-muted); color: var(--attention-fg); }
+.b-err { background: var(--danger-muted); color: var(--danger-fg); }
+.b-idle { background: var(--canvas-subtle); color: var(--fg-muted); border: 1px solid var(--border-muted); }
+.b-info { background: var(--accent-muted); color: var(--accent-fg); }
+
+.tag { font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 20px; font-family: var(--sans); display: inline-flex; align-items: center; gap: 4px; }
+
+/* mini summary strip */
+.summary-strip { display: flex; gap: 0; border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); overflow: hidden; margin-bottom: 4px; }
+.summary-cell { flex: 1; padding: 13px 16px; border-left: 1px solid var(--border-muted); }
+.summary-cell:first-child { border-left: none; }
+.summary-cell .sc-label { font-size: 11px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.summary-cell .sc-val { font-size: 19px; font-weight: 600; margin-top: 3px; display: flex; align-items: center; gap: 8px; letter-spacing: -0.3px; }
+.summary-cell .sc-sub { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); margin-top: 1px; }
+
+/* empty state for unbuilt sections */
+.empty { display: grid; place-items: center; height: 100%; padding: 60px; }
+.empty-inner { text-align: center; max-width: 420px; }
+.empty-ico { width: 64px; height: 64px; border-radius: 14px; background: var(--canvas-subtle); border: 1px solid var(--border-default); display: grid; place-items: center; margin: 0 auto 18px; color: var(--fg-muted); }
+.empty h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.empty p { font-size: 14px; color: var(--fg-muted); margin-bottom: 18px; }
+.empty .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-family: var(--mono); color: var(--fg-muted); border: 1px solid var(--border-default); border-radius: 20px; padding: 4px 12px; }
+/* ============ SETTINGS ============ */
+.conn-box { margin-bottom: 18px; }
+.net-meta { margin-left: auto; font-size: 11.5px; color: var(--fg-muted); font-family: var(--mono); display: flex; align-items: center; gap: 6px; }
+.net-meta .sep { color: var(--fg-subtle); }
+.conn-grid { display: grid; grid-template-columns: 1fr 1fr; }
+@media (max-width: 880px) { .conn-grid { grid-template-columns: 1fr; } }
+.conn-card { padding: 16px; display: flex; flex-direction: column; gap: 13px; align-items: flex-start; border-left: 1px solid var(--border-muted); }
+.conn-card:first-child { border-left: none; }
+@media (max-width: 880px) { .conn-card { border-left: none; border-top: 1px solid var(--border-muted); } .conn-card:first-child { border-top: none; } }
+.cc-top { display: flex; gap: 11px; }
+.cc-ico { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; flex: 0 0 30px; }
+.cc-ico.blue { background: var(--accent-muted); color: var(--accent-fg); }
+.cc-ico.green { background: var(--success-muted); color: var(--success-fg); }
+.cc-title { font-size: 13px; font-weight: 600; }
+.cc-desc { font-size: 12px; color: var(--fg-muted); margin-top: 2px; max-width: 36ch; line-height: 1.45; }
+.cc-protos { display: flex; gap: 6px; }
+.cc-actions { display: flex; gap: 8px; align-items: center; }
+.proto-badge { font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--fg-muted); background: var(--canvas-subtle); border: 1px solid var(--border-default); border-radius: 5px; padding: 1px 7px; }
+.proto-badge.soft { color: var(--accent-fg); border-color: rgba(56,139,253,0.3); background: var(--accent-muted); }
+.btn.ghost-danger { background: transparent; border-color: transparent; color: var(--fg-muted); padding: 5px 9px; }
+.btn.ghost-danger:hover { background: var(--danger-muted); color: var(--danger-fg); border-color: transparent; }
+.btn.ghost-danger svg { color: inherit; }
+
+.spinner { width: 14px; height: 14px; border: 2px solid var(--border-default); border-top-color: var(--accent-fg); border-radius: 50%; animation: spin .7s linear infinite; flex: 0 0 14px; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.scan-panel { width: 100%; border: 1px solid var(--border-default); border-radius: 7px; background: var(--canvas-inset); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.scan-top { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--fg-default); font-family: var(--mono); }
+.scan-top b { color: var(--accent-fg); font-weight: 600; }
+.scan-protos { display: flex; gap: 8px; flex-wrap: wrap; }
+.scan-proto { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: var(--mono); color: var(--fg-muted); border: 1px solid var(--border-muted); border-radius: 20px; padding: 2px 9px; }
+.scan-proto .sp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-fg); animation: pulse 1s ease-in-out infinite; }
+.scan-proto .sp-tip { color: var(--fg-subtle); }
+.scan-bar { height: 3px; border-radius: 3px; background: var(--border-muted); overflow: hidden; position: relative; }
+.scan-bar i { position: absolute; left: -40%; width: 40%; height: 100%; background: var(--accent-fg); border-radius: 3px; animation: indet 1.1s ease-in-out infinite; }
+@keyframes indet { 0% { left: -40%; } 100% { left: 100%; } }
+
+.set-empty { border: 1px dashed var(--border-default); border-radius: 10px; background: var(--canvas-default); padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.se-ico { width: 60px; height: 60px; border-radius: 14px; background: var(--accent-muted); color: var(--accent-fg); display: grid; place-items: center; margin-bottom: 16px; }
+.set-empty h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.set-empty p { font-size: 13.5px; color: var(--fg-muted); max-width: 58ch; margin-bottom: 18px; line-height: 1.6; }
+.se-actions { display: flex; gap: 10px; margin-bottom: 24px; }
+.se-caps { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border-muted); padding-top: 18px; width: 100%; max-width: 580px; }
+.se-cap { display: flex; align-items: center; gap: 7px; justify-content: center; flex-wrap: wrap; }
+.se-cap-lbl { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); margin-left: 6px; }
+
+.callout { display: flex; gap: 13px; align-items: center; border: 1px solid rgba(187,128,9,0.3); background: rgba(187,128,9,0.08); border-radius: 8px; padding: 13px 15px; margin-bottom: 10px; }
+.callout-ico { width: 30px; height: 30px; border-radius: 7px; flex: 0 0 30px; display: grid; place-items: center; background: var(--attention-muted); color: var(--attention-fg); }
+.callout-body { flex: 1; min-width: 0; }
+.callout-title { font-size: 13px; font-weight: 600; }
+.callout-text { font-size: 12.5px; color: var(--fg-muted); margin-top: 1px; line-height: 1.5; }
+.callout-text b { color: var(--fg-default); }
+.mono-ref { font-family: var(--mono); font-size: 11.5px; color: var(--accent-fg); background: var(--accent-muted); border-radius: 4px; padding: 0 5px; }
+.callout-stats { margin-left: auto; display: flex; gap: 7px; align-items: center; font-size: 12px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; }
+.callout-stats b { color: var(--fg-default); font-weight: 600; }
+.callout-stats .sep { color: var(--fg-subtle); }
+@media (max-width: 900px) { .callout-stats { display: none; } }
+
+.dev-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 1100px) { .dev-list { grid-template-columns: 1fr; } }
+.dev-card { border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); padding: 13px 14px; display: flex; flex-direction: column; gap: 11px; }
+.dev-card:hover { border-color: var(--fg-subtle); }
+.dev-card.off { opacity: 0.72; }
+.dev-head { display: flex; align-items: center; gap: 10px; }
+.online-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; background: var(--success-fg); box-shadow: 0 0 0 3px var(--success-muted); }
+.online-dot.off { background: var(--fg-subtle); box-shadow: none; }
+.dev-id { flex: 1; min-width: 0; }
+.dev-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.dev-host { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); display: flex; gap: 6px; margin-top: 1px; }
+.dev-host .sep { color: var(--border-default); }
+.signal { display: flex; align-items: flex-end; gap: 2px; height: 14px; flex: 0 0 auto; }
+.signal i { width: 3px; border-radius: 1px; display: block; }
+.icon-ghost { background: transparent; border: none; color: var(--fg-subtle); cursor: pointer; padding: 2px; border-radius: 4px; display: grid; place-items: center; }
+.icon-ghost:hover { color: var(--fg-default); background: var(--canvas-subtle); }
+.dev-caps { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid var(--border-muted); padding-top: 11px; }
+.cap-group { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.cap-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-subtle); width: 50px; flex: 0 0 50px; }
+.cap-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; background: var(--canvas-subtle); border: 1px solid var(--border-muted); border-radius: 6px; padding: 2px 8px; }
+.ctrl-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; color: var(--fg-default); background: var(--canvas-subtle); border: 1px solid var(--border-muted); border-radius: 6px; padding: 2px 8px; }
+.ctrl-chip svg { color: var(--fg-muted); }
+.res-tag { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--accent-fg); background: var(--accent-muted); border-radius: 4px; padding: 0 5px; margin-left: 1px; }
+.cap-none { font-size: 11.5px; color: var(--fg-subtle); font-style: italic; }
+.dev-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dev-kind { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); }
+.role-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; border-radius: 20px; padding: 2px 10px; border: 1px solid var(--border-default); }
+.role-pill .rp-dot { width: 6px; height: 6px; border-radius: 50%; }
+.role-pill.sen { color: var(--accent-fg); border-color: rgba(56,139,253,0.3); background: var(--accent-muted); }
+.role-pill.sen .rp-dot { background: var(--accent-fg); }
+.role-pill.ctl { color: #f78166; border-color: rgba(247,129,102,0.3); background: rgba(247,129,102,0.12); }
+.role-pill.ctl .rp-dot { background: #f78166; }
+.role-pill.unassigned { color: var(--attention-fg); border-color: rgba(187,128,9,0.3); background: var(--attention-muted); }
+
+.roles-box { border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); overflow: hidden; }
+.roles-head, .role-row { display: grid; grid-template-columns: 2fr 1.3fr 1.5fr 1.3fr; align-items: center; gap: 14px; padding: 11px 16px; }
+.roles-head { background: var(--canvas-subtle); border-bottom: 1px solid var(--border-default); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-subtle); font-weight: 600; }
+.role-row { border-bottom: 1px solid var(--border-muted); }
+.role-row:last-child { border-bottom: none; }
+.role-row:hover { background: var(--canvas-subtle); }
+.role-row.off { opacity: 0.7; }
+.rr-dev { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rr-min { min-width: 0; }
+.rr-name { font-size: 13px; font-weight: 600; }
+.rr-caps { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr-detect { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.detect-tag { font-size: 11px; font-weight: 600; border-radius: 5px; padding: 1px 8px; }
+.detect-tag.sen { color: var(--accent-fg); background: var(--accent-muted); }
+.detect-tag.ctl { color: #f78166; background: rgba(247,129,102,0.12); }
+.res-tag.solo { margin: 0; }
+.rr-unlock .unlock-on { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--success-fg); font-weight: 500; }
+.rr-unlock .unlock-off { font-size: 11.5px; color: var(--fg-subtle); font-style: italic; }
+.role-select { appearance: none; -webkit-appearance: none; color-scheme: dark; font-family: var(--sans); font-size: 12.5px; font-weight: 500; color: var(--fg-default); background-color: var(--canvas-default); border: 1px solid var(--border-default); border-radius: 6px; padding: 5px 28px 5px 10px; cursor: pointer; width: 100%; max-width: 210px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='none' stroke='%238b949e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='m4.5 6 3.5 3.5L11.5 6'/></svg>"); background-repeat: no-repeat; background-position: right 9px center; }
+.role-select:hover { border-color: var(--fg-subtle); }
+.role-select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.modal-overlay { position: absolute; inset: 0; background: rgba(1,4,9,0.7); display: grid; place-items: center; z-index: 50; }
+.modal { width: 440px; max-width: 92%; background: var(--canvas-overlay); border: 1px solid var(--border-default); border-radius: 12px; box-shadow: 0 16px 48px rgba(1,4,9,0.6); overflow: hidden; }
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border-default); }
+.modal-head svg { color: var(--success-fg); }
+.modal-head h3 { font-size: 14px; font-weight: 600; flex: 1; }
+.modal-steps { display: flex; gap: 8px; padding: 14px 16px 4px; flex-wrap: wrap; }
+.mstep { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-subtle); font-weight: 500; }
+.mstep .mstep-n { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border-default); display: grid; place-items: center; font-size: 10px; font-family: var(--mono); }
+.mstep.on { color: var(--fg-default); }
+.mstep.on .mstep-n { border-color: var(--accent-fg); color: var(--accent-fg); }
+.mstep.done .mstep-n { background: var(--success-emphasis); border-color: var(--success-emphasis); color: #fff; }
+.modal-body { padding: 14px 16px; min-height: 110px; font-size: 13px; color: var(--fg-muted); line-height: 1.6; }
+.modal-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-default); background: var(--canvas-subtle); }
+.modal-foot .spacer { flex: 1; }
+.prov-ap { display: flex; align-items: center; gap: 10px; border: 1px solid var(--accent-emphasis); border-radius: 7px; padding: 10px 12px; background: var(--accent-muted); color: var(--fg-default); }
+.prov-ap .pa-name { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+.field { margin-top: 10px; }
+.field label { display: block; font-size: 11.5px; color: var(--fg-muted); margin-bottom: 5px; font-weight: 600; }
+.field input, .field .fsel { width: 100%; background: var(--canvas-inset); border: 1px solid var(--border-default); border-radius: 6px; color: var(--fg-default); font-size: 13px; padding: 7px 10px; font-family: var(--sans); color-scheme: dark; }
+.field input:focus, .field .fsel:focus { outline: none; border-color: var(--accent-emphasis); box-shadow: 0 0 0 3px var(--accent-muted); }
+.prov-joining { display: flex; align-items: center; gap: 10px; color: var(--fg-default); font-size: 13px; }
+
+/* ============ OVERVIEW EMPTY ============ */
+.s-card.skel { border-style: dashed; }
+.s-card.skel .s-label { color: var(--fg-subtle); }
+.s-val.skel-dash { color: var(--fg-subtle); }
+.skel-spark { height: 30px; border-radius: 6px; background: var(--canvas-subtle); border: 1px dashed var(--border-muted); }
+.se-steps { display: flex; align-items: center; gap: 12px; margin-top: 22px; flex-wrap: wrap; justify-content: center; }
+.se-step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg-muted); border: 1px solid var(--border-default); border-radius: 20px; padding: 5px 13px; background: var(--canvas-default); }
+.ses-n { width: 18px; height: 18px; border-radius: 50%; background: var(--canvas-subtle); border: 1px solid var(--border-default); display: grid; place-items: center; font-size: 10.5px; font-family: var(--mono); color: var(--fg-muted); flex: 0 0 18px; }
+.ses-arrow { color: var(--fg-subtle); font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" data-presets="react">
+// Simple geometric Octicon-style icons (16px grid). Kept to primitives.
+const I = ({ children, s = 16, sw = 1.5 }) => (
+  <svg viewBox="0 0 16 16" width={s} height={s} fill="none"
+       stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    {children}
+  </svg>
+);
+const IF = ({ children, s = 16 }) => (
+  <svg viewBox="0 0 16 16" width={s} height={s} fill="currentColor">{children}</svg>
+);
+
+// ---- nav icons ----
+const IcoOverview = (p) => (<I {...p}><rect x="1.75" y="1.75" width="5" height="5" rx="1"/><rect x="9.25" y="1.75" width="5" height="5" rx="1"/><rect x="1.75" y="9.25" width="5" height="5" rx="1"/><rect x="9.25" y="9.25" width="5" height="5" rx="1"/></I>);
+const IcoAutomation = (p) => (<IF {...p}><path d="M8.4 1 3 8.6c-.2.3 0 .7.4.7h3.1l-.8 5.1c-.1.5.5.8.8.4L12 7.2c.2-.3 0-.7-.4-.7H8.7l.5-5.1c.1-.5-.5-.8-.8-.4Z"/></IF>);
+const IcoMaintenance = (p) => (<I {...p}><circle cx="8" cy="8" r="2.4"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1"/></I>);
+const IcoLogging = (p) => (<I {...p}><path d="M1.75 14.25V1.75"/><path d="M1.75 14.25H14.5"/><rect x="3.75" y="8" width="2.2" height="4.5"/><rect x="7.4" y="5" width="2.2" height="7.5"/><rect x="11.05" y="3" width="2.2" height="9.5"/></I>);
+const IcoJournal = (p) => (<I {...p}><path d="M2.25 2.5A1.25 1.25 0 0 1 3.5 1.25h9.25v11H3.5a1.25 1.25 0 0 0-1.25 1.25Z"/><path d="M2.25 13.5A1.25 1.25 0 0 1 3.5 12.25h9.25v2.5H3.5a1.25 1.25 0 0 1-1.25-1.25Z"/><path d="M5 4.25h5M5 6.5h5"/></I>);
+const IcoSetup = (p) => (<I {...p}><circle cx="5.25" cy="4.5" r="1.6"/><path d="M1.75 4.5h1.9M6.85 4.5h7.4"/><circle cx="10.75" cy="11.5" r="1.6"/><path d="M1.75 11.5h7.4M12.35 11.5h1.9"/></I>);
+
+// ---- ui glyphs ----
+const IcoSearch = (p) => (<I {...p} sw={1.6}><circle cx="6.75" cy="6.75" r="4.75"/><path d="m10.5 10.5 3 3"/></I>);
+const IcoBell = (p) => (<I {...p}><path d="M8 1.6a3.6 3.6 0 0 0-3.6 3.6c0 3.2-1.1 4.3-1.1 4.3h9.4s-1.1-1.1-1.1-4.3A3.6 3.6 0 0 0 8 1.6Z"/><path d="M6.7 12.4a1.4 1.4 0 0 0 2.6 0"/></I>);
+const IcoRefresh = (p) => (<I {...p} sw={1.6}><path d="M13.3 7A5.3 5.3 0 1 0 12 11"/><path d="M13.4 3.4V7H9.8"/></I>);
+const IcoPlus = (p) => (<I {...p} sw={1.8}><path d="M8 3v10M3 8h10"/></I>);
+const IcoLeaf = (p) => (<IF {...p}><path d="M13.5 2.5C8 2 3 4.5 3 9.5c0 1 .2 1.9.6 2.7L2 13.8l.9.9 1.6-1.6c.8.4 1.7.6 2.7.6 5 0 7.5-5 7-10.5-.1-.4-.3-.6-.7-.7ZM6.5 10.5C7.7 8 9.6 6.6 11.5 6c-1.5 1.3-3 3.2-4 5.5-.3-.3-.7-.7-1-1Z"/></IF>);
+const IcoChevron = (p) => (<I {...p} sw={1.6}><path d="m4.5 6 3.5 3.5L11.5 6"/></I>);
+const IcoGear = (p) => (<I {...p}><circle cx="8" cy="8" r="2"/><path d="M8 1.6v1.4M8 13v1.4M2.1 4.5l1.2.7M12.7 10.8l1.2.7M2.1 11.5l1.2-.7M12.7 5.2l1.2-.7"/></I>);
+const IcoDots = (p) => (<IF {...p}><circle cx="3" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="13" cy="8" r="1.3"/></IF>);
+const IcoExternal = (p) => (<I {...p} sw={1.4}><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12 4 7 9"/></I>);
+const IcoWifi = (p) => (<I {...p} sw={1.5}><path d="M1.8 5.4a9 9 0 0 1 12.4 0"/><path d="M4.1 8.1a5.6 5.6 0 0 1 7.8 0"/><path d="M6.3 10.7a2.4 2.4 0 0 1 3.4 0"/><circle cx="8" cy="13" r="0.7" fill="currentColor" stroke="none"/></I>);
+const IcoRadar = (p) => (<I {...p}><circle cx="8" cy="8" r="6.2"/><circle cx="8" cy="8" r="3"/><path d="M8 8 12.4 3.6"/><circle cx="8" cy="8" r="0.8" fill="currentColor" stroke="none"/></I>);
+const IcoPlug = (p) => (<I {...p}><path d="M5.2 2.4v3M10.8 2.4v3"/><path d="M3.6 5.4h8.8v1.9a4.4 4.4 0 0 1-8.8 0Z"/><path d="M8 11.7v2.1"/></I>);
+const IcoSlider = (p) => (<I {...p}><path d="M2.5 5.5h2M7.6 5.5h5.9"/><circle cx="6" cy="5.5" r="1.6"/><path d="M2.5 10.5h5.9M11.6 10.5h1.9"/><circle cx="10" cy="10.5" r="1.6"/></I>);
+const IcoTarget = (p) => (<I {...p}><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.4"/></I>);
+const IcoX = (p) => (<I {...p} sw={1.7}><path d="M4 4 12 12M12 4 4 12"/></I>);
+const IcoTrash = (p) => (<I {...p} sw={1.5}><path d="M2.75 4.25h10.5M6 4.25V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.25M4.4 4.25l.65 8.35a1 1 0 0 0 1 .9h3.9a1 1 0 0 0 1-.9l.65-8.35"/></I>);
+
+// ---- metric icons ----
+const IcoTemp = (p) => (<I {...p}><path d="M6 8.5V3.2a2 2 0 1 1 4 0V8.5a3 3 0 1 1-4 0Z"/><path d="M8 7v3.6"/></I>);
+const IcoDrop = (p) => (<I {...p}><path d="M8 1.8s4 4.2 4 7.1a4 4 0 1 1-8 0c0-2.9 4-7.1 4-7.1Z"/></I>);
+const IcoVpd = (p) => (<I {...p} sw={1.4}><path d="M2 11s1.5-2 3-2 1.5 2 3 2 1.5-2 3-2 3 2 3 2"/><path d="M2 6.5s1.5-2 3-2 1.5 2 3 2 1.5-2 3-2 3 2 3 2"/></I>);
+const IcoCo2 = (p) => (<IF {...p}><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 1.5A4.5 4.5 0 1 1 8 12.5 4.5 4.5 0 0 1 8 3.5Z"/><circle cx="8" cy="8" r="2"/></IF>);
+const IcoSun = (p) => (<I {...p}><circle cx="8" cy="8" r="2.6"/><path d="M8 1.5v1.4M8 13.1v1.4M1.5 8h1.4M13.1 8h1.4M3.3 3.3l1 1M11.7 11.7l1 1M12.7 3.3l-1 1M4.3 11.7l-1 1"/></I>);
+const IcoSeedling = (p) => (<I {...p}><path d="M8 14V7"/><path d="M8 8.5C8 6 6 4.5 3.5 4.5 3.5 7 5.5 8.5 8 8.5Z"/><path d="M8 7.5C8 5.4 9.7 4 11.8 4c0 2.1-1.7 3.5-3.8 3.5Z"/></I>);
+const IcoBeaker = (p) => (<I {...p}><path d="M6 1.75v3.9L2.9 11.4A1.4 1.4 0 0 0 4.1 13.5h7.8a1.4 1.4 0 0 0 1.2-2.1L10 5.65v-3.9"/><path d="M5.3 1.75h5.4M4.6 8.5h6.8"/></I>);
+const IcoBolt = IcoAutomation;
+
+// ---- feed/status glyphs ----
+const IcoFan = (p) => (<I {...p} sw={1.4}><circle cx="8" cy="8" r="1.3"/><path d="M8 6.7C8 4 9 2 10.5 2.5S11 6 8 6.7Z"/><path d="M9.3 8C12 8 14 9 13.5 10.5S10 11 9.3 8Z"/><path d="M8 9.3C8 12 7 14 5.5 13.5S5 10 8 9.3Z"/><path d="M6.7 8C4 8 2 7 2.5 5.5S6 5 6.7 8Z"/></I>);
+const IcoCheck = (p) => (<I {...p} sw={1.8}><path d="m3.5 8.5 2.8 2.8L12.5 5"/></I>);
+const IcoAlert = (p) => (<I {...p} sw={1.5}><path d="M7 2.4 1.6 12a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L9 2.4a1.15 1.15 0 0 0-2 0Z"/><path d="M8 6.2v3M8 11.2h.01"/></I>);
+const IcoClock = (p) => (<I {...p}><circle cx="8" cy="8" r="6.2"/><path d="M8 4.5V8l2.4 1.4"/></I>);
+const IcoWater = IcoDrop;
+const IcoInfo = (p) => (<I {...p}><circle cx="8" cy="8" r="6.2"/><path d="M8 7.3v3.4M8 5.2h.01"/></I>);
+const IcoPower = (p) => (<I {...p} sw={1.5}><path d="M8 1.8v5.4"/><path d="M4.6 4.2a4.8 4.8 0 1 0 6.8 0"/></I>);
+const IcoArrowUp = (p) => (<I {...p} sw={1.8}><path d="M8 12V4M4.5 7.5 8 4l3.5 3.5"/></I>);
+const IcoArrowDown = (p) => (<I {...p} sw={1.8}><path d="M8 4v8M11.5 8.5 8 12 4.5 8.5"/></I>);
+
+Object.assign(window, {
+  IcoOverview, IcoAutomation, IcoMaintenance, IcoLogging, IcoJournal, IcoSetup,
+  IcoSearch, IcoBell, IcoRefresh, IcoPlus, IcoLeaf, IcoChevron, IcoGear, IcoDots, IcoExternal,
+  IcoWifi, IcoRadar, IcoPlug, IcoSlider, IcoTarget, IcoX, IcoTrash,
+  IcoTemp, IcoDrop, IcoVpd, IcoCo2, IcoSun, IcoSeedling, IcoBeaker, IcoBolt,
+  IcoFan, IcoCheck, IcoAlert, IcoClock, IcoWater, IcoInfo, IcoPower, IcoArrowUp, IcoArrowDown,
+});
+
+</script>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useCallback } = React;
+
+/* ============================================================
+   DATA
+============================================================ */
+const NAV = [
+  { id: "overview",   label: "Overview",   icon: IcoOverview,   group: "Monitor" },
+  { id: "setup",      label: "Setup View", icon: IcoSetup,      group: "Monitor" },
+  { id: "automation", label: "Automation", icon: IcoAutomation, group: "Control", count: 6 },
+  { id: "maintenance",label: "Maintenance",icon: IcoMaintenance,group: "Control", count: 2 },
+  { id: "logging",    label: "Logging",    icon: IcoLogging,    group: "Records" },
+  { id: "journal",    label: "Journal",    icon: IcoJournal,    group: "Records", count: 28 },
+  { id: "settings",   label: "Settings",   icon: IcoGear,       group: "Config", count: 8 },
+];
+
+// status: ok | warn | err
+const SENSORS = [
+  { key:"temp", label:"Air Temperature", icon:IcoTemp,  tint:"#f78166", value:"24.6", unit:"°C",   target:"22–26 °C", status:"ok",   delta:"+0.4", dir:"up",
+    spark:[23.9,24.0,24.2,24.1,24.4,24.3,24.5,24.6,24.5,24.7,24.6,24.6] },
+  { key:"rh", label:"Humidity (RH)", icon:IcoDrop,  tint:"#2f81f7", value:"58", unit:"%",    target:"55–65 %",  status:"ok",   delta:"-2.1", dir:"down",
+    spark:[63,62,61,61,60,59,60,59,58,59,58,58] },
+  { key:"vpd", label:"Vapor Pressure", icon:IcoVpd,   tint:"#a371f7", value:"1.12", unit:"kPa",  target:"0.8–1.2",  status:"ok",   delta:"+0.06", dir:"up",
+    spark:[0.98,1.0,1.02,1.04,1.03,1.06,1.07,1.05,1.08,1.1,1.11,1.12] },
+  { key:"co2", label:"CO₂", icon:IcoCo2,   tint:"#3fb950", value:"820", unit:"ppm",  target:"700–1000", status:"ok",   delta:"+45", dir:"up",
+    spark:[760,770,765,780,790,785,800,810,805,815,818,820] },
+  { key:"soil", label:"Soil Moisture", icon:IcoSeedling,  tint:"#d29922", value:"42", unit:"%",    target:"45–60 %",  status:"warn", delta:"-6", dir:"down",
+    spark:[55,54,52,51,49,48,47,45,44,43,42,42] },
+  { key:"ppfd", label:"Light · PPFD", icon:IcoSun,   tint:"#e3b341", value:"612", unit:"µmol",  target:"500–700",  status:"ok",   delta:"0", dir:"flat",
+    spark:[610,611,612,612,613,611,612,612,613,612,612,612] },
+  { key:"ph", label:"Reservoir pH", icon:IcoBeaker, tint:"#2f81f7", value:"6.2", unit:"pH",   target:"5.8–6.5",  status:"ok",   delta:"+0.1", dir:"up",
+    spark:[6.0,6.05,6.1,6.08,6.12,6.15,6.13,6.18,6.2,6.19,6.2,6.2] },
+  { key:"ec", label:"Nutrient EC", icon:IcoBeaker, tint:"#56d364", value:"1.4", unit:"mS/cm", target:"1.2–1.8",  status:"ok",   delta:"-0.05", dir:"down",
+    spark:[1.5,1.49,1.48,1.47,1.46,1.45,1.44,1.43,1.42,1.41,1.4,1.4] },
+];
+
+const ACTIVITY = [
+  { icon:IcoFan,   tint:"#2f81f7", text:<>Exhaust fan ramped to <b>72%</b> — VPD climbed to 1.18 kPa</>, src:"vpd-fan-control", time:"2m" },
+  { icon:IcoWater, tint:"#3fb950", text:<>Irrigation cycle completed — <b>Zone A</b>, 480 mL delivered</>, src:"drip-schedule", time:"18m" },
+  { icon:IcoAlert, tint:"#d29922", text:<>Soil moisture dropped below <b>45%</b> threshold in Bed 2</>, src:"moisture-guard", time:"41m" },
+  { icon:IcoSun,   tint:"#e3b341", text:<>Light schedule started — <b>18/6</b> photoperiod, 06:00</>, src:"light-schedule", time:"3h" },
+  { icon:IcoBeaker,tint:"#a371f7", text:<>pH dosing pump activated — added <b>2.4 mL</b> pH-Down</>, src:"ph-balance", time:"5h" },
+  { icon:IcoCheck, tint:"#3fb950", text:<>Nightly sensor self-test passed — <b>4/4 probes</b> nominal</>, src:"diagnostics", time:"7h" },
+  { icon:IcoFan,   tint:"#8b949e", text:<>Circulation fans set to <b>idle</b> for dark period</>, src:"light-schedule", time:"9h" },
+];
+
+const AUTOMATIONS_INIT = [
+  { id:"vpd", name:"VPD-based fan control", desc:"trigger: vpd > 1.15 → exhaust + intake", icon:IcoFan,   on:true },
+  { id:"light", name:"Light schedule 18/6", desc:"on 06:00 · off 00:00 · 612 µmol target", icon:IcoSun,   on:true },
+  { id:"drip", name:"Drip irrigation", desc:"every 6h · 480 mL · zones A,B,C", icon:IcoWater, on:true },
+  { id:"ph", name:"pH auto-dosing", desc:"hold 5.8–6.5 · max 5 mL/cycle", icon:IcoBeaker, on:true },
+  { id:"co2", name:"CO₂ supplementation", desc:"daytime only · target 1000 ppm", icon:IcoCo2,   on:false },
+  { id:"dehum", name:"Night dehumidify", desc:"dark period · hold RH < 60%", icon:IcoDrop,  on:true },
+];
+
+/* ============================================================
+   SMALL COMPONENTS
+============================================================ */
+function Sparkline({ data, color, height = 30 }) {
+  const w = 200, h = height, pad = 2;
+  const min = Math.min(...data), max = Math.max(...data);
+  const rng = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+    const y = pad + (1 - (v - min) / rng) * (h - pad * 2);
+    return [x, y];
+  });
+  const line = pts.map((p) => p.join(",")).join(" ");
+  const area = `${pad},${h} ${line} ${w - pad},${h}`;
+  const gid = "g" + Math.abs(data[0] * 1000 | 0) + color.slice(1);
+  return (
+    <svg className="s-spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: "100%" }}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#${gid})`} />
+      <polyline points={line} fill="none" stroke={color} strokeWidth="1.5"
+        strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="2" fill={color} />
+    </svg>
+  );
+}
+
+const STATUS_DOT = { ok: "var(--success-fg)", warn: "var(--attention-fg)", err: "var(--danger-fg)" };
+const STATUS_BADGE = { ok: ["In range", "b-ok"], warn: ["Below target", "b-warn"], err: ["Out of range", "b-err"] };
+
+function SensorCard({ s }) {
+  const Icon = s.icon;
+  const Arrow = s.dir === "up" ? IcoArrowUp : s.dir === "down" ? IcoArrowDown : null;
+  const [bText, bClass] = STATUS_BADGE[s.status];
+  return (
+    <div className="s-card">
+      <div className="s-top">
+        <div className="s-ico" style={{ background: s.tint + "26", color: s.tint }}><Icon s={15} /></div>
+        <span className="s-label">{s.label}</span>
+        <span className="s-status" style={{ background: STATUS_DOT[s.status], boxShadow: `0 0 0 3px ${STATUS_DOT[s.status]}28` }} />
+      </div>
+      <div className="s-valrow">
+        <span className="s-val">{s.value}</span>
+        <span className="s-unit">{s.unit}</span>
+        <span className={`s-delta ${s.dir}`}>{Arrow && <Arrow s={11} />}{s.delta}</span>
+      </div>
+      <Sparkline data={s.spark} color={s.tint} />
+      <div className="s-foot">
+        <span className="s-target">Target {s.target}</span>
+        <span className={`s-badge ${bClass}`}>{bText}</span>
+      </div>
+    </div>
+  );
+}
+
+function Toggle({ on, onClick }) {
+  return <button className={`toggle ${on ? "on" : ""}`} onClick={onClick} aria-pressed={on}><span className="knob" /></button>;
+}
+
+/* ============================================================
+   OVERVIEW PAGE
+============================================================ */
+function OverviewEmpty({ onGoSettings }) {
+  const SKEL = [
+    { label: "Air Temperature", icon: IcoTemp },
+    { label: "Humidity (RH)", icon: IcoDrop },
+    { label: "Vapor Pressure", icon: IcoVpd },
+    { label: "CO₂", icon: IcoCo2 },
+    { label: "Soil Moisture", icon: IcoSeedling },
+    { label: "Light · PPFD", icon: IcoSun },
+  ];
+  return (
+    <>
+      <div className="content-header">
+        <div className="ch-titles">
+          <div className="ch-crumb">Tent 1 <span className="sep">/</span> Not configured</div>
+          <div className="ch-title">Overview <span className="tag b-idle"><span className="online-dot off" style={{ width: 7, height: 7 }} /> Not connected</span></div>
+        </div>
+        <div className="ch-actions">
+          <div className="segmented">{["1H", "24H", "7D", "30D"].map((r) => <button key={r} disabled style={{ opacity: .45, cursor: "not-allowed" }}>{r}</button>)}</div>
+          <button className="btn primary" onClick={onGoSettings}><IcoPlus s={14} /> Connect devices</button>
+        </div>
+      </div>
+      <div className="scroll">
+        <div className="canvas-pad">
+          <div className="set-empty">
+            <div className="se-ico"><IcoSeedling s={30} /></div>
+            <h2>Waiting for your first readings</h2>
+            <p>No devices are connected yet. Open <b>Settings</b> and scan your local network — once sensors and equipment are paired, their live readings, recent activity, and active automations show up here automatically.</p>
+            <div className="se-actions">
+              <button className="btn primary" onClick={onGoSettings}><IcoRadar s={14} /> Scan network</button>
+              <button className="btn" onClick={onGoSettings}><IcoGear s={14} /> Open Settings</button>
+            </div>
+            <div className="se-steps">
+              <div className="se-step"><span className="ses-n">1</span> Pair sensors &amp; equipment</div>
+              <span className="ses-arrow">→</span>
+              <div className="se-step"><span className="ses-n">2</span> Assign grow roles</div>
+              <span className="ses-arrow">→</span>
+              <div className="se-step"><span className="ses-n">3</span> Live overview</div>
+            </div>
+          </div>
+
+          <div className="sec-head"><h2>Current readings</h2><span className="count">awaiting probes</span><span className="rule" /></div>
+          <div className="sensor-grid">
+            {SKEL.map((s, i) => {
+              const Ic = s.icon;
+              return (
+                <div className="s-card skel" key={i}>
+                  <div className="s-top">
+                    <div className="s-ico" style={{ background: "var(--canvas-subtle)", color: "var(--fg-subtle)" }}><Ic s={15} /></div>
+                    <span className="s-label">{s.label}</span>
+                    <span className="s-status" style={{ background: "var(--border-default)" }} />
+                  </div>
+                  <div className="s-valrow"><span className="s-val skel-dash">—</span></div>
+                  <div className="skel-spark" />
+                  <div className="s-foot"><span className="s-target">No sensor</span><span className="s-badge b-idle">Awaiting</span></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Overview(props) {
+  return props.empty ? <OverviewEmpty onGoSettings={props.onGoSettings} /> : <OverviewConfigured {...props} />;
+}
+
+function OverviewConfigured({ range, onRange, lastSync, onRefresh }) {
+  const [autos, setAutos] = useState(AUTOMATIONS_INIT);
+  const activeCount = autos.filter((a) => a.on).length;
+  const warnCount = SENSORS.filter((s) => s.status !== "ok").length;
+
+  const toggle = useCallback((id) => {
+    setAutos((prev) => prev.map((a) => (a.id === id ? { ...a, on: !a.on } : a)));
+  }, []);
+
+  return (
+    <>
+      <div className="content-header">
+        <div className="ch-titles">
+          <div className="ch-crumb">Tent 1 <span className="sep">/</span> Veg · Day 24 <span className="sep">/</span> <span>Northern Lights × 4</span></div>
+          <div className="ch-title">Overview
+            <span className="tag b-ok"><span className="dot-live" style={{ width: 7, height: 7 }} /> All systems nominal</span>
+          </div>
+        </div>
+        <div className="ch-actions">
+          <div className="segmented">
+            {["1H", "24H", "7D", "30D"].map((r) => (
+              <button key={r} className={range === r ? "on" : ""} onClick={() => onRange(r)}>{r}</button>
+            ))}
+          </div>
+          <button className="btn btn-icon" title="Refresh" onClick={onRefresh}><IcoRefresh s={15} /></button>
+          <button className="btn primary"><IcoPlus s={14} /> New automation</button>
+        </div>
+      </div>
+
+      <div className="scroll">
+        <div className="canvas-pad">
+          {/* summary strip */}
+          <div className="summary-strip">
+            <div className="summary-cell">
+              <div className="sc-label">Environment</div>
+              <div className="sc-val">Stable <span className="tag b-ok">Nominal</span></div>
+              <div className="sc-sub">{warnCount} metric{warnCount !== 1 ? "s" : ""} outside target</div>
+            </div>
+            <div className="summary-cell">
+              <div className="sc-label">Automations</div>
+              <div className="sc-val">{activeCount} <span style={{ fontSize: 13, color: "var(--fg-muted)", fontWeight: 400 }}>/ {autos.length} active</span></div>
+              <div className="sc-sub">last action 2m ago · vpd-fan-control</div>
+            </div>
+            <div className="summary-cell">
+              <div className="sc-label">Next event</div>
+              <div className="sc-val">Irrigation</div>
+              <div className="sc-sub">in 3h 42m · zone B · 480 mL</div>
+            </div>
+            <div className="summary-cell">
+              <div className="sc-label">Uptime</div>
+              <div className="sc-val">14d 06h</div>
+              <div className="sc-sub">controller · 0 faults · synced {lastSync}</div>
+            </div>
+          </div>
+
+          {/* sensors */}
+          <div className="sec-head">
+            <h2>Current readings</h2>
+            <span className="count">{SENSORS.length} probes</span>
+            <span className="rule" />
+            <span className="link">Configure thresholds</span>
+          </div>
+          <div className="sensor-grid">
+            {SENSORS.map((s) => <SensorCard key={s.key} s={s} />)}
+          </div>
+
+          {/* activity + automations */}
+          <div className="sec-head" style={{ marginTop: 30 }}>
+            <h2>Recent activity &amp; control</h2>
+            <span className="rule" />
+          </div>
+          <div className="two-col">
+            <div className="box">
+              <div className="box-head">
+                <h3>Recent activity</h3>
+                <span className="count">live</span>
+                <span className="h-link">View all in Logging</span>
+              </div>
+              <div className="feed">
+                {ACTIVITY.map((a, i) => {
+                  const Icon = a.icon;
+                  return (
+                    <div className="feed-row" key={i}>
+                      <div className="feed-ico" style={{ color: a.tint }}><Icon s={14} /></div>
+                      <div className="feed-body">
+                        <div className="feed-text">{a.text}</div>
+                        <div className="feed-meta"><span className="src">{a.src}</span></div>
+                      </div>
+                      <div className="feed-time">{a.time} ago</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="box">
+              <div className="box-head">
+                <h3>Active automations</h3>
+                <span className="count">{activeCount}/{autos.length}</span>
+                <span className="h-link">Manage</span>
+              </div>
+              <div className="auto-list">
+                {autos.map((a) => {
+                  const Icon = a.icon;
+                  return (
+                    <div className="auto-row" key={a.id}>
+                      <div className="auto-ico" style={{ color: a.on ? "var(--fg-default)" : "var(--fg-subtle)" }}><Icon s={15} /></div>
+                      <div className="auto-meta">
+                        <div className="auto-name">{a.name}
+                          {a.on
+                            ? <span className="tag b-ok" style={{ fontSize: 10 }}>on</span>
+                            : <span className="tag b-idle" style={{ fontSize: 10 }}>paused</span>}
+                        </div>
+                        <div className="auto-desc">{a.desc}</div>
+                      </div>
+                      <Toggle on={a.on} onClick={() => toggle(a.id)} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER (unbuilt sections)
+============================================================ */
+function Placeholder({ item }) {
+  const Icon = item.icon;
+  return (
+    <>
+      <div className="content-header">
+        <div className="ch-titles">
+          <div className="ch-crumb">Tent 1 <span className="sep">/</span> {item.label}</div>
+          <div className="ch-title">{item.label}</div>
+        </div>
+      </div>
+      <div className="scroll">
+        <div className="empty">
+          <div className="empty-inner">
+            <div className="empty-ico"><Icon s={28} /></div>
+            <h2>{item.label}</h2>
+            <p>This section is part of the navigation shell. We'll design <b>{item.label}</b> together next — for now the Overview is the built-out page.</p>
+            <span className="pill"><IcoLeaf s={13} /> Up next in the design queue</span>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   SETTINGS — data
+============================================================ */
+const PROTO = {
+  mdns:   { label: "mDNS",   tip: "zeroconf" },
+  mqtt:   { label: "MQTT",   tip: "broker .4:1883" },
+  matter: { label: "Matter", tip: "fabric" },
+};
+const METRIC_META = {
+  temp:     { icon: IcoTemp,     tint: "#f78166", label: "Temp" },
+  humidity: { icon: IcoDrop,     tint: "#2f81f7", label: "Humidity" },
+  co2:      { icon: IcoCo2,      tint: "#3fb950", label: "CO₂" },
+  soil:     { icon: IcoSeedling, tint: "#d29922", label: "Soil" },
+  power:    { icon: IcoPower,    tint: "#a371f7", label: "Power" },
+};
+const RES_META = {
+  "on-off":   { icon: IcoPlug,   tag: "on/off" },
+  "variable": { icon: IcoSlider, tag: "variable" },
+  "setpoint": { icon: IcoTarget, tag: "setpoint" },
+};
+const ROLES = [
+  { id:"canopy-temp", name:"Canopy temp",        kind:"sense" },
+  { id:"canopy-rh",   name:"Canopy humidity",    kind:"sense" },
+  { id:"rootzone",    name:"Root-zone moisture", kind:"sense" },
+  { id:"co2-probe",   name:"CO₂ probe",          kind:"sense" },
+  { id:"res-temp",    name:"Reservoir temp",     kind:"sense" },
+  { id:"exhaust",     name:"Exhaust fan",     kind:"control", unlocks:"VPD / temp control" },
+  { id:"intake",      name:"Intake fan",      kind:"control", unlocks:"fresh-air exchange" },
+  { id:"circ",        name:"Circulation fan", kind:"control", unlocks:"air mixing" },
+  { id:"light",       name:"Grow light",      kind:"control", unlocks:"photoperiod schedule" },
+  { id:"pump",        name:"Water pump",      kind:"control", unlocks:"irrigation cycles" },
+  { id:"humidifier",  name:"Humidifier",      kind:"control", unlocks:"humidity hold" },
+  { id:"dehumidifier",name:"Dehumidifier",    kind:"control", unlocks:"humidity hold" },
+  { id:"co2-valve",   name:"CO₂ valve",       kind:"control", unlocks:"CO₂ dosing" },
+  { id:"heater",      name:"Heater",          kind:"control", unlocks:"temp floor" },
+];
+const roleById = (id) => ROLES.find((r) => r.id === id);
+const deviceKind = (d) => (d.controls.length ? "control" : "sense");
+
+const CONFIGURED_DEVICES = [
+  { id:"govee",  name:"Tent Climate Sensor", model:"Govee H5179",     host:"192.168.1.42", proto:"mdns",   online:true,  signal:88, metrics:["temp","humidity"], controls:[], role:"canopy-temp" },
+  { id:"sonoff", name:"Exhaust Relay",       model:"Sonoff MINI R3",  host:"192.168.1.51", proto:"mqtt",   online:true,  signal:76, metrics:[], controls:[{res:"on-off",label:"Relay"}], role:"exhaust" },
+  { id:"shelly", name:"Light Dimmer",        model:"Shelly Dimmer 2", host:"192.168.1.55", proto:"mdns",   online:true,  signal:64, metrics:["power"], controls:[{res:"variable",label:"Dimmer"}], role:"light" },
+  { id:"athom",  name:"CO₂ Monitor",         model:"Athom CO2-A1",    host:"192.168.1.61", proto:"mqtt",   online:true,  signal:59, metrics:["co2","temp"], controls:[], role:"co2-probe" },
+  { id:"ecowitt",name:"Soil Probe — Bed 2",  model:"Ecowitt WH51",    host:"192.168.1.63", proto:"mqtt",   online:true,  signal:41, metrics:["soil"], controls:[], role:"rootzone" },
+  { id:"tapo",   name:"Pump Smart Plug",     model:"TP-Link Tapo P110",host:"192.168.1.70",proto:"matter", online:true,  signal:92, metrics:["power"], controls:[{res:"on-off",label:"Plug"}], role:"pump" },
+  { id:"inkbird",name:"Heat-Mat Controller", model:"Inkbird ITC-308", host:"192.168.1.72", proto:"mqtt",   online:true,  signal:70, metrics:["temp"], controls:[{res:"setpoint",label:"Target °C"}], role:null },
+  { id:"tuya",   name:"Humidifier",          model:"Generic Tuya RH", host:"192.168.1.80", proto:"mdns",   online:false, signal:0,  metrics:[], controls:[{res:"on-off",label:"Power"}], role:"humidifier" },
+];
+
+/* ============================================================
+   SETTINGS — components
+============================================================ */
+function SignalBars({ pct, online }) {
+  const active = online ? Math.max(1, Math.round(pct / 25)) : 0;
+  const col = !online ? "var(--fg-subtle)" : pct > 66 ? "var(--success-fg)" : pct > 33 ? "var(--attention-fg)" : "var(--danger-fg)";
+  return (
+    <span className="signal" title={online ? pct + "% link" : "offline"}>
+      {[0, 1, 2, 3].map((i) => <i key={i} style={{ height: 5 + i * 3, background: i < active ? col : "var(--border-default)" }} />)}
+    </span>
+  );
+}
+function ProtoBadge({ proto }) { const p = PROTO[proto]; return <span className="proto-badge" title={p.tip}>{p.label}</span>; }
+function MetricChip({ m }) { const meta = METRIC_META[m]; const Ic = meta.icon; return <span className="cap-chip" style={{ color: meta.tint }}><Ic s={12} /><span>{meta.label}</span></span>; }
+function ControlChip({ c }) { const meta = RES_META[c.res]; const Ic = meta.icon; return <span className="ctrl-chip"><Ic s={12} /><span>{c.label}</span><span className="res-tag">{meta.tag}</span></span>; }
+
+function DeviceCard({ d }) {
+  const kind = deviceKind(d);
+  const role = d.role ? roleById(d.role) : null;
+  return (
+    <div className={"dev-card" + (d.online ? "" : " off")}>
+      <div className="dev-head">
+        <span className={"online-dot" + (d.online ? "" : " off")} />
+        <div className="dev-id">
+          <div className="dev-name">{d.name}{!d.online && <span className="tag b-idle" style={{ fontSize: 10 }}>offline</span>}</div>
+          <div className="dev-host"><span>{d.model}</span><span className="sep">·</span><span>{d.host}</span></div>
+        </div>
+        <ProtoBadge proto={d.proto} />
+        <SignalBars pct={d.signal} online={d.online} />
+        <button className="icon-ghost" title="Device menu"><IcoDots s={15} /></button>
+      </div>
+      <div className="dev-caps">
+        {d.metrics.length > 0 && (
+          <div className="cap-group"><span className="cap-label">Reads</span>{d.metrics.map((m) => <MetricChip key={m} m={m} />)}</div>
+        )}
+        {d.controls.length > 0 && (
+          <div className="cap-group"><span className="cap-label">Controls</span>{d.controls.map((c, i) => <ControlChip key={i} c={c} />)}</div>
+        )}
+        {d.metrics.length === 0 && d.controls.length === 0 && <span className="cap-none">no capabilities detected</span>}
+      </div>
+      <div className="dev-foot">
+        <span className="dev-kind">{kind === "control" ? "Controllable equipment" : "Read-only sensor"}</span>
+        {role
+          ? <span className={"role-pill " + (role.kind === "control" ? "ctl" : "sen")}><span className="rp-dot" />{role.name}</span>
+          : <span className="role-pill unassigned"><IcoAlert s={11} />needs role</span>}
+      </div>
+    </div>
+  );
+}
+
+function RoleSelect({ d, kind, onRole }) {
+  const opts = ROLES.filter((r) => (kind === "control" ? r.kind === "control" : r.kind === "sense"));
+  return (
+    <select className="role-select" value={d.role || ""} disabled={!d.online} onChange={(e) => onRole(d.id, e.target.value || null)}>
+      <option value="">Unassigned</option>
+      <optgroup label={kind === "control" ? "Equipment roles" : "Sensor roles"}>
+        {opts.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+      </optgroup>
+    </select>
+  );
+}
+
+function RoleRow({ d, onRole }) {
+  const kind = deviceKind(d);
+  const role = d.role ? roleById(d.role) : null;
+  const caps = d.metrics.map((m) => METRIC_META[m].label)
+    .concat(d.controls.map((c) => RES_META[c.res].tag)).join(" · ") || "—";
+  return (
+    <div className={"role-row" + (d.online ? "" : " off")}>
+      <div className="rr-dev">
+        <span className={"online-dot" + (d.online ? "" : " off")} />
+        <div className="rr-min">
+          <div className="rr-name">{d.name}</div>
+          <div className="rr-caps">{caps}</div>
+        </div>
+      </div>
+      <div className="rr-detect">
+        <span className={"detect-tag " + (kind === "control" ? "ctl" : "sen")}>{kind === "control" ? "Equipment" : "Sensor"}</span>
+        {d.controls.map((c, i) => <span key={i} className="res-tag solo">{RES_META[c.res].tag}</span>)}
+      </div>
+      <div className="rr-role"><RoleSelect d={d} kind={kind} onRole={onRole} /></div>
+      <div className="rr-unlock">
+        {role
+          ? <span className="unlock-on"><IcoBolt s={11} />{role.kind === "control" ? role.unlocks : "feeds automations"}</span>
+          : <span className="unlock-off">assign to enable</span>}
+      </div>
+    </div>
+  );
+}
+
+function ScanPanel({ found }) {
+  return (
+    <div className="scan-panel">
+      <div className="scan-top"><span className="spinner" /><span>Scanning <b>192.168.1.0/24</b> · {found} device{found !== 1 ? "s" : ""} found</span></div>
+      <div className="scan-protos">
+        {Object.keys(PROTO).map((k) => (
+          <span className="scan-proto" key={k}><span className="sp-dot" />{PROTO[k].label}<span className="sp-tip">{PROTO[k].tip}</span></span>
+        ))}
+      </div>
+      <div className="scan-bar"><i /></div>
+    </div>
+  );
+}
+
+function ProvisionModal({ onClose }) {
+  const [step, setStep] = useState(0);
+  const steps = ["Pairing", "Select", "Wi-Fi", "Joining"];
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head"><IcoWifi s={16} /><h3>Provision a new device</h3><button className="icon-ghost" onClick={onClose}><IcoX s={15} /></button></div>
+        <div className="modal-steps">
+          {steps.map((s, i) => (
+            <div key={i} className={"mstep" + (i === step ? " on" : "") + (i < step ? " done" : "")}>
+              <span className="mstep-n">{i < step ? <IcoCheck s={10} /> : i + 1}</span>{s}
+            </div>
+          ))}
+        </div>
+        <div className="modal-body">
+          {step === 0 && <p>Hold the device’s pairing button for 5 seconds until its LED blinks, then continue. Canopy listens for a SoftAP or BLE beacon.</p>}
+          {step === 1 && (<><p style={{ marginBottom: 4 }}>Found a device in setup mode:</p><div className="prov-ap"><IcoWifi s={15} /><span className="pa-name">Canopy-Setup-A1B2</span><span className="tag b-info" style={{ marginLeft: "auto", fontSize: 10 }}>SoftAP</span></div></>)}
+          {step === 2 && (
+            <><div className="field"><label>Network</label><select className="fsel"><option>GrowNet-5G</option><option>GrowNet-2.4G</option></select></div>
+            <div className="field"><label>Password</label><input type="password" defaultValue="growroom" /></div></>
+          )}
+          {step === 3 && <div className="prov-joining"><span className="spinner" /> Joining “GrowNet-5G” and registering capabilities…</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <span className="spacer" />
+          {step < 3
+            ? <button className="btn primary" onClick={() => setStep(step + 1)}>Continue</button>
+            : <button className="btn primary" onClick={onClose}><IcoCheck s={13} /> Done</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionArea({ scan, found, onScan, onProvision, hasDevices, onForget }) {
+  return (
+    <div className="box conn-box">
+      <div className="box-head">
+        <h3>Connection</h3>
+        <span className="count">local network</span>
+        <span className="net-meta"><IcoWifi s={13} /> GrowNet-5G <span className="sep">·</span> controller 192.168.1.4 <span className="sep">·</span> /24</span>
+      </div>
+      <div className="conn-grid">
+        <div className="conn-card">
+          <div className="cc-top">
+            <span className="cc-ico blue"><IcoRadar s={16} /></span>
+            <div><div className="cc-title">Discover on local network</div><div className="cc-desc">Find devices already on Wi-Fi across mDNS, MQTT and Matter.</div></div>
+          </div>
+          <div className="cc-protos"><ProtoBadge proto="mdns" /><ProtoBadge proto="mqtt" /><ProtoBadge proto="matter" /></div>
+          {scan === "scanning"
+            ? <ScanPanel found={found} />
+            : <div className="cc-actions">
+                <button className="btn primary" onClick={onScan}><IcoRadar s={14} /> {hasDevices ? "Re-scan network" : "Scan network"}</button>
+                {hasDevices && <button className="btn ghost-danger" onClick={onForget}><IcoTrash s={13} /> Forget all</button>}
+              </div>}
+        </div>
+        <div className="conn-card">
+          <div className="cc-top">
+            <span className="cc-ico green"><IcoWifi s={16} /></span>
+            <div><div className="cc-title">Provision a new device</div><div className="cc-desc">Onboard a brand-new device and join it to your Wi-Fi network.</div></div>
+          </div>
+          <div className="cc-protos"><span className="proto-badge soft">SoftAP</span><span className="proto-badge soft">BLE</span></div>
+          <div className="cc-actions"><button className="btn" onClick={onProvision}><IcoPlus s={14} /> Start setup</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsEmpty({ onScan, onProvision }) {
+  return (
+    <div className="set-empty">
+      <div className="se-ico"><IcoRadar s={30} /></div>
+      <h2>No devices connected yet</h2>
+      <p>Connect your sensors and equipment to start monitoring and automating. Canopy detects each device’s <b>readable metrics</b> and <b>writable controls</b> — those capabilities are what unlock automations across the rest of the app.</p>
+      <div className="se-actions">
+        <button className="btn primary" onClick={onScan}><IcoRadar s={14} /> Scan network</button>
+        <button className="btn" onClick={onProvision}><IcoWifi s={14} /> Provision new device</button>
+      </div>
+      <div className="se-caps">
+        <div className="se-cap">
+          <span className="cap-chip" style={{ color: "#f78166" }}><IcoTemp s={12} />Temp</span>
+          <span className="cap-chip" style={{ color: "#2f81f7" }}><IcoDrop s={12} />Humidity</span>
+          <span className="cap-chip" style={{ color: "#3fb950" }}><IcoCo2 s={12} />CO₂</span>
+          <span className="cap-chip" style={{ color: "#d29922" }}><IcoSeedling s={12} />Soil</span>
+          <span className="se-cap-lbl">readable metrics</span>
+        </div>
+        <div className="se-cap">
+          <span className="ctrl-chip"><IcoPlug s={12} />on / off</span>
+          <span className="ctrl-chip"><IcoSlider s={12} />variable</span>
+          <span className="ctrl-chip"><IcoTarget s={12} />setpoint</span>
+          <span className="se-cap-lbl">writable controls</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPage({ seed }) {
+  const [devices, setDevices] = useState(seed.devices);
+  const [scan, setScan] = useState(seed.scan);
+  const [found, setFound] = useState(seed.devices.length);
+  const [prov, setProv] = useState(false);
+  const timers = React.useRef([]);
+  const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
+
+  const startScan = () => {
+    clearTimers();
+    setScan("scanning"); setDevices([]); setFound(0);
+    CONFIGURED_DEVICES.forEach((d, i) => {
+      timers.current.push(setTimeout(() => { setDevices((prev) => [...prev, d]); setFound((c) => c + 1); }, 450 + i * 420));
+    });
+    timers.current.push(setTimeout(() => setScan("done"), 450 + CONFIGURED_DEVICES.length * 420 + 500));
+  };
+  React.useEffect(() => () => clearTimers(), []);
+
+  const forgetAll = () => { clearTimers(); setDevices([]); setScan("idle"); setFound(0); };
+  const setRole = (id, role) => setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, role } : d)));
+
+  const online = devices.filter((d) => d.online).length;
+  const totalMetrics = devices.reduce((n, d) => n + (d.online ? d.metrics.length : 0), 0);
+  const totalControls = devices.reduce((n, d) => n + (d.online ? d.controls.length : 0), 0);
+  const assigned = devices.filter((d) => d.role).length;
+  const unassigned = devices.filter((d) => !d.role && d.online).length;
+  const showEmpty = scan !== "scanning" && devices.length === 0;
+
+  return (
+    <>
+      <div className="content-header">
+        <div className="ch-titles">
+          <div className="ch-crumb">Tent 1 <span className="sep">/</span> Configuration <span className="sep">/</span> Settings</div>
+          <div className="ch-title">Settings
+            {devices.length > 0 && <span className="tag b-ok"><span className="dot-live" style={{ width: 7, height: 7 }} />{online} online</span>}
+          </div>
+        </div>
+        <div className="ch-actions">
+          {scan === "done" && <button className="btn btn-icon" title="Re-scan" onClick={startScan}><IcoRefresh s={15} /></button>}
+          <button className="btn"><IcoExternal s={14} /> Docs</button>
+        </div>
+      </div>
+
+      <div className="scroll">
+        <div className="canvas-pad">
+          <ConnectionArea scan={scan} found={found} onScan={startScan} onProvision={() => setProv(true)} hasDevices={devices.length > 0} onForget={forgetAll} />
+
+          {showEmpty && <SettingsEmpty onScan={startScan} onProvision={() => setProv(true)} />}
+
+          {!showEmpty && (
+            <>
+              <div className="callout">
+                <span className="callout-ico"><IcoBolt s={16} /></span>
+                <div className="callout-body">
+                  <div className="callout-title">Capabilities unlock automation</div>
+                  <div className="callout-text">Detected metrics and controls determine which automations are available. Pair a <b>sensor role</b> with an <b>equipment role</b> to enable an automation in <span className="mono-ref">Automation</span>.</div>
+                </div>
+                <div className="callout-stats">
+                  <span><b>{totalMetrics}</b> metrics</span><span className="sep">·</span>
+                  <span><b>{totalControls}</b> controls</span><span className="sep">·</span>
+                  <span><b>{assigned}</b> roles set</span>
+                </div>
+              </div>
+
+              <div className="sec-head">
+                <h2>Discovered devices</h2>
+                <span className="count">{devices.length} found{scan === "scanning" ? " · scanning" : ""}</span>
+                <span className="rule" />
+                <span className="link">Add manually</span>
+              </div>
+              <div className="dev-list">
+                {devices.map((d) => <DeviceCard key={d.id} d={d} />)}
+              </div>
+
+              {scan === "done" && (
+                <>
+                  <div className="sec-head" style={{ marginTop: 28 }}>
+                    <h2>Device roles</h2>
+                    <span className="count">{assigned}/{devices.length} assigned</span>
+                    <span className="rule" />
+                    {unassigned > 0 && <span className="tag b-warn" style={{ fontSize: 11 }}><IcoAlert s={11} />{unassigned} need a role</span>}
+                  </div>
+                  <div className="roles-box">
+                    <div className="roles-head"><span>Device</span><span>Detected as</span><span>Grow role</span><span>Unlocks</span></div>
+                    {devices.map((d) => <RoleRow key={d.id} d={d} onRole={setRole} />)}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {prov && <ProvisionModal onClose={() => setProv(false)} />}
+    </>
+  );
+}
+
+/* ============================================================
+   SHELL
+============================================================ */
+function App({ initialSection = "overview", settingsSeed, overviewEmpty = false } = {}) {
+  const [active, setActive] = useState(initialSection);
+  const SETTINGS_SEED = settingsSeed || { devices: CONFIGURED_DEVICES, scan: "done" };
+  const [range, setRange] = useState("24H");
+  const [tick, setTick] = useState(0);
+  const lastSync = useMemo(() => (tick === 0 ? "12s ago" : "just now"), [tick]);
+
+  const groups = useMemo(() => {
+    const order = ["Monitor", "Control", "Records", "Config"];
+    const map = {};
+    NAV.forEach((n) => { (map[n.group] = map[n.group] || []).push(n); });
+    return order.map((g) => ({ group: g, items: map[g] }));
+  }, []);
+
+  const activeItem = NAV.find((n) => n.id === active);
+
+  return (
+    <div className="app">
+      {/* TITLEBAR */}
+      <div className="titlebar">
+        <div className="traffic"><span className="r" /><span className="y" /><span className="g" /></div>
+        <div className="tb-brand">
+          <span className="mark"><IcoLeaf s={13} /></span>
+          Canopy
+        </div>
+        <div className="tb-spacer" />
+        <div className="cmdk">
+          <IcoSearch s={14} />
+          <span>Search sensors, automations, logs…</span>
+          <span className="kbd">⌘K</span>
+        </div>
+        <button className="tb-icon-btn" title="Notifications"><IcoBell s={16} /></button>
+        <button className="tb-icon-btn" title="Settings"><IcoGear s={16} /></button>
+        <div className="tb-avatar">GA</div>
+      </div>
+
+      <div className="body">
+        {/* SIDEBAR */}
+        <aside className="sidebar">
+          <div className="workspace">
+            <div className="ws-ico"><IcoSeedling s={16} /></div>
+            <div className="ws-meta">
+              <div className="ws-name">Tent 1 — Veg</div>
+              <div className="ws-sub"><span className="dot-live" style={{ width: 6, height: 6, boxShadow: "none" }} /> 5 sensors · 8 devices</div>
+            </div>
+            <span className="chev"><IcoChevron s={14} /></span>
+          </div>
+
+          <nav className="nav">
+            {groups.map((g) => (
+              <div key={g.group}>
+                <div className="nav-group-label">{g.group}</div>
+                {g.items.map((n) => {
+                  const Icon = n.icon;
+                  return (
+                    <button key={n.id} className={`nav-item ${active === n.id ? "active" : ""}`} onClick={() => setActive(n.id)}>
+                      <span className="ni-ico"><Icon s={16} /></span>
+                      {n.label}
+                      {n.count != null && <span className="ni-count">{n.count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
+
+          <div className="sb-footer">
+            <span className="dot-live" />
+            <span>Controller online</span>
+            <span className="gear" title="Connection"><IcoExternal s={14} /></span>
+          </div>
+        </aside>
+
+        {/* MAIN */}
+        <main className="main">
+          {active === "overview"
+            ? <Overview range={range} onRange={setRange} lastSync={lastSync} onRefresh={() => setTick((t) => t + 1)} empty={overviewEmpty} onGoSettings={() => setActive("settings")} />
+            : active === "settings"
+            ? <SettingsPage seed={SETTINGS_SEED} />
+            : <Placeholder item={activeItem} />}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App overviewEmpty />);
+
+</script>
+</body>
+</html>

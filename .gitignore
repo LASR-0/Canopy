@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-build/
+out/
+build/
+*.log
+.DS_Store
+# local data the backend writes at runtime
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+data/
+/archive/

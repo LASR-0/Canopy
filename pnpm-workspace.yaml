@@ -1,0 +1,10 @@
+packages:
+  - "packages/*"
+# Required on Windows: prevents pnpm's per-package node_modules/electron
+# junction from shadowing Electron's own built-in module interception.
+shamefullyHoist: true
+allowBuilds:
+  better-sqlite3: true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
