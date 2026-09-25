@@ -1,0 +1,37 @@
+# Development happens on Linux (native + WSL2) with Windows and macOS as release
+# targets, so everything is stored and checked out LF. Without this, a Windows
+# checkout with core.autocrlf=true hands CRLF to shell scripts and systemd units,
+# which then fail on Linux with `bad interpreter: /bin/bash^M`.
+* text=auto eol=lf
+
+# Executables and unit files must be LF regardless of local git config.
+*.sh      text eol=lf
+*.bash    text eol=lf
+*.service text eol=lf
+*.socket  text eol=lf
+*.timer   text eol=lf
+*.plist   text eol=lf
+
+# Windows-native scripts need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary: never munge, never diff.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.icns binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.node   binary
+*.sqlite binary
+*.db     binary
+
+# Generated — collapse in diffs and exclude from language stats.
+pnpm-lock.yaml linguist-generated=true -diff
+prototype/*.html linguist-vendored=true

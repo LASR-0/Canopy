@@ -7,12 +7,14 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "build:types": "pnpm --filter @canopy/shared-types build",
-    "dev:ui": "pnpm --filter @canopy/frontend dev",
-    "dev:backend": "pnpm --filter @canopy/backend dev",
-    "build:ui": "pnpm --filter @canopy/frontend build",
-    "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @canopy/backend test",
-    "test:watch": "pnpm --filter @canopy/backend test:watch",
-    "test:coverage": "pnpm --filter @canopy/backend test:coverage"
+    "prepare": "pnpm build:types",
+    "dev": "pnpm build:types && pnpm --parallel --filter @canopy/backend --filter @canopy/frontend dev",
+    "dev:ui": "pnpm build:types && pnpm --filter @canopy/frontend dev",
+    "dev:backend": "pnpm build:types && pnpm --filter @canopy/backend dev",
+    "build:ui": "pnpm build:types && pnpm --filter @canopy/frontend build",
+    "typecheck": "pnpm build:types && pnpm -r typecheck",
+    "test": "pnpm build:types && pnpm --filter @canopy/backend test",
+    "test:watch": "pnpm build:types && pnpm --filter @canopy/backend test:watch",
+    "test:coverage": "pnpm build:types && pnpm --filter @canopy/backend test:coverage"
   }
 }

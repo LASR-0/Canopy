@@ -20,10 +20,14 @@ async function scanWifiWindows(): Promise<WifiNetwork[]> {
     for (const block of blocks) {
       const ssidMatch = block.match(/^SSID\s+\d*\s*:\s+(.+)$/m);
       const signalMatch = block.match(/Signal\s+:\s+(\d+)%/);
-      if (ssidMatch) {
-        const ssid = ssidMatch[1].trim();
-        const signal = signalMatch ? parseInt(signalMatch[1]) : 0;
-        if (ssid) networks.push({ ssid, signal, isDeviceAp: DEVICE_AP_PATTERN.test(ssid) });
+      const ssid = ssidMatch?.[1]?.trim();
+      if (ssid) {
+        const signal = Number.parseInt(signalMatch?.[1] ?? "0", 10);
+        networks.push({
+          ssid,
+          signal: Number.isNaN(signal) ? 0 : signal,
+          isDeviceAp: DEVICE_AP_PATTERN.test(ssid),
+        });
       }
     }
     return networks;
@@ -54,10 +58,50 @@ async function scanWifiMac(): Promise<WifiNetwork[]> {
   }
 }
 
+/**
+ * Linux scan via NetworkManager. `-t` is terse mode: one network per line,
+ * colon-separated, with any literal colon inside a field escaped as `\:`
+ * (so BSSIDs and SSIDs containing colons survive the round trip).
+ */
+async function scanWifiLinux(): Promise<WifiNetwork[]> {
+  try {
+    const { stdout } = await execAsync("nmcli -t -f SSID,SIGNAL dev wifi list", { timeout: 8000 });
+    const networks: WifiNetwork[] = [];
+    const seen = new Set<string>();
+
+    for (const line of stdout.split("\n")) {
+      if (!line.trim()) continue;
+
+      // Split on the last unescaped colon: everything before it is the SSID.
+      const sep = line.search(/(?<!\\):(?=[^:]*$)/);
+      if (sep === -1) continue;
+
+      const ssid = line.slice(0, sep).replace(/\\:/g, ":").trim();
+      // nmcli emits a blank SSID for hidden networks — nothing to connect to by name.
+      if (!ssid || seen.has(ssid)) continue;
+      seen.add(ssid);
+
+      const signal = Number.parseInt(line.slice(sep + 1).trim(), 10);
+      networks.push({
+        ssid,
+        signal: Number.isNaN(signal) ? 0 : signal,
+        isDeviceAp: DEVICE_AP_PATTERN.test(ssid),
+      });
+    }
+    return networks;
+  } catch {
+    // nmcli absent or no wireless device — same contract as the other scanners.
+    return [];
+  }
+}
+
 export async function provisionRoutes(app: FastifyInstance): Promise<void> {
   app.get("/provision/wifi-scan", async (_req, reply) => {
-    const networks = process.platform === "darwin" ? await scanWifiMac() : await scanWifiWindows();
-    return reply.send({ networks });
+    const scan =
+      process.platform === "darwin" ? scanWifiMac
+      : process.platform === "win32" ? scanWifiWindows
+      : scanWifiLinux;
+    return reply.send({ networks: await scan() });
   });
 
   app.post<{ Body: { deviceIp: string; ssid: string; password: string } }>(

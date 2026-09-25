@@ -72,9 +72,18 @@ export function useDeleteWorkspace() {
       const remaining = (prevWorkspaces ?? []).filter((w) => w.id !== workspaceId);
       qc.setQueryData<Workspace[]>(["workspaces"], remaining);
       if (prevSettings?.activeWorkspaceId === workspaceId) {
-        qc.setQueryData<AppSettings>(["settings"], (old) =>
-          old ? { ...old, activeWorkspaceId: remaining[0]?.id ?? null } : old,
-        );
+        qc.setQueryData<AppSettings>(["settings"], (old) => {
+          if (!old) return old;
+          const nextId = remaining[0]?.id;
+          // `activeWorkspaceId` is optional, not nullable, and the API omits it
+          // when unset — so drop the key rather than writing null/undefined,
+          // which `exactOptionalPropertyTypes` forbids.
+          if (nextId === undefined) {
+            const { activeWorkspaceId: _dropped, ...rest } = old;
+            return rest;
+          }
+          return { ...old, activeWorkspaceId: nextId };
+        });
       }
       return { prevWorkspaces, prevSettings };
     },
