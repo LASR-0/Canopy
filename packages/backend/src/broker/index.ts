@@ -26,7 +26,11 @@ export function onMqttMessage(handler: MessageHandler): void {
 }
 
 export async function startBroker(): Promise<void> {
-  _broker = new Aedes();
+  // aedes 1.x: the broker MUST be built by the async factory. `new Aedes()`
+  // constructs an instance whose listen() never runs, so persistence is never
+  // set up and the server accepts TCP but never answers CONNECT with CONNACK —
+  // clients just hang until connack timeout.
+  _broker = await Aedes.createBroker();
 
   _broker.on("publish", (packet: AedesPublishPacket, client: Client | null) => {
     if (!client) return;
