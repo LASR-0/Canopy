@@ -4,13 +4,16 @@
   "version": "0.0.0",
   "description": "Open-source UI + controller for indoor grow setups using local smart devices.",
   "packageManager": "pnpm@11.5.0",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build:types": "pnpm --filter @canopy/shared-types build",
     "prepare": "pnpm build:types",
     "dev": "pnpm build:types && pnpm --parallel --filter @canopy/backend --filter @canopy/frontend dev",
     "dev:ui": "pnpm build:types && pnpm --filter @canopy/frontend dev",
     "dev:backend": "pnpm build:types && pnpm --filter @canopy/backend dev",
+    "dev:sim": "pnpm --filter @canopy/simulator dev",
     "build:ui": "pnpm build:types && pnpm --filter @canopy/frontend build",
     "typecheck": "pnpm build:types && pnpm -r typecheck",
     "test": "pnpm build:types && pnpm --filter @canopy/backend test",

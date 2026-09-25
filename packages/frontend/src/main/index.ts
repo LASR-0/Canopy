@@ -8,6 +8,23 @@ import { join } from "node:path";
  * controller directly over HTTP + WebSocket.
  */
 
+/**
+ * HiDPI under WSLg.
+ *
+ * WSLg does not propagate Windows' display scaling to Linux clients: on a 4K
+ * panel it reports 3840x2160 at scaleFactor 1, so the UI renders at 1x and
+ * looks tiny, while the cursor (drawn by the Windows RDP client at Windows'
+ * own scaling) looks oversized next to it. Native Windows and macOS builds
+ * report their scale factor correctly and must NOT be overridden, so this is
+ * opt-in via env rather than a platform default.
+ *
+ *   CANOPY_UI_SCALE=2 pnpm dev
+ */
+const uiScale = process.env["CANOPY_UI_SCALE"];
+if (uiScale && Number.isFinite(Number(uiScale)) && Number(uiScale) > 0) {
+  app.commandLine.appendSwitch("force-device-scale-factor", uiScale);
+}
+
 interface BleDevice {
   deviceId: string;
   deviceName: string;
