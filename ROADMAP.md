@@ -10,7 +10,7 @@ and the current plan. **Read it before changing anything.** The project is
 already scaffolded — never run a scaffolder or re-init; add dependencies with
 `pnpm add` inside the right package.
 
-Last verified against the code: **2026-09-25**.
+Last verified against the code: **2026-09-26**.
 
 ---
 
@@ -49,15 +49,23 @@ as blocked. All three were wrong. What follows was checked against the code.
   built; the backend boots and `GET /health` responds. The pnpm
   `approve-builds` issue is resolved (approvals live in `pnpm-workspace.yaml`
   under `allowBuilds`, not `package.json`).
+- **Linux runtime is unblocked.** `pnpm dev` launches the Electron window under
+  Hyprland/Wayland on Omarchy. See "Electron on Linux" below for the two faults
+  that had to be cleared.
 - **Fastify** is the chosen HTTP/WS library and is fully wired
   (`api/server.ts`, 14 route modules registered).
 - **Primer token set is ported** — `styles/index.css` is ~1,300 lines.
 - **Overview** (`pages/Overview.tsx`) and **Settings** (`pages/Settings.tsx`)
-  are complete and wired to real endpoints, with **no mock data**.
+  are complete and wired to real endpoints, with **no mock data** — and since
+  Phase 3 they show live values rather than empty cards.
 - **SQLite + Drizzle store** — 19 tables, DDL applied at startup.
 - **Device discovery** — embedded Aedes broker, mDNS scanner, HA-style retained
   config discovery, Shelly announce, heartbeat monitor, scan sessions.
-- **Tests** — 7 passing across 2 files. Thin, but green.
+- **Device simulator** — a full tent's worth of HA-discoverable MQTT devices
+  over loopback. See Phase 2.
+- **Telemetry ingestion** — sensor readings reach `readings_raw` and the
+  websocket. See Phase 3.
+- **Tests** — 45 passing across 4 files.
 
 ### Recently fixed (Phase 0)
 
@@ -73,29 +81,39 @@ as blocked. All three were wrong. What follows was checked against the code.
 - Build artifacts untracked, `.gitattributes` added — see "Two-machine
   workflow".
 
-### Hollow — built UI over a pipe that never delivers
+### The data pipe — now connected inbound, still open outbound
 
-This is the headline. Overview and Settings are finished, but:
+This was the headline: a finished UI over a pipe that never delivered. The
+inbound half is closed as of Phase 3. Readings flow, so the Overview shows real
+numbers. What remains:
 
-- **Nothing ever writes `readings_raw`.** `mqtt-discovery.ts` parses only
-  `homeassistant/+/+/config` and `shellies/announce`. It never subscribes to any
-  device's `state_topic`, so telemetry reaches the broker and is discarded.
-- **No actuation.** `api/routes/devices.ts` actuate is a stub.
+- **No actuation.** `api/routes/devices.ts` actuate is a stub. Command topics
+  are now captured at discovery and stored on the capability, so the adapter
+  layer has what it needs — but nothing publishes to them yet.
 - **`scheduler/index.ts` and `rules/index.ts` are 3-line `export {}` files.**
   The automation engine does not exist.
-
-The consequence: you can discover a device, assign its role and set a threshold,
-and no number will ever appear on the Overview. **Close this gap before building
-another page.**
+- **No rollups.** `readings_hourly` and `readings_daily` are never written. This
+  is not cosmetic: the Overview's sparklines query `hourly` on the 24H and 7D
+  ranges and `daily` on 30D, so they render blank on every range except 1H.
+  Whoever picks up Phase 5 should treat the rollup job as the fix for a visible
+  hole, not as housekeeping.
+- **No derived metrics.** The schema reserves `device_id = "__derived__"` for
+  VPD and DLI and nothing computes them, so the Overview never shows a VPD card.
+  VPD is a pure function of temperature and humidity, both of which now flow, so
+  this is small and worth doing early.
 
 ### Stubbed routes
 
 Return fabricated or empty data, not persisted: `automations`, `journal`,
-`controller` (status is hardcoded `brokerOnline: false, deviceCount: 0`),
 `events`.
 
+`controller` is real as of Phase 3 — `brokerOnline` reflects the broker's
+listening state and `deviceCount` counts paired devices. `POST
+/controller/command` still returns the unchanged current status rather than
+honouring pause/resume/stop.
+
 DB-backed and real: `grows`, `workspaces`, `maintenance`, `devices`, `settings`,
-`chart-layouts`, `thresholds`, `readings` (read path only).
+`chart-layouts`, `thresholds`, `readings` (read and write paths).
 
 ### Placeholder pages
 
@@ -111,8 +129,15 @@ page is missing. It is the cheapest win on the board.
   requirement. No systemd unit, no launchd plist, no Windows service, on any
   platform. `electron-builder.yml` is 18 lines of bare targets — no service
   registration, no signing.
-- WebSocket has no per-workspace subscription filtering; `broadcast` is used
-  only for device status and scan events. No `reading.live` push.
+- WebSocket has no per-workspace subscription filtering. `subscribe` /
+  `unsubscribe` frames are parsed and then ignored, so every client receives
+  every workspace's traffic. Harmless with one tent and one window; wrong as
+  soon as there are two. The `reading` push itself landed in Phase 3.
+- **The Overview refresh button does not refresh the readings.** It invalidates
+  the TanStack Query key `["readings", workspaceId]`, but `useLiveReadings`
+  holds its own `useState` and fetches the snapshot once on mount, so that key
+  matches nothing. Invisible while the websocket is up; after a dropped socket
+  the numbers cannot be recovered without reopening the app.
 
 ### Security note — decide deliberately
 
@@ -132,41 +157,75 @@ Ordered by dependency. Each phase unblocks the next.
 Typecheck green, `EADDRINUSE` handled, Linux Wi-Fi scan added, git hygiene
 fixed. See "Recently fixed" above.
 
-### Phase 1 — Linux development environment
+### Phase 1 — Linux development environment ✅ done at home
 
-Get both machines productive. See the setup notes below.
+Omarchy is productive: a fresh clone builds, `better-sqlite3` compiles, and
+`pnpm dev` opens the Electron window under Hyprland/Wayland. See "Electron on
+Linux" below for what had to be fixed.
 
-- Clone fresh from GitHub on Omarchy (do not sync the OneDrive folder).
-- Verify Electron launches under Hyprland/Wayland and `better-sqlite3` rebuilds.
+Still open, and neither is on the critical path:
+
 - Configure WSL2 at work (mirrored networking, systemd, native filesystem).
 - Add `pacman` to the electron-builder Linux targets for Omarchy.
 
-### Phase 2 — Device simulator *(new, and load-bearing)*
+### Phase 2 — Device simulator ✅ done
 
-A small MQTT publisher that impersonates a handful of HA-discoverable devices:
-announces config topics, then emits plausible drifting telemetry.
+`packages/simulator` impersonates a tent's worth of HA-discoverable MQTT
+devices: 8 drifting analogue sensors, 3 actuators, plus a Shelly Gen 1 announce
+so the second discovery surface is exercised too. It connects **outbound** to
+the embedded broker on loopback, so it needs no LAN multicast and works under
+WSL2 NAT — which is the whole reason it exists.
 
-This is worth more than its size. Real hardware lives at home, and **WSL2 cannot
-see LAN multicast**, so without a simulator no meaningful backend work can
-happen at work. It also makes the rules and scheduler testable in CI without
-hardware. Build it before the pipeline, and the pipeline becomes verifiable the
-moment it exists.
+Run it alongside the controller with `pnpm dev:sim`. Useful knobs:
+`SIM_TELEMETRY_MS` (default 5000), `SIM_SEED` (same seed, same telemetry),
+`SIM_ANNOUNCE_MS`. Actuator commands are reflected back as state, so Phase 4
+has something to drive on day one.
 
-### Phase 3 — Telemetry ingestion *(the keystone)*
+Two invariants in `fleet.ts` are easy to break by accident — device dedup keys
+off the first two topic segments, and a `device_class` outside
+`SENSOR_COMPONENT_MAP` silently degrades to temperature. Both are commented
+there.
 
-Subscribe to each discovered device's `state_topic`, normalise payloads to
-`Reading`, persist to `readings_raw`, and push `reading.live` over the
-WebSocket. Add per-workspace subscription filtering while you are in `ws/`.
+### Phase 3 — Telemetry ingestion ✅ done *(the keystone)*
 
-The broker already receives every message, so this is a change to
-`handleMqttMessage`, not an architectural one. **This single item makes the
-Overview you already built come alive.**
+Readings now reach `readings_raw` and the websocket, so the Overview shows live
+values. Three parts:
 
-### Phase 4 — Actuation
+- **Discovery records topics.** `state_topic` and `command_topic` are kept on
+  the capability (`MqttTopics` in `shared-types`) instead of being reduced to a
+  prefix. They are arbitrary strings chosen by the firmware and cannot be
+  reconstructed later. Shelly announces carry no topics at all, so the adapter
+  derives them from the documented Gen 1 layout. Capabilities are stored as
+  JSON, so this needed no migration.
+- **`device-manager/ingest.ts`** holds a topic index rebuilt from the devices
+  table, and registers on the broker's message hook. It is deliberately **not**
+  gated on a scan session: discovery only listens during a scan's 20s window,
+  whereas telemetry must be ingested for the life of the service. The index
+  reloads at startup and after any change to the device set, so forgetting a
+  device stops its telemetry immediately.
+- **Only sensor channels produce readings.** An actuator publishing `ON` counts
+  as proof of life and refreshes the heartbeat, which until now was written but
+  never called by anything.
 
-Real command path: route → adapter → MQTT `command_topic`. Make
-`controller/status` report true broker and device state. Nothing in automation
-can *do* anything until this lands.
+Known limits, deliberately not addressed: payload parsing handles bare numbers
+and a few conventional JSON keys, **not** HA `value_template` expressions; and
+a sensor whose `device_class` is outside `SENSOR_COMPONENT_MAP` is recorded as
+temperature/°C rather than rejected, so it now writes mislabelled rows instead
+of nothing. Both want attention before real hardware.
+
+Per-workspace WebSocket filtering was listed here and was **not** done — see
+"Not started".
+
+### Phase 4 — Actuation *(next)*
+
+Real command path: route → adapter → MQTT `command_topic`. The command topics
+are already captured and stored on each actuator capability, and the simulator
+already reflects commands back as state, so this is the route and the adapter,
+not a discovery change.
+
+`controller/status` reporting true broker and device state was part of this
+phase and landed early, with Phase 3. What remains there is `POST
+/controller/command` honouring pause/resume/stop.
 
 ### Phase 5 — Scheduler
 
@@ -185,7 +244,7 @@ In dependency order:
 
 1. **Maintenance** — backend already done, cheapest win.
 2. **Automation** — needs Phases 5 and 6.
-3. **Logging** — needs Phase 3 plus rollups.
+3. **Logging** — Phase 3 has landed, so this now only waits on the rollups.
 4. **Grow Cycle** and **Journal** — their routes are stubs; do the backend
    persistence first.
 5. **Setup View** — last, being the least operationally urgent, but it is
@@ -211,19 +270,18 @@ spawned or owned by the UI.** Closing the window must never stop the controller.
 
 ## Two-machine workflow
 
-The repo syncs through `origin` (`github.com/LASR-0/Canopy.git`), currently in
-sync with `main`. Two hazards to clear first:
+The repo syncs through `origin` (`github.com/LASR-0/Canopy.git`). Two hazards
+were cleared in Phase 0 and are recorded here so they are not reintroduced:
 
-**Tracked build artifacts.** `packages/frontend/tsconfig.node.tsbuildinfo` and
-`tsconfig.web.tsbuildinfo` are committed. They are regenerated on every build,
-so they will produce spurious diffs and pointless conflicts every time you move
-between machines. Add them to `.gitignore` and `git rm --cached` them.
+**Tracked build artifacts.** `tsconfig.node.tsbuildinfo` and
+`tsconfig.web.tsbuildinfo` were committed. They are regenerated on every build,
+so they produced spurious diffs on every machine switch. Now gitignored and
+untracked — keep them that way.
 
-**Line endings.** `core.autocrlf=true` is set on Windows and there is **no
-`.gitattributes`**. Today that is survivable. It stops being survivable in
-Phase 8, when shell scripts and systemd units enter the repo and arrive on Linux
-with CRLF — `bad interpreter: /bin/bash^M`. Add a `.gitattributes` with
-`* text=auto eol=lf` and force `*.sh` to LF now.
+**Line endings.** `core.autocrlf=true` is set on Windows and there was no
+`.gitattributes`. That stops being survivable in Phase 8, when shell scripts
+and systemd units arrive on Linux with CRLF — `bad interpreter: /bin/bash^M`.
+`.gitattributes` now sets `* text=auto eol=lf` and forces `*.sh` to LF.
 
 **Do not sync the OneDrive folder to Linux.** Clone fresh from GitHub.
 `node_modules` is correctly gitignored, so each machine builds its own native
@@ -239,6 +297,40 @@ are platform-specific binaries.
   controls behave under Hyprland.
 - This is the machine with real hardware, so mDNS discovery and real device
   testing happen here.
+- Chromium logs two harmless errors at startup and during rendering on this
+  NVIDIA + Wayland combination: `'--ozone-platform=wayland' is not compatible
+  with Vulkan`, and intermittent `Frame latency is negative`. Both are noise.
+  Resist "fixing" them with GPU switches — disabling Vulkan did not silence the
+  Vulkan warning, so the mechanism is not what it appears to be, and the flags
+  would change rendering for every Linux user to quiet a log line.
+- **Do not run `pnpm dev` from a VS Code integrated terminal that inherits
+  `ELECTRON_RUN_AS_NODE=1`.** Electron then runs as plain Node and no window
+  ever opens, with no error to explain it.
+
+### Electron on Linux — two faults, one symptom
+
+Both surfaced as the same message, `Error: Electron uninstall`, and neither is
+obvious from it. Recorded because they will recur on any fresh clone or Node
+upgrade.
+
+1. **Electron 42 dropped its install-time download.** It has no `postinstall`
+   at all and fetches the runtime lazily on the first `require("electron")`.
+   electron-vite never takes that path — it reads `node_modules/electron/path.txt`
+   directly — so nothing ever triggered the download. Fixed with an explicit
+   `postinstall: install-electron` in `packages/frontend`. `install-electron` is
+   Electron's own downloader and is a no-op once the runtime is present.
+2. **The unzip silently fails on modern Node.** Electron unzips via
+   `extract-zip`, which pins the abandoned yauzl 2 / fd-slicer 1.1.0 pair.
+   fd-slicer assigns `this.destroyed` directly; on current Node that is a setter
+   marking the readable destroyed, so its final `push(null)` is dropped, no
+   `end` is emitted, and extraction stalls after one file of 74 — **exiting 0**.
+   Fixed with a pnpm override pinning yauzl 3 inside `extract-zip`; yauzl 3
+   dropped fd-slicer and is API-compatible.
+
+Note that pnpm does not always re-read `pnpm-workspace.yaml` settings when
+nothing else changed — it can report "Already up to date" and skip the new
+override entirely. If a settings change appears to do nothing, force a
+re-resolve.
 
 ### WSL2 (work)
 
@@ -425,9 +517,15 @@ pnpm install          # root; populates node_modules for all packages
 pnpm dev              # backend + UI together (parallel)
 pnpm dev:backend      # controller only
 pnpm dev:ui           # Electron UI only
+pnpm dev:sim          # simulated devices; run alongside pnpm dev
 pnpm typecheck        # all packages
 pnpm test             # backend vitest suite
 pnpm build:ui         # electron-vite build
 ```
 
 Default ports: HTTP/WS `7001` (localhost), MQTT `1883` (all interfaces).
+
+Only one controller may run at a time — it owns the database and the broker. A
+second one exits with a clear message rather than an `EADDRINUSE` stack trace,
+so if the UI says the controller is offline, check for a stray instance holding
+`7001`/`1883` before debugging anything else.
