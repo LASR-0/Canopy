@@ -67,7 +67,9 @@ as blocked. All three were wrong. What follows was checked against the code.
   websocket. See Phase 3.
 - **Actuation** — devices can be driven over MQTT, and the controller has a
   real pause/resume/stop lifecycle. See Phase 4.
-- **Tests** — 100 passing across 7 files.
+- **Scheduler** — photoperiod windows and cron automations drive real hardware;
+  reading rollups and retention pruning run as tracked jobs. See Phase 5.
+- **Tests** — 175 passing across 10 files.
 
 ### Recently fixed (Phase 0)
 
@@ -92,13 +94,13 @@ numbers. What remains:
 - **No actuator state.** Commands go out (Phase 4) and devices echo their new
   state on the state topic, but ingestion treats that as proof of life only.
   Nothing stores or reports whether a fan is actually running.
-- **`scheduler/index.ts` and `rules/index.ts` are 3-line `export {}` files.**
-  The automation engine does not exist.
-- **No rollups.** `readings_hourly` and `readings_daily` are never written. This
-  is not cosmetic: the Overview's sparklines query `hourly` on the 24H and 7D
-  ranges and `daily` on 30D, so they render blank on every range except 1H.
-  Whoever picks up Phase 5 should treat the rollup job as the fix for a visible
-  hole, not as housekeeping.
+- **No rules engine.** `rules/index.ts` is still a 3-line `export {}`. Schedule
+  and window automations run (Phase 5), but a `rule` trigger is stored,
+  validated and then ignored, so nothing reacts to a reading crossing a
+  threshold.
+- **No archive database.** Completed grows are never moved out of the live DB,
+  so it grows without bound. The `archive_grow` job type exists and has no
+  handler. See "Retention".
 - **No derived metrics.** The schema reserves `device_id = "__derived__"` for
   VPD and DLI and nothing computes them, so the Overview never shows a VPD card.
   VPD is a pure function of temperature and humidity, both of which now flow, so
@@ -106,8 +108,11 @@ numbers. What remains:
 
 ### Stubbed routes
 
-Return fabricated or empty data, not persisted: `automations`, `journal`,
-`events`.
+Return fabricated or empty data, not persisted: `journal`.
+
+`automations` is DB-backed as of Phase 5, with trigger validation on write.
+`events` has no write route, but the scheduler now writes `automation_fired`
+rows directly, so the Overview's activity feed is no longer always empty.
 
 `controller` is fully real: `brokerOnline` and `deviceCount` since Phase 3, and
 `POST /controller/command` honours pause/resume/stop since Phase 4.
@@ -272,13 +277,64 @@ it on the state topic and ingestion treats it as proof of life only, because
 there is no `ServerMessage` for it and no UI consuming one. Adding both belongs
 with the first screen that shows a control.
 
-### Phase 5 — Scheduler *(next)*
+### Phase 5 — Scheduler ✅ done
 
-Time-driven automations; the lighting photoperiod is the flagship feature. The
-same module carries the internal jobs: hourly/daily rollups (which Logging
-depends on), auto-archiving completed grows, and `VACUUM INTO` backups.
+One interval in `scheduler/` drives two things that answer to different rules.
 
-### Phase 6 — Rules engine
+**Time-driven automations**, evaluated every tick against the *workspace's*
+timezone, not the host's. Two trigger shapes, and the distinction is the main
+design decision of this phase:
+
+- **`window`** (new) is a *state*: "on 06:00, off 18:00" says what the tent
+  should look like at any instant. Each tick derives the desired state and acts
+  only when it differs from what was last applied. A controller that reboots at
+  10:00 mid-photoperiod therefore re-derives the window and switches the lights
+  on. A pure cron scheduler would have missed the 06:00 edge and left the tent
+  dark all day, and "a missed light cycle harms plants" is the reason this
+  service exists at all. Applied state is held in memory precisely so a restart
+  re-applies rather than assumes.
+- **`schedule`** (cron) is an *event*. It fires when an occurrence falls in the
+  elapsed tick interval, and one missed during downtime stays missed —
+  replaying a skipped irrigation pulse hours late is worse than skipping it.
+  The first tick after a restart only establishes a baseline.
+
+A window's `actions` describe the state *inside* it; outside, each action's
+role is driven off. So the prototype's "on 06:00 · off 00:00 · 100%" card is one
+automation, not two. Automations target **roles**, so the scheduler resolves
+role → device + channel at fire time and hardware can be swapped underneath.
+
+`cron-parser` is lenient in a way that matters here: an empty expression parses
+as *every minute*, and a four-field one as every minute for a whole day. Field
+count is validated before anything reaches it.
+
+**Internal jobs** are rows in the `jobs` table, not timers, so a controller that
+was off for a day resumes with everything due rather than restarting every
+schedule from now. Implemented: `rollup_hourly`, `rollup_daily`, `prune_raw`,
+`prune_hourly`, `vacuum`.
+
+Two properties worth not breaking:
+
+- **Rollups are idempotent.** Each deletes the buckets it is about to write.
+  Re-running repairs a partial result rather than doubling it, which matters
+  because the controller can be stopped mid-job. Both aggregate from
+  `readings_raw`, never chaining daily off hourly: averaging an average is only
+  correct when every hour has the same sample count, and a device dropping out
+  for twenty minutes breaks that.
+- **Pruning is guarded by the rollups.** Neither prune will delete past the
+  point its downstream aggregate has actually reached, even when the retention
+  window says it may. Deleting un-aggregated raw destroys it permanently. A
+  stalled rollup now shows up as a growing database instead of silently missing
+  history.
+
+Lifecycle: jobs keep running while `paused` (aggregating is monitoring);
+automations do not (acting is not). `stopped` halts both.
+
+Not done here, and both deliberately: **`archive_grow`** needs the separate
+archive-database design from "Retention" below, and **`maintenance_check`**
+cannot do anything useful while nothing accumulates device runtime hours. Both
+job types are rescheduled rather than repeatedly failed.
+
+### Phase 6 — Rules engine *(next)*
 
 Condition → action evaluated against incoming readings. Write real rows to the
 `events` table, which nothing currently populates.
@@ -289,7 +345,8 @@ In dependency order:
 
 1. **Maintenance** — backend already done, cheapest win.
 2. **Automation** — needs Phases 5 and 6.
-3. **Logging** — Phase 3 has landed, so this now only waits on the rollups.
+3. **Logging** — unblocked: Phase 3 supplies the readings and Phase 5 the
+   rollups the longer ranges chart from.
 4. **Grow Cycle** and **Journal** — their routes are stubs; do the backend
    persistence first.
 5. **Setup View** — last, being the least operationally urgent, but it is
