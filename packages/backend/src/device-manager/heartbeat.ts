@@ -7,7 +7,7 @@
  *
  * Runs as a background interval started by startDeviceManager().
  */
-import { eq, lt, and } from "drizzle-orm";
+import { eq, lt, and, inArray } from "drizzle-orm";
 import { db } from "../store/index.js";
 import { devices } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
@@ -53,8 +53,12 @@ async function checkOfflineDevices(): Promise<void> {
 
     if (stale.length === 0) return;
 
+    // Only the stale ones. Matching on `online = true` would knock every live
+    // device offline as soon as a single one went quiet, and the broadcast below
+    // would not even mention them, so the UI would disagree with the database
+    // until the next reading arrived.
     await db.update(devices).set({ online: false }).where(
-      eq(devices.online, true),
+      inArray(devices.id, stale.map(({ id }) => id)),
     );
 
     for (const { id } of stale) {

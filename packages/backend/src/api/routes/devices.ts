@@ -4,7 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { devices, roleAssignments } from "../../store/schema.js";
 import { ok, err } from "../reply.js";
-import { startScan } from "../../device-manager/index.js";
+import { startScan, refreshTopicIndex } from "../../device-manager/index.js";
 import type { Device, RoleAssignment } from "@canopy/shared-types";
 
 function rowToDevice(row: typeof devices.$inferSelect): Device {
@@ -60,6 +60,9 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         .update(devices)
         .set({ online: false, forgotten: true })
         .where(eq(devices.workspaceId, req.params.workspaceId));
+      // Forgotten devices are excluded from the index, so their telemetry stops
+      // being recorded.
+      await refreshTopicIndex();
       return reply.send(ok({ forgotten: true as const }));
     },
   );
@@ -83,6 +86,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     "/devices/:deviceId",
     async (req, reply) => {
       await db.delete(devices).where(eq(devices.id, req.params.deviceId));
+      await refreshTopicIndex();
       return reply.send(ok({ deleted: true as const }));
     },
   );

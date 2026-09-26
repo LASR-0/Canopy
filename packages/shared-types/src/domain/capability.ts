@@ -41,7 +41,23 @@ export type ActuatorKind =
   | "fan"
   | "light";
 
-export interface SensorCapability {
+/**
+ * Where an MQTT capability lives on the broker.
+ *
+ * Discovery is the only moment these are known. HA-style firmware declares a
+ * `state_topic` (and `command_topic`) per entity and they are arbitrary strings,
+ * not a convention that can be reconstructed from a device id afterwards. A
+ * topic that is not recorded here is telemetry the controller cannot attribute
+ * to a device, so it gets discarded. Absent for HTTP devices.
+ */
+export interface MqttTopics {
+  /** Topic this channel publishes its value on. */
+  stateTopic?: string;
+  /** Topic this channel accepts commands on. Actuators only. */
+  commandTopic?: string;
+}
+
+export interface SensorCapability extends MqttTopics {
   kind: "sensor";
   /** Stable id unique within the device, e.g. "temp", "rh". */
   channel: string;
@@ -49,7 +65,7 @@ export interface SensorCapability {
   unit: Unit;
 }
 
-export interface ActuatorCapability {
+export interface ActuatorCapability extends MqttTopics {
   kind: "actuator";
   channel: string;
   actuator: ActuatorKind;

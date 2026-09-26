@@ -66,8 +66,15 @@ export function parseHaDiscovery(
   const name = config.name ?? deviceInfo?.name ?? objectId;
   const model = deviceInfo?.model ?? deviceInfo?.manufacturer ?? undefined;
 
-  // Determine capability from component type
+  // Determine capability from component type.
+  //
+  // state_topic / command_topic are carried onto the capability rather than
+  // dropped: they are how telemetry is later attributed back to this channel,
+  // and HA firmware is free to use any topic it likes.
   const capabilities: Device["capabilities"] = [];
+
+  const stateTopic = config.state_topic ? { stateTopic: config.state_topic } : {};
+  const commandTopic = config.command_topic ? { commandTopic: config.command_topic } : {};
 
   if (component === "sensor") {
     const mapped = SENSOR_COMPONENT_MAP[config.device_class ?? ""] ??
@@ -78,6 +85,7 @@ export function parseHaDiscovery(
       channel: objectId,
       metric: mapped.metric as Device["capabilities"][number] extends { metric: infer M } ? M : never,
       unit: mapped.unit as Device["capabilities"][number] extends { unit: infer U } ? U : never,
+      ...stateTopic,
     });
   } else if (component === "switch" || component === "light" || component === "fan") {
     capabilities.push({
@@ -86,6 +94,8 @@ export function parseHaDiscovery(
       actuator: component === "light" ? "light" : component === "fan" ? "fan" : "switch",
       variable: component === "light" && config.brightness === true,
       label: component === "switch" ? "Switch" : component === "light" ? "Light" : "Fan",
+      ...stateTopic,
+      ...commandTopic,
     });
   } else if (component === "number") {
     capabilities.push({
@@ -94,6 +104,8 @@ export function parseHaDiscovery(
       actuator: "dimmer",
       variable: true,
       label: name,
+      ...stateTopic,
+      ...commandTopic,
     });
   }
 

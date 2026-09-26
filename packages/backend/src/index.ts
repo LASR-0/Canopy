@@ -37,7 +37,7 @@ async function main() {
   await ensureDefaultWorkspace();
 
   await startBroker();
-  startDeviceManager();
+  await startDeviceManager();
 
   const app = await buildServer();
   await app.listen({ port: PORT, host: "127.0.0.1" });

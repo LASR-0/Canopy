@@ -7,15 +7,24 @@
 import { onMqttMessage } from "../broker/index.js";
 import { handleMqttMessage } from "./mqtt-discovery.js";
 import { startHeartbeatMonitor } from "./heartbeat.js";
+import { handleTelemetry, indexedTopicCount, refreshTopicIndex } from "./ingest.js";
 
 export { startScan } from "./scan-session.js";
+export { refreshTopicIndex } from "./ingest.js";
 
-export function startDeviceManager(): void {
-  // Route all MQTT messages to the discovery handler
+export async function startDeviceManager(): Promise<void> {
+  // Devices paired in an earlier run must be ingested from the first message,
+  // without waiting for a scan, so the index is loaded before the broker's
+  // messages start flowing through.
+  await refreshTopicIndex();
+
+  // Route all MQTT messages to discovery and to telemetry ingestion. The two
+  // are independent: discovery only listens during a scan, ingestion always.
   onMqttMessage((topic, payload) => {
     handleMqttMessage(topic, payload);
+    void handleTelemetry(topic, payload);
   });
 
   startHeartbeatMonitor();
-  console.log("[device-manager] started");
+  console.log(`[device-manager] started — ingesting ${indexedTopicCount()} device topics`);
 }

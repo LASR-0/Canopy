@@ -28,7 +28,59 @@ const SHELLY_CAPS: Record<string, Device["capabilities"]> = {
 
 function capsForModel(model: string): Device["capabilities"] {
   const key = Object.keys(SHELLY_CAPS).find((k) => model.toLowerCase().startsWith(k));
-  return key ? (SHELLY_CAPS[key] ?? []) : [];
+  // Clone: SHELLY_CAPS entries are shared module-level objects, and the MQTT
+  // path below attaches per-device topics to them.
+  return key ? (SHELLY_CAPS[key] ?? []).map((cap) => ({ ...cap })) : [];
+}
+
+/**
+ * MQTT topics for one Shelly Gen 1 channel.
+ *
+ * A Shelly announce carries no topic list, unlike HA discovery, so these come
+ * from the documented Gen 1 layout rather than from the device itself. Gen 2
+ * (Plus/Pro) uses a different RPC-based scheme and is not covered here.
+ */
+function shellyTopics(channel: string, prefix: string): {
+  stateTopic: string;
+  commandTopic?: string;
+} {
+  const [kind, index = "0"] = channel.split(":");
+
+  switch (kind) {
+    case "relay":
+      return {
+        stateTopic: `${prefix}/relay/${index}`,
+        commandTopic: `${prefix}/relay/${index}/command`,
+      };
+    case "light":
+      return {
+        stateTopic: `${prefix}/light/${index}`,
+        commandTopic: `${prefix}/light/${index}/command`,
+      };
+    case "input":
+      return { stateTopic: `${prefix}/input/${index}` };
+    // Metered plugs and dimmers report consumption under the relay they meter.
+    case "power":
+      return { stateTopic: `${prefix}/relay/0/power` };
+    case "temperature":
+    case "humidity":
+      return { stateTopic: `${prefix}/sensor/${kind}` };
+    default:
+      return { stateTopic: `${prefix}/${channel}` };
+  }
+}
+
+/** Attach Gen 1 MQTT topics to each capability of an announce-discovered device. */
+function withMqttTopics(
+  caps: Device["capabilities"],
+  prefix: string,
+): Device["capabilities"] {
+  return caps.map((cap) => {
+    const { stateTopic, commandTopic } = shellyTopics(cap.channel, prefix);
+    // Sensors have no command topic; only actuators accept one.
+    if (cap.kind === "sensor") return { ...cap, stateTopic };
+    return { ...cap, stateTopic, ...(commandTopic ? { commandTopic } : {}) };
+  });
 }
 
 /** Returns true if an mDNS hostname looks like a Shelly device */
@@ -70,6 +122,8 @@ export function deviceFromShellyAnnounce(
   }
   if (!announce.id || !announce.model) return null;
 
+  const prefix = `shellies/${announce.id}`;
+
   return {
     workspaceId,
     name: announce.id,
@@ -77,11 +131,11 @@ export function deviceFromShellyAnnounce(
     address: {
       protocol: "mqtt" as const,
       host: announce.ip,
-      mqttTopicPrefix: `shellies/${announce.id}`,
+      mqttTopicPrefix: prefix,
     },
     model: announce.model,
     ...(announce.fw_ver ? { firmware: announce.fw_ver } : {}),
-    capabilities: capsForModel(announce.model),
+    capabilities: withMqttTopics(capsForModel(announce.model), prefix),
     discoveredVia: "mqtt-discovery" as const,
     online: true,
     runtimeHours: 0,

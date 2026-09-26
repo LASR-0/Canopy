@@ -11,10 +11,21 @@ import { createServer } from "node:net";
 export const MQTT_PORT = Number(process.env["MQTT_PORT"] ?? 1883);
 
 let _broker: Aedes | null = null;
+let _listening = false;
 
 export function getBroker(): Aedes {
   if (!_broker) throw new Error("MQTT broker has not been started");
   return _broker;
+}
+
+/** True once the broker is built and its TCP server is accepting connections. */
+export function isBrokerOnline(): boolean {
+  return _broker !== null && _listening;
+}
+
+/** Devices currently holding an MQTT connection. Zero is normal before pairing. */
+export function connectedClientCount(): number {
+  return _broker?.connectedClients ?? 0;
 }
 
 type MessageHandler = (topic: string, payload: Buffer, packet: AedesPublishPacket) => void;
@@ -55,7 +66,9 @@ export async function startBroker(): Promise<void> {
 
   return new Promise<void>((resolve, reject) => {
     server.on("error", reject);
+    server.on("close", () => { _listening = false; });
     server.listen(MQTT_PORT, "0.0.0.0", () => {
+      _listening = true;
       console.log(`[broker] MQTT listening on port ${MQTT_PORT}`);
       resolve();
     });
