@@ -20,6 +20,8 @@ import { db } from "../store/index.js";
 import { devices, readingsRaw } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
 import { canIngest } from "../controller/state.js";
+import { onReading } from "../rules/index.js";
+import { checkThresholds } from "../rules/thresholds.js";
 import { recordHeartbeat } from "./heartbeat.js";
 import type { Capability, Metric, Reading, Unit } from "@canopy/shared-types";
 
@@ -219,6 +221,12 @@ export async function handleTelemetry(topic: string, payload: Buffer): Promise<v
     });
 
     broadcast({ type: "reading", payload: reading });
+
+    // Reactive work happens here rather than on a poll, so a rule responds to a
+    // reading as it arrives. Both are awaited: a failure in either is caught
+    // below and must not silently drop the reading that caused it.
+    await checkThresholds(reading, new Date(reading.ts));
+    await onReading(reading, new Date(reading.ts));
   } catch (err) {
     // A bad message must never take the broker's publish handler down.
     console.error(`[ingest] failed to ingest ${topic}:`, err);

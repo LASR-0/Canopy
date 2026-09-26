@@ -8,6 +8,8 @@ import { onMqttMessage } from "../broker/index.js";
 import { handleMqttMessage } from "./mqtt-discovery.js";
 import { startHeartbeatMonitor } from "./heartbeat.js";
 import { handleTelemetry, indexedTopicCount, refreshTopicIndex } from "./ingest.js";
+import { activeRuleCount, refreshRules } from "../rules/index.js";
+import { refreshThresholds } from "../rules/thresholds.js";
 
 export { startScan } from "./scan-session.js";
 export { refreshTopicIndex } from "./ingest.js";
@@ -25,6 +27,15 @@ export async function startDeviceManager(): Promise<void> {
     void handleTelemetry(topic, payload);
   });
 
+  // Rules and thresholds are consulted on every reading, so both are cached.
+  // Loaded before the first message rather than lazily, or the first readings
+  // after a restart would pass unjudged.
+  await refreshRules();
+  await refreshThresholds();
+
   startHeartbeatMonitor();
-  console.log(`[device-manager] started — ingesting ${indexedTopicCount()} device topics`);
+  console.log(
+    `[device-manager] started — ingesting ${indexedTopicCount()} device topics, ` +
+      `${activeRuleCount()} rule(s) armed`,
+  );
 }

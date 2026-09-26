@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { automations } from "../../store/schema.js";
 import { isValidCron, parseClockTime } from "../../scheduler/schedule.js";
+import { refreshRules } from "../../rules/index.js";
 import { ok, err } from "../reply.js";
 import type { Automation, AutomationTrigger } from "@canopy/shared-types";
 
@@ -129,6 +130,9 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
         sortOrder: body.sortOrder ?? nextOrder ?? 0,
       });
 
+      // A rule the user just saved has to take effect now, not next restart.
+      await refreshRules();
+
       const [row] = await db.select().from(automations).where(eq(automations.id, id));
       return reply.status(201).send(ok(rowToAutomation(row!)));
     },
@@ -172,6 +176,8 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
           );
       }
 
+      await refreshRules();
+
       const [row] = await db.select().from(automations).where(eq(automations.id, req.params.id));
       if (!row) return reply.status(404).send(err("not_found", "Automation not found"));
       return reply.send(ok(rowToAutomation(row)));
@@ -189,6 +195,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
             eq(automations.workspaceId, req.params.workspaceId),
           ),
         );
+      await refreshRules();
       return reply.send(ok({ deleted: true as const }));
     },
   );

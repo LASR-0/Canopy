@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { sensorThresholds } from "../../store/schema.js";
 import { ok } from "../reply.js";
+import { refreshThresholds } from "../../rules/thresholds.js";
 import type { SensorThreshold } from "@canopy/shared-types";
 
 function rowToThreshold(row: typeof sensorThresholds.$inferSelect): SensorThreshold {
@@ -51,6 +52,10 @@ export async function thresholdRoutes(app: FastifyInstance): Promise<void> {
         target: sensorThresholds.id,
         set: { minValue: b.minValue, maxValue: b.maxValue, unit: b.unit, ...(b.stage ? { stage: b.stage } : {}) },
       });
+      // Alerts are judged against a cached copy, so a band the user just moved
+      // has to take effect on the next reading rather than the next restart.
+      await refreshThresholds();
+
       const [row] = await db.select().from(sensorThresholds).where(eq(sensorThresholds.id, id));
       return reply.send(ok(rowToThreshold(row!)));
     },
