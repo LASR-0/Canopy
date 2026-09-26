@@ -17,13 +17,11 @@
  * without rewriting schedules. An automation whose role nothing holds is
  * skipped quietly: that is a half-finished setup, not an error.
  */
-import { and, eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { db } from "../store/index.js";
-import { automations, roleAssignments, workspaces, events } from "../store/schema.js";
-import { actuateDevice } from "../device-manager/actuate.js";
+import { automations, workspaces } from "../store/schema.js";
 import { canActuate } from "../controller/state.js";
-import { broadcast } from "../ws/index.js";
+import { applyActions, recordFiring } from "../automation/apply.js";
 import { cronFiredBetween, isWithinWindow } from "./schedule.js";
 import type {
   ActuatorCommand,
@@ -66,71 +64,6 @@ export function stateKey(actions: AutomationAction[]): string {
     .map((a) => `${a.role}:${JSON.stringify(a.command)}`)
     .sort()
     .join("|");
-}
-
-/** Every device currently holding a role in this workspace. */
-async function devicesForRole(
-  workspaceId: string,
-  role: RoleKind,
-): Promise<{ deviceId: string; channel: string }[]> {
-  const rows = await db
-    .select({ deviceId: roleAssignments.deviceId, channel: roleAssignments.channel })
-    .from(roleAssignments)
-    .where(and(eq(roleAssignments.workspaceId, workspaceId), eq(roleAssignments.role, role)));
-  return rows;
-}
-
-async function recordFiring(
-  automation: Automation,
-  description: string,
-  at: Date,
-): Promise<void> {
-  await db.insert(events).values({
-    id: randomUUID(),
-    workspaceId: automation.workspaceId,
-    type: "automation_fired",
-    sourceId: automation.id,
-    sourceLabel: automation.name,
-    description,
-    occurredAt: at.toISOString(),
-  });
-
-  broadcast({
-    type: "automation.fired",
-    payload: { automationId: automation.id, at: at.toISOString() },
-  });
-}
-
-/**
- * Drive every role an automation targets.
- *
- * Returns whether anything was actually sent. A role nobody holds, or a device
- * that refuses the command, does not abort the remaining actions: one broken
- * fan should not also strand the lights.
- */
-async function applyActions(
-  automation: Automation,
-  actions: AutomationAction[],
-): Promise<boolean> {
-  let sentAnything = false;
-
-  for (const action of actions) {
-    const targets = await devicesForRole(automation.workspaceId, action.role);
-    if (targets.length === 0) continue;
-
-    for (const target of targets) {
-      const result = await actuateDevice(target.deviceId, action.command, target.channel);
-      if (result.ok) {
-        sentAnything = true;
-      } else {
-        console.warn(
-          `[scheduler] ${automation.name}: ${action.role} -> ${result.code}: ${result.message}`,
-        );
-      }
-    }
-  }
-
-  return sentAnything;
 }
 
 function parseAutomation(row: typeof automations.$inferSelect): Automation | null {
@@ -212,7 +145,7 @@ export async function evaluateAutomations(now: Date = new Date()): Promise<Autom
       const key = stateKey(desired);
       if (lastApplied.get(automation.id) === key) continue;
 
-      const sent = await applyActions(automation, desired);
+      const sent = await applyActions(automation, desired, "scheduler");
       // Only remembered once something was actually sent, so an automation
       // whose role is unassigned re-attempts when a device is finally bound.
       if (sent) {
@@ -231,7 +164,7 @@ export async function evaluateAutomations(now: Date = new Date()): Promise<Autom
 
     if (!cronFiredBetween(trigger.cron, new Date(previous), now, timeZone)) continue;
 
-    const sent = await applyActions(automation, automation.actions);
+    const sent = await applyActions(automation, automation.actions, "scheduler");
     if (sent) {
       await recordFiring(automation, `fired (${trigger.cron})`, now);
       outcome.fired++;
