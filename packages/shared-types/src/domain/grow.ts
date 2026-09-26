@@ -81,3 +81,70 @@ export interface GrowMilestone {
   done: boolean;
   doneAt?: Timestamp;
 }
+
+export interface GrowStageInfo {
+  stage: GrowStageName;
+  /** 1-based day within the current stage. */
+  dayInStage: number;
+  /** Total planned days in this stage. */
+  stageTotalDays: number;
+  /** 0–1 progress through the current stage. */
+  pctInStage: number;
+  /** 1-based overall day of the grow. */
+  totalDay: number;
+}
+
+/** Stages in the order a grow moves through them. Harvest is an end state. */
+const ORDERED_STAGES: GrowStageName[] = ["seedling", "vegetative", "flowering", "flush"];
+
+function plannedDays(grow: GrowCycle): number[] {
+  return [
+    grow.plannedSeedlingWeeks * 7,
+    grow.plannedVegWeeks * 7,
+    grow.plannedFlowerWeeks * 7,
+    grow.plannedFlushWeeks * 7,
+  ];
+}
+
+/**
+ * Current stage and progress, derived from `startedAt` and the planned weeks.
+ *
+ * Shared because the stage is not only a display concern: thresholds are
+ * stage-scoped, so the controller needs the same answer the UI is showing in
+ * order to judge a reading against the right band.
+ *
+ * Undefined for a grow that has not started. A grow running past its plan stays
+ * in the final stage rather than falling off the end — plans slip, and the
+ * alternative is a tent with no stage at all.
+ */
+export function calcGrowStage(grow: GrowCycle, now = new Date()): GrowStageInfo | undefined {
+  if (!grow.startedAt) return undefined;
+
+  const startMs = new Date(grow.startedAt).getTime();
+  const totalDay = Math.max(1, Math.floor((now.getTime() - startMs) / 86_400_000) + 1);
+
+  const days = plannedDays(grow);
+  let cumulative = 0;
+
+  for (let i = 0; i < ORDERED_STAGES.length; i++) {
+    const stageDays = days[i]!;
+    if (totalDay <= cumulative + stageDays || i === ORDERED_STAGES.length - 1) {
+      const dayInStage = Math.max(1, totalDay - cumulative);
+      return {
+        stage: ORDERED_STAGES[i]!,
+        dayInStage,
+        stageTotalDays: stageDays,
+        pctInStage: Math.min(1, (dayInStage - 1) / stageDays),
+        totalDay,
+      };
+    }
+    cumulative += stageDays;
+  }
+
+  return undefined;
+}
+
+/** Total planned duration of the grow in days. */
+export function growTotalPlannedDays(grow: GrowCycle): number {
+  return plannedDays(grow).reduce((a, b) => a + b, 0);
+}

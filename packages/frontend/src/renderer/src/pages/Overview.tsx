@@ -15,7 +15,7 @@ import { evalThreshold } from "@/lib/thresholds";
 import { calcGrowStage } from "@/lib/growStage";
 import { api } from "@/lib/http";
 import type { Reading, SensorThreshold, GrowCycle, AppEvent, MaintenanceTask, Device, ReadingResolution } from "@canopy/shared-types";
-import type { Metric } from "@canopy/shared-types";
+import type { Metric, GrowStageName } from "@canopy/shared-types";
 
 // ── Metric display config ────────────────────────────────────────────────
 
@@ -121,7 +121,7 @@ function SensorCard({
 }: {
   reading: Reading;
   thresholds: SensorThreshold[];
-  stage?: string;
+  stage?: GrowStageName;
   range: RangeKey;
 }) {
   const meta   = METRIC_META[reading.metric];
