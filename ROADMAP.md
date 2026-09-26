@@ -29,7 +29,7 @@ This is a change of development host, not of architecture. Nothing on the
 critical path is OS-specific: telemetry ingestion, the rules engine, the
 scheduler and the remaining pages are all pure TypeScript. The genuinely
 OS-divergent work — service registration and packaging — comes last and is
-tracked as Phase 7.
+tracked as Phase 8.
 
 **Windows is not abandoned.** It builds and runs today (verified), and the
 Wi-Fi provisioning path already has a Windows implementation. Keep it green in
@@ -65,7 +65,9 @@ as blocked. All three were wrong. What follows was checked against the code.
   over loopback. See Phase 2.
 - **Telemetry ingestion** — sensor readings reach `readings_raw` and the
   websocket. See Phase 3.
-- **Tests** — 45 passing across 4 files.
+- **Actuation** — devices can be driven over MQTT, and the controller has a
+  real pause/resume/stop lifecycle. See Phase 4.
+- **Tests** — 100 passing across 7 files.
 
 ### Recently fixed (Phase 0)
 
@@ -87,9 +89,9 @@ This was the headline: a finished UI over a pipe that never delivered. The
 inbound half is closed as of Phase 3. Readings flow, so the Overview shows real
 numbers. What remains:
 
-- **No actuation.** `api/routes/devices.ts` actuate is a stub. Command topics
-  are now captured at discovery and stored on the capability, so the adapter
-  layer has what it needs — but nothing publishes to them yet.
+- **No actuator state.** Commands go out (Phase 4) and devices echo their new
+  state on the state topic, but ingestion treats that as proof of life only.
+  Nothing stores or reports whether a fan is actually running.
 - **`scheduler/index.ts` and `rules/index.ts` are 3-line `export {}` files.**
   The automation engine does not exist.
 - **No rollups.** `readings_hourly` and `readings_daily` are never written. This
@@ -107,10 +109,8 @@ numbers. What remains:
 Return fabricated or empty data, not persisted: `automations`, `journal`,
 `events`.
 
-`controller` is real as of Phase 3 — `brokerOnline` reflects the broker's
-listening state and `deviceCount` counts paired devices. `POST
-/controller/command` still returns the unchanged current status rather than
-honouring pause/resume/stop.
+`controller` is fully real: `brokerOnline` and `deviceCount` since Phase 3, and
+`POST /controller/command` honours pause/resume/stop since Phase 4.
 
 DB-backed and real: `grows`, `workspaces`, `maintenance`, `devices`, `settings`,
 `chart-layouts`, `thresholds`, `readings` (read and write paths).
@@ -145,6 +145,12 @@ The MQTT broker binds `0.0.0.0:1883` **unauthenticated**, while HTTP binds
 `127.0.0.1`. LAN-reachable is presumably intentional (devices must connect), but
 anonymous write access to the broker means anything on the network can inject
 readings or commands. Decide on this explicitly rather than by default.
+
+Phase 4 raised the stakes. Command topics are now real, so anything on the LAN
+can publish to one and switch a pump or a light — no longer a data-integrity
+question but a physical one. Aedes supports an `authenticate` hook; the awkward
+part is credential provisioning for devices that were adopted anonymously, which
+is why this is a decision and not a ticket.
 
 ---
 
@@ -216,18 +222,57 @@ of nothing. Both want attention before real hardware.
 Per-workspace WebSocket filtering was listed here and was **not** done — see
 "Not started".
 
-### Phase 4 — Actuation *(next)*
+### Phase 4 — Actuation ✅ done
 
-Real command path: route → adapter → MQTT `command_topic`. The command topics
-are already captured and stored on each actuator capability, and the simulator
-already reflects commands back as state, so this is the route and the adapter,
-not a discovery change.
+`POST /devices/:deviceId/actuate` publishes a real command. The path is
+route → `device-manager/actuate.ts` → family adapter → broker.
 
-`controller/status` reporting true broker and device state was part of this
-phase and landed early, with Phase 3. What remains there is `POST
-/controller/command` honouring pause/resume/stop.
+- **Adapters encode, they do not publish.** Each family returns a topic and a
+  payload; `actuate.ts` publishes it. That split is what makes the wire format
+  testable without a running broker, and it matters because a wrong payload
+  fails *silently* — the broker accepts it and the device ignores it.
+- **The formats genuinely differ.** Home Assistant style takes `ON`/`OFF` (or
+  whatever `payload_on`/`payload_off` declared) on the command topic, with
+  brightness rescaled onto its own topic when one was declared. Shelly Gen 1
+  takes lowercase `on`/`off`, and a dimmer's level as JSON on `.../set`.
+  Tasmota and ESPHome share the HA encoder until one of them needs something it
+  cannot express.
+- **Ambiguity is refused, not guessed.** `ActuateBody.channel` is optional for
+  a device with one actuator and required for a two-relay Shelly, where picking
+  wrong would switch the wrong load.
+- **202, not 200.** The command reached the broker; that is not the same as the
+  device having acted. Confirmation is the device echoing state, which arrives
+  through ingestion.
 
-### Phase 5 — Scheduler
+Discovery now also captures `payload_on` / `payload_off` /
+`brightness_command_topic` / `brightness_scale`, for the same reason it captures
+topics: the firmware chooses them and they cannot be reconstructed later.
+
+**Controller lifecycle** also landed here. `POST /controller/command` honours
+pause/resume/stop and pushes the new status over the websocket so every open
+window agrees:
+
+| State | Ingests | Actuates |
+|---|---|---|
+| `running` | yes | yes |
+| `paused` | yes | no |
+| `stopped` | no | no |
+
+`paused` is the state to use while working in the tent — readings keep
+accumulating and nothing turns a fan on behind you. Actuation attempts are
+refused with `controller_paused` (HTTP 409).
+
+The state is **in memory only**: a restarted controller comes back `running`.
+That is the deliberate choice — a grow controller that silently stays stopped
+across a reboot is the more dangerous default. Worth revisiting in Phase 8,
+when the service starts at boot without anyone present.
+
+Not done here: nothing records or reports **actuator state**. The device echoes
+it on the state topic and ingestion treats it as proof of life only, because
+there is no `ServerMessage` for it and no UI consuming one. Adding both belongs
+with the first screen that shows a control.
+
+### Phase 5 — Scheduler *(next)*
 
 Time-driven automations; the lighting photoperiod is the flagship feature. The
 same module carries the internal jobs: hourly/daily rollups (which Logging
