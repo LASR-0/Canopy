@@ -69,7 +69,9 @@ as blocked. All three were wrong. What follows was checked against the code.
   real pause/resume/stop lifecycle. See Phase 4.
 - **Scheduler** — photoperiod windows and cron automations drive real hardware;
   reading rollups and retention pruning run as tracked jobs. See Phase 5.
-- **Tests** — 175 passing across 10 files.
+- **Rules engine** — readings drive condition → action automations, with
+  threshold alerts and device up/down recorded to the timeline. See Phase 6.
+- **Tests** — 214 passing across 12 files.
 
 ### Recently fixed (Phase 0)
 
@@ -91,13 +93,10 @@ This was the headline: a finished UI over a pipe that never delivered. The
 inbound half is closed as of Phase 3. Readings flow, so the Overview shows real
 numbers. What remains:
 
-- **No actuator state.** Commands go out (Phase 4) and devices echo their new
-  state on the state topic, but ingestion treats that as proof of life only.
-  Nothing stores or reports whether a fan is actually running.
-- **No rules engine.** `rules/index.ts` is still a 3-line `export {}`. Schedule
-  and window automations run (Phase 5), but a `rule` trigger is stored,
-  validated and then ignored, so nothing reacts to a reading crossing a
-  threshold.
+- **No actuator state.** Commands go out and devices echo their new state on
+  the state topic, but ingestion treats that as proof of life only. Nothing
+  stores or reports whether a fan is actually running, so a rule can fire and
+  the UI still cannot show the result.
 - **No archive database.** Completed grows are never moved out of the live DB,
   so it grows without bound. The `archive_grow` job type exists and has no
   handler. See "Retention".
@@ -110,9 +109,11 @@ numbers. What remains:
 
 Return fabricated or empty data, not persisted: `journal`.
 
+`events` is written by the scheduler, the rules engine, threshold checking and
+the heartbeat monitor as of Phase 6. It still has no write route, which is
+correct: events are recorded by the subsystem that caused them, not posted.
+
 `automations` is DB-backed as of Phase 5, with trigger validation on write.
-`events` has no write route, but the scheduler now writes `automation_fired`
-rows directly, so the Overview's activity feed is no longer always empty.
 
 `controller` is fully real: `brokerOnline` and `deviceCount` since Phase 3, and
 `POST /controller/command` honours pause/resume/stop since Phase 4.
@@ -137,7 +138,10 @@ page is missing. It is the cheapest win on the board.
 - WebSocket has no per-workspace subscription filtering. `subscribe` /
   `unsubscribe` frames are parsed and then ignored, so every client receives
   every workspace's traffic. Harmless with one tent and one window; wrong as
-  soon as there are two. The `reading` push itself landed in Phase 3.
+  soon as there are two. Tagged Phase 6 in the source and deliberately left:
+  the renderer never *sends* a subscribe frame, so server-side filtering today
+  would be either inert or would cut the UI off from its own data. Both halves
+  belong with the first multi-tent screen.
 - **The Overview refresh button does not refresh the readings.** It invalidates
   the TanStack Query key `["readings", workspaceId]`, but `useLiveReadings`
   holds its own `useState` and fetches the snapshot once on mount, so that key
@@ -334,12 +338,55 @@ archive-database design from "Retention" below, and **`maintenance_check`**
 cannot do anything useful while nothing accumulates device runtime hours. Both
 job types are rescheduled rather than repeatedly failed.
 
-### Phase 6 — Rules engine *(next)*
+### Phase 6 — Rules engine ✅ done
 
-Condition → action evaluated against incoming readings. Write real rows to the
-`events` table, which nothing currently populates.
+Condition → action, evaluated on the **ingest path** so a rule reacts to a
+reading as it arrives rather than on a polling interval.
 
-### Phase 7 — Pages
+The hazard a rules engine has and a scheduler does not is **flapping**: a sensor
+sitting on its threshold would toggle an extractor fan every few seconds, and
+relays and compressors do not survive that. Two guards:
+
+- **Edge-triggered.** Actions fire on the transition into the condition, not on
+  every reading that satisfies it. The rule re-arms only once the condition
+  lapses.
+- **Dwell** (`forSeconds`). The condition must hold *continuously* for that long
+  before anything fires, and the counter resets the moment it lapses, so a
+  single noisy sample cannot trip a rule and a flapping one cannot accumulate
+  its way to a firing.
+
+Rule state is in memory: a restart re-arms everything rather than inheriting a
+stale belief about the tent. Re-firing a correct action after a restart is safe;
+skipping one because of remembered state is not. Rules are cached and reloaded
+whenever an automation changes, so one the user just saved arms immediately.
+
+**Threshold alerts** are the other half. A rule *does* something; an alert
+*says* something, and the two must agree — so both judge a reading with the same
+`evalThreshold`, which moved into `shared-types` for exactly that reason. The
+frontend now re-exports it rather than keeping a second copy. `calcGrowStage`
+moved with it, because thresholds are stage-scoped and the controller needs the
+same answer the UI is displaying.
+
+Alerts are edge-triggered per channel for the same reason rules are: a row per
+reading that is still too hot buries the crossing that mattered. Recovery is
+recorded too, so the feed's last word on a metric is not always alarming.
+
+**The `events` table is now populated** from four sources: automation firings
+(Phase 5 and 6), threshold crossings and recoveries, and devices going offline
+and coming back. The Overview's activity feed has real content.
+
+Shared `automation/apply.ts` holds role resolution, actuation and event
+recording, used by both the scheduler and the rules engine. A feed where a
+scheduled firing and a rule firing were described differently would be worse
+than no feed.
+
+Not done here: **per-workspace websocket filtering**, which the source comments
+tagged Phase 6. The server side is easy; the reason it was left is that the
+renderer never sends a `subscribe` frame, so filtering would either be inert or
+would silently cut the UI off from its own data. It belongs with the first
+multi-tent screen. See "Not started".
+
+### Phase 7 — Pages *(next)*
 
 In dependency order:
 
