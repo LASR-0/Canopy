@@ -6,11 +6,13 @@
   "description": "Electron + React + TypeScript client. Connects to the controller service.",
   "scripts": {
     "dev": "electron-vite dev",
+    "postinstall": "install-electron",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "compile": "electron-vite build && electron-builder",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
   },
+  "//postinstall_note": "Electron 42 dropped its install-time download and fetches the runtime lazily on the first require('electron'). electron-vite reads node_modules/electron/path.txt directly and never triggers that, so it fails with 'Error: Electron uninstall'. install-electron is electron's own downloader and is a no-op once the runtime is present.",
   "dependencies": {
     "@canopy/shared-types": "workspace:*",
     "@fontsource-variable/inter": "^5.2.8",

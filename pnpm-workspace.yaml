@@ -16,3 +16,18 @@ packageExtensions:
     peerDependenciesMeta:
       electron-builder-squirrel-windows:
         optional: true
+
+# Electron 42 no longer downloads its runtime from a postinstall script -- it
+# fetches lazily on the first require("electron"). electron-vite does not go
+# through that path (it reads node_modules/electron/path.txt directly), so the
+# frontend package has an explicit `postinstall: install-electron` instead.
+#
+# That unzip step runs through extract-zip, which pins the abandoned
+# yauzl 2 / fd-slicer 1.1.0 pair. fd-slicer assigns `this.destroyed` directly;
+# on modern Node that is a setter which marks the readable as destroyed, so
+# fd-slicer's final push(null) is dropped, no 'end' is ever emitted, and the
+# unzip stalls after one file -- silently, with exit code 0. The runtime is left
+# without dist/ or path.txt and electron-vite reports "Error: Electron
+# uninstall". yauzl 3 dropped fd-slicer and is API-compatible with extract-zip.
+overrides:
+  extract-zip>yauzl: "^3.2.0"
