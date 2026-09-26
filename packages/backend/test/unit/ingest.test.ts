@@ -36,6 +36,10 @@ const {
   setTopicIndexForTesting,
 } = await import("../../src/device-manager/ingest.js");
 
+const { setControllerState, resetControllerState } = await import(
+  "../../src/controller/state.js"
+);
+
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 const tempSensor: Capability = {
   kind: "sensor",
@@ -69,6 +73,7 @@ const oneDevice = [
 beforeEach(() => {
   vi.clearAllMocks();
   resetIngestState();
+  resetControllerState();
 });
 
 describe("parseNumericPayload", () => {
@@ -230,5 +235,24 @@ describe("handleTelemetry", () => {
 
   it("reports how many topics are being watched", () => {
     expect(indexedTopicCount()).toBe(2);
+  });
+
+  it("keeps recording while the controller is paused, since pausing only stops acting", async () => {
+    setControllerState("paused");
+
+    await handleTelemetry("canopy/canopy-temp/state", Buffer.from("24.5"));
+
+    expect(mockInsertValues).toHaveBeenCalledTimes(1);
+    expect(mockBroadcast).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops recording while the controller is stopped", async () => {
+    setControllerState("stopped");
+
+    await handleTelemetry("canopy/canopy-temp/state", Buffer.from("24.5"));
+
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(mockBroadcast).not.toHaveBeenCalled();
+    expect(mockRecordHeartbeat).not.toHaveBeenCalled();
   });
 });

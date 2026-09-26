@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../store/index.js";
 import { devices, readingsRaw } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
+import { canIngest } from "../controller/state.js";
 import { recordHeartbeat } from "./heartbeat.js";
 import type { Capability, Metric, Reading, Unit } from "@canopy/shared-types";
 
@@ -180,6 +181,9 @@ export function parseNumericPayload(payload: Buffer): number | null {
  * the cheap one: a single Map lookup, then return.
  */
 export async function handleTelemetry(topic: string, payload: Buffer): Promise<void> {
+  // A paused controller still monitors; only a stopped one stops recording.
+  if (!canIngest()) return;
+
   const deviceId = index.owners.get(topic);
   if (deviceId === undefined) return;
 

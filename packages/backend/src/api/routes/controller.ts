@@ -3,8 +3,10 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { devices } from "../../store/schema.js";
 import { isBrokerOnline } from "../../broker/index.js";
-import { ok } from "../reply.js";
-import type { ControllerStatus } from "@canopy/shared-types";
+import { getControllerState, setControllerState } from "../../controller/state.js";
+import { broadcast } from "../../ws/index.js";
+import { ok, err } from "../reply.js";
+import type { ControllerCommand, ControllerState, ControllerStatus } from "@canopy/shared-types";
 
 const startedAt = Date.now();
 const VERSION = process.env["npm_package_version"] ?? "0.0.0";
@@ -26,7 +28,7 @@ async function pairedDeviceCount(): Promise<number> {
 
 async function currentStatus(): Promise<ControllerStatus> {
   return {
-    state: "running",
+    state: getControllerState(),
     version: VERSION,
     uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
     brokerOnline: isBrokerOnline(),
@@ -35,14 +37,38 @@ async function currentStatus(): Promise<ControllerStatus> {
   };
 }
 
+const STATE_FOR_OP: Record<ControllerCommand["op"], ControllerState> = {
+  pause: "paused",
+  resume: "running",
+  stop: "stopped",
+};
+
+function isControllerCommand(body: unknown): body is ControllerCommand {
+  if (typeof body !== "object" || body === null) return false;
+  const op = (body as { op?: unknown }).op;
+  return op === "pause" || op === "resume" || op === "stop";
+}
+
 export async function controllerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/controller/status", async (_req, reply) => {
     return reply.send(ok(await currentStatus()));
   });
 
-  app.post("/controller/command", async (_req, reply) => {
-    // Phase 6: honour pause / resume / stop commands. Until then the reply is
-    // the unchanged current status rather than a pretended state change.
-    return reply.send(ok(await currentStatus()));
+  app.post<{ Body: ControllerCommand }>("/controller/command", async (req, reply) => {
+    if (!isControllerCommand(req.body)) {
+      return reply
+        .status(400)
+        .send(err("validation_failed", 'op must be "pause", "resume" or "stop"'));
+    }
+
+    setControllerState(STATE_FOR_OP[req.body.op]);
+    const status = await currentStatus();
+
+    // Every open window shares one controller, so they all need to learn that
+    // it is no longer acting — otherwise a second window keeps offering
+    // controls that will now be refused.
+    broadcast({ type: "controller.status", payload: status });
+
+    return reply.send(ok(status));
   });
 }
