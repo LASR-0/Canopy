@@ -73,6 +73,22 @@ export interface ActuatorCapability extends MqttTopics {
   variable: boolean;
   /** Human-readable label from the device firmware e.g. "Relay", "Dimmer". */
   label?: string;
+  /**
+   * Exact payloads this channel expects to switch. Captured at discovery
+   * because firmware is free to use "1"/"0" or "true"/"false" instead of the
+   * Home Assistant defaults, and a wrong payload fails silently — the broker
+   * accepts it and the device simply does nothing.
+   */
+  payloadOn?: string;
+  payloadOff?: string;
+  /**
+   * Separate topic for level, when the firmware declares one. Home Assistant
+   * keeps brightness off the on/off command topic; simpler firmware accepts a
+   * bare level on the command topic instead.
+   */
+  brightnessCommandTopic?: string;
+  /** Full-scale value for `brightnessCommandTopic`. Home Assistant defaults to 255. */
+  brightnessScale?: number;
 }
 
 export type Capability = SensorCapability | ActuatorCapability;

@@ -40,6 +40,12 @@ export interface AssignRoleBody {
 
 export interface ActuateBody {
   command: ActuatorCommand;
+  /**
+   * Which actuator channel to drive. Optional when the device exposes exactly
+   * one actuator; required when it exposes several, such as a two-relay Shelly,
+   * where guessing would switch the wrong load.
+   */
+  channel?: string;
 }
 
 /** Each entry: the params/body the UI sends and the data it gets back. */

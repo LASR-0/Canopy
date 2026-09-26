@@ -28,6 +28,35 @@ export function connectedClientCount(): number {
   return _broker?.connectedClients ?? 0;
 }
 
+/**
+ * Publish a message as the controller itself.
+ *
+ * QoS 0 and not retained: a command is an instruction to act now, and a
+ * retained one would be replayed at every device reconnect, switching hardware
+ * on hours later for no reason.
+ *
+ * Note that aedes does not deliver a broker-originated publish back to this
+ * process's own `publish` handlers, so ingestion never sees these. Devices
+ * echoing their new state on the state topic is what closes the loop.
+ */
+export async function publishToBroker(topic: string, payload: string): Promise<void> {
+  const broker = getBroker();
+
+  return new Promise<void>((resolve, reject) => {
+    broker.publish(
+      {
+        cmd: "publish",
+        topic,
+        payload: Buffer.from(payload, "utf8"),
+        qos: 0,
+        retain: false,
+        dup: false,
+      },
+      (error?: Error) => (error ? reject(error) : resolve()),
+    );
+  });
+}
+
 type MessageHandler = (topic: string, payload: Buffer, packet: AedesPublishPacket) => void;
 const messageHandlers: MessageHandler[] = [];
 

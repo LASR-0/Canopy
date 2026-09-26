@@ -4,8 +4,13 @@
  * Any device that publishes to homeassistant/<type>/<id>/config is parsed here.
  * This covers ESPHome, Tasmota, and any other HA-compatible firmware out of the box.
  */
-import type { Device } from "@canopy/shared-types";
-import { randomUUID } from "node:crypto";
+import type { ActuatorCapability, ActuatorCommand, Device } from "@canopy/shared-types";
+import { cannotEncode, encoded, isValidLevel, type EncodeResult } from "./command.js";
+
+/** Home Assistant's own defaults, used when the firmware declares nothing. */
+const DEFAULT_PAYLOAD_ON = "ON";
+const DEFAULT_PAYLOAD_OFF = "OFF";
+const HA_DEFAULT_BRIGHTNESS_SCALE = 255;
 
 /** HA discovery config payload (subset we care about). */
 interface HaConfig {
@@ -18,6 +23,8 @@ interface HaConfig {
   payload_on?: string;
   payload_off?: string;
   brightness?: boolean;
+  brightness_command_topic?: string;
+  brightness_scale?: number;
   device?: {
     identifiers?: string[];
     name?: string;
@@ -76,6 +83,20 @@ export function parseHaDiscovery(
   const stateTopic = config.state_topic ? { stateTopic: config.state_topic } : {};
   const commandTopic = config.command_topic ? { commandTopic: config.command_topic } : {};
 
+  // Switching payloads and the brightness channel are captured for the same
+  // reason as the topics: the firmware chooses them, and a wrong guess fails
+  // silently rather than erroring.
+  const switching = {
+    ...(config.payload_on ? { payloadOn: config.payload_on } : {}),
+    ...(config.payload_off ? { payloadOff: config.payload_off } : {}),
+    ...(config.brightness_command_topic
+      ? { brightnessCommandTopic: config.brightness_command_topic }
+      : {}),
+    ...(typeof config.brightness_scale === "number"
+      ? { brightnessScale: config.brightness_scale }
+      : {}),
+  };
+
   if (component === "sensor") {
     const mapped = SENSOR_COMPONENT_MAP[config.device_class ?? ""] ??
       SENSOR_COMPONENT_MAP[component] ??
@@ -96,6 +117,7 @@ export function parseHaDiscovery(
       label: component === "switch" ? "Switch" : component === "light" ? "Light" : "Fan",
       ...stateTopic,
       ...commandTopic,
+      ...switching,
     });
   } else if (component === "number") {
     capabilities.push({
@@ -106,6 +128,7 @@ export function parseHaDiscovery(
       label: name,
       ...stateTopic,
       ...commandTopic,
+      ...switching,
     });
   }
 
@@ -127,4 +150,38 @@ export function parseHaDiscovery(
     online: true,
     runtimeHours: 0,
   };
+}
+
+/**
+ * Encode a command for a Home-Assistant-style actuator.
+ *
+ * On/off uses the payloads the firmware declared, defaulting to HA's own
+ * "ON"/"OFF". Level has two shapes because firmware disagrees: Home Assistant
+ * proper keeps brightness on its own topic with its own scale, while simpler
+ * firmware — including Canopy's simulator — accepts a bare 0–100 level on the
+ * ordinary command topic. The declared brightness topic wins when present.
+ */
+export function encodeGenericMqttCommand(
+  cap: ActuatorCapability,
+  command: ActuatorCommand,
+): EncodeResult {
+  if (command.op === "on" || command.op === "off") {
+    if (!cap.commandTopic) return cannotEncode("no_command_topic");
+    const payload = command.op === "on"
+      ? (cap.payloadOn ?? DEFAULT_PAYLOAD_ON)
+      : (cap.payloadOff ?? DEFAULT_PAYLOAD_OFF);
+    return encoded(cap.commandTopic, payload);
+  }
+
+  if (!cap.variable) return cannotEncode("not_variable");
+  if (!isValidLevel(command.value)) return cannotEncode("level_out_of_range");
+
+  if (cap.brightnessCommandTopic) {
+    const scale = cap.brightnessScale ?? HA_DEFAULT_BRIGHTNESS_SCALE;
+    const scaled = Math.round((command.value / 100) * scale);
+    return encoded(cap.brightnessCommandTopic, String(scaled));
+  }
+
+  if (!cap.commandTopic) return cannotEncode("no_command_topic");
+  return encoded(cap.commandTopic, String(Math.round(command.value)));
 }

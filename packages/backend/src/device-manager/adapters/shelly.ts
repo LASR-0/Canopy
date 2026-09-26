@@ -5,7 +5,12 @@
  *  - mDNS: Shelly devices advertise on _http._tcp with hostnames like "shelly1-AABBCC"
  *  - MQTT: Shelly Gen 1 announces on shellies/announce; Gen 2 uses /rpc/Shelly.GetDeviceInfo
  */
-import type { Device } from "@canopy/shared-types";
+import type { ActuatorCapability, ActuatorCommand, Device } from "@canopy/shared-types";
+import { cannotEncode, encoded, isValidLevel, type EncodeResult } from "./command.js";
+
+/** Gen 1 switches on lowercase words, not Home Assistant's "ON"/"OFF". */
+const SHELLY_ON = "on";
+const SHELLY_OFF = "off";
 
 /** Shelly Gen 1 announce payload shape */
 interface ShellyAnnounce {
@@ -79,7 +84,21 @@ function withMqttTopics(
     const { stateTopic, commandTopic } = shellyTopics(cap.channel, prefix);
     // Sensors have no command topic; only actuators accept one.
     if (cap.kind === "sensor") return { ...cap, stateTopic };
-    return { ...cap, stateTopic, ...(commandTopic ? { commandTopic } : {}) };
+
+    // A Gen 1 dimmer takes on/off on .../command but brightness on .../set,
+    // as a JSON body. Recording the second topic here keeps the encoder from
+    // having to rebuild it by string surgery on the first.
+    const [kind, index = "0"] = cap.channel.split(":");
+    const brightness = cap.variable && kind === "light"
+      ? { brightnessCommandTopic: `${prefix}/light/${index}/set` }
+      : {};
+
+    return {
+      ...cap,
+      stateTopic,
+      ...(commandTopic ? { commandTopic } : {}),
+      ...brightness,
+    };
   });
 }
 
@@ -140,4 +159,38 @@ export function deviceFromShellyAnnounce(
     online: true,
     runtimeHours: 0,
   };
+}
+
+/**
+ * Encode a command for a Shelly Gen 1 actuator.
+ *
+ * Shelly does not follow the Home Assistant convention: relays take lowercase
+ * "on"/"off" on their command topic, and a dimmer's brightness goes to a
+ * separate topic as a JSON body carrying both the level and the on/off state.
+ * `payloadOn` / `payloadOff` are honoured if something upstream ever sets them,
+ * but a Shelly announce never declares them.
+ */
+export function encodeShellyCommand(
+  cap: ActuatorCapability,
+  command: ActuatorCommand,
+): EncodeResult {
+  if (command.op === "on" || command.op === "off") {
+    if (!cap.commandTopic) return cannotEncode("no_command_topic");
+    const payload = command.op === "on"
+      ? (cap.payloadOn ?? SHELLY_ON)
+      : (cap.payloadOff ?? SHELLY_OFF);
+    return encoded(cap.commandTopic, payload);
+  }
+
+  if (!cap.variable) return cannotEncode("not_variable");
+  if (!isValidLevel(command.value)) return cannotEncode("level_out_of_range");
+  if (!cap.brightnessCommandTopic) return cannotEncode("no_command_topic");
+
+  // Brightness alone does not switch the light on, so the turn state is sent
+  // with it. Level zero means off rather than "on at zero brightness".
+  const level = Math.round(command.value);
+  return encoded(
+    cap.brightnessCommandTopic,
+    JSON.stringify({ turn: level > 0 ? SHELLY_ON : SHELLY_OFF, brightness: level }),
+  );
 }

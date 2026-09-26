@@ -5,7 +5,24 @@ import { db } from "../../store/index.js";
 import { devices, roleAssignments } from "../../store/schema.js";
 import { ok, err } from "../reply.js";
 import { startScan, refreshTopicIndex } from "../../device-manager/index.js";
-import type { Device, RoleAssignment } from "@canopy/shared-types";
+import { actuateDevice, validateCommand } from "../../device-manager/actuate.js";
+import type { ActuateBody, ApiErrorCode, Device, RoleAssignment } from "@canopy/shared-types";
+
+/**
+ * How an actuation failure reaches the client.
+ *
+ * `device_unreachable` is 503 rather than 400: the request was well formed and
+ * may succeed once the broker or the device is back, so a caller is right to
+ * retry it.
+ */
+const STATUS_FOR_ERROR: Record<ApiErrorCode, number> = {
+  not_found: 404,
+  validation_failed: 400,
+  device_unreachable: 503,
+  conflict: 409,
+  controller_paused: 409,
+  internal: 500,
+};
 
 function rowToDevice(row: typeof devices.$inferSelect): Device {
   const device: Device = {
@@ -142,9 +159,38 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  /** Actuate a device (Phase 6 stub — adapter layer sends real command) */
-  app.post<{ Params: { deviceId: string }; Body: unknown }>(
+  /**
+   * Drive one actuator channel.
+   *
+   * 202 rather than 200: the command has been published to the broker, which
+   * is not the same as the device having acted on it. Confirmation arrives
+   * separately, when the device echoes its state on the state topic.
+   */
+  app.post<{ Params: { deviceId: string }; Body: ActuateBody }>(
     "/devices/:deviceId/actuate",
-    async (_req, reply) => reply.send(ok({ accepted: true as const })),
+    async (req, reply) => {
+      const { command, channel } = req.body ?? {};
+
+      if (!validateCommand(command)) {
+        return reply
+          .status(400)
+          .send(err("validation_failed", 'command must be {op:"on"}, {op:"off"} or {op:"level",value:0-100}'));
+      }
+      if (channel !== undefined && typeof channel !== "string") {
+        return reply.status(400).send(err("validation_failed", "channel must be a string"));
+      }
+
+      const result = await actuateDevice(req.params.deviceId, command, channel);
+
+      if (!result.ok) {
+        return reply.status(STATUS_FOR_ERROR[result.code]).send(err(result.code, result.message));
+      }
+
+      app.log.info(
+        { deviceId: req.params.deviceId, channel: result.channel, topic: result.sent.topic },
+        "actuator command published",
+      );
+      return reply.status(202).send(ok({ accepted: true as const }));
+    },
   );
 }
