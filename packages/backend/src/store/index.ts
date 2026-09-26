@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import type { Database as SqliteDatabase } from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,6 +18,15 @@ sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
+
+/**
+ * The underlying connection.
+ *
+ * Exported for the scheduler's aggregate jobs, which are set-based SQL that
+ * Drizzle's builder would only obscure — `INSERT ... SELECT ... GROUP BY`, and
+ * `VACUUM INTO`, which has no ORM equivalent at all.
+ */
+export const sqliteConnection: SqliteDatabase = sqlite;
 
 /**
  * Initialise the live database: apply DDL then seed required rows.

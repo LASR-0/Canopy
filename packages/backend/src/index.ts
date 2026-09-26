@@ -11,6 +11,7 @@ import { workspaces, appSettings } from "./store/schema.js";
 import { buildServer, PORT } from "./api/server.js";
 import { startBroker, MQTT_PORT } from "./broker/index.js";
 import { startDeviceManager } from "./device-manager/index.js";
+import { startScheduler } from "./scheduler/index.js";
 import { eq } from "drizzle-orm";
 
 async function ensureDefaultWorkspace(): Promise<void> {
@@ -38,6 +39,7 @@ async function main() {
 
   await startBroker();
   await startDeviceManager();
+  await startScheduler();
 
   const app = await buildServer();
   await app.listen({ port: PORT, host: "127.0.0.1" });

@@ -15,9 +15,41 @@ export type AutomationSubsystem =
 
 export type ControlResolution = "on-off" | "variable" | "setpoint";
 
+/**
+ * Fires at an instant. Use for one-shot events — an irrigation pulse, a
+ * nightly flush. Evaluated in the workspace's timezone.
+ *
+ * A cron trigger is *missed* if the controller was down when it was due. That
+ * is the right behaviour for a pulse (firing a skipped watering hours late is
+ * worse than skipping it) and the wrong behaviour for a light cycle, which is
+ * what `WindowTrigger` exists for.
+ */
 export interface ScheduleTrigger {
   kind: "schedule";
   cron: string;
+}
+
+/**
+ * A daily on/off window — the photoperiod shape.
+ *
+ * Unlike cron this describes a *state*, not an event: at any instant it can
+ * answer "should this be on right now?". That is what makes it recoverable. A
+ * controller that reboots at 10:00 with lights due on at 06:00 re-derives the
+ * window and switches them on, where a cron scheduler would have missed the
+ * edge and left the tent dark all day.
+ *
+ * `on` and `off` are "HH:MM" in the workspace's timezone. An `off` at or before
+ * `on` crosses midnight, which is the normal flowering case. Equal times mean
+ * always on, a real 24h seedling setting.
+ *
+ * The automation's `actions` describe the state *inside* the window; outside
+ * it, each action's role is driven off. So a dimmable light at 80% is one
+ * action with `{ op: "level", value: 80 }`.
+ */
+export interface WindowTrigger {
+  kind: "window";
+  on: string;
+  off: string;
 }
 
 export type Comparator = "lt" | "lte" | "gt" | "gte";
@@ -30,7 +62,7 @@ export interface RuleTrigger {
   forSeconds?: number;
 }
 
-export type AutomationTrigger = ScheduleTrigger | RuleTrigger;
+export type AutomationTrigger = ScheduleTrigger | WindowTrigger | RuleTrigger;
 
 export interface AutomationAction {
   role: RoleKind;

@@ -93,6 +93,7 @@ export interface ApiRoutes {
   "GET /workspaces/:workspaceId/automations":            { res: Automation[] };
   "POST /workspaces/:workspaceId/automations":           { body: Partial<Automation>; res: Automation };
   "PATCH /workspaces/:workspaceId/automations/:id":      { body: Partial<Automation>; res: Automation };
+  "DELETE /workspaces/:workspaceId/automations/:id":     { res: { deleted: true } };
 
   // ── Journal ───────────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/grows/:growId/journal":         { res: JournalEntry[] };

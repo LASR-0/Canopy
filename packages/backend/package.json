@@ -20,6 +20,7 @@
     "aedes": "^1.0.2",
     "better-sqlite3": "^12.10.0",
     "bonjour-service": "^1.4.0",
+    "cron-parser": "^5.10.1",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5"
   },
