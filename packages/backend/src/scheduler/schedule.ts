@@ -136,3 +136,47 @@ export function isValidCron(cron: string, timeZone = "UTC"): boolean {
     return false;
   }
 }
+
+/**
+ * When a time-driven trigger next fires, or null if it is not time-driven.
+ *
+ * Used by the UI's "next event" summary, not by the scheduler itself — the
+ * scheduler decides by evaluating the present, which is what makes a window
+ * recoverable after a restart. This answers a different question: what is
+ * coming up.
+ *
+ * The window case works in minutes-until rather than by constructing a local
+ * date, which keeps it simple at the cost of being approximate across a
+ * daylight-saving boundary. A summary line that is an hour out twice a year is
+ * an acceptable trade; the scheduler's own evaluation is unaffected.
+ */
+export function nextScheduledRun(
+  trigger: { kind: string; cron?: string; on?: string; off?: string },
+  timeZone: string,
+  now: Date = new Date(),
+): Date | null {
+  if (trigger.kind === "window") {
+    const boundaries = [trigger.on, trigger.off]
+      .map((t) => (t ? parseClockTime(t) : null))
+      .filter((m): m is number => m !== null);
+    if (boundaries.length === 0) return null;
+
+    const nowMinutes = localMinutesOfDay(now, timeZone);
+    const waits = boundaries.map((b) => ((b - nowMinutes) + 1440) % 1440 || 1440);
+    const soonest = Math.min(...waits);
+    return new Date(now.getTime() + soonest * 60_000);
+  }
+
+  if (trigger.kind === "schedule" && trigger.cron) {
+    if (!isValidCron(trigger.cron, timeZone)) return null;
+    try {
+      return CronExpressionParser.parse(trigger.cron, { currentDate: now, tz: timeZone })
+        .next()
+        .toDate();
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}

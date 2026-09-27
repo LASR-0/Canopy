@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { maintenanceTasks, maintenanceCompletions, maintenanceDayNotes } from "../../store/schema.js";
 import { ok } from "../reply.js";
@@ -22,6 +22,39 @@ function rowToTask(row: typeof maintenanceTasks.$inferSelect): MaintenanceTask {
   if (row.nextDueAt)  t.nextDueAt = row.nextDueAt;
   if (row.lastDoneAt) t.lastDoneAt = row.lastDoneAt;
   return t;
+}
+
+
+/**
+ * When a task next falls due after being dealt with.
+ *
+ * Without this a completed daily task stays due forever: the row records that
+ * it was done and nothing moves it forward, so the list keeps nagging and the
+ * completion looks like it did not register.
+ *
+ * `stage` and `runtime` return null deliberately. A stage task is driven by the
+ * grow moving on, not by a clock, and a runtime task needs accumulated device
+ * hours, which nothing tracks yet. Both are left for whatever advances them
+ * rather than being given a made-up date.
+ */
+export function nextDueAfter(
+  task: Pick<MaintenanceTask, "cadence" | "intervalDays">,
+  from: Date,
+): string | null {
+  const addDays = (days: number) =>
+    new Date(from.getTime() + days * 86_400_000).toISOString();
+
+  switch (task.cadence) {
+    case "daily":
+      return addDays(1);
+    case "weekly":
+      return addDays(task.intervalDays ?? 7);
+    case "custom":
+      return addDays(task.intervalDays ?? 1);
+    case "stage":
+    case "runtime":
+      return null;
+  }
 }
 
 export async function maintenanceRoutes(app: FastifyInstance): Promise<void> {
@@ -95,9 +128,16 @@ export async function maintenanceRoutes(app: FastifyInstance): Promise<void> {
         ...completion,
         ...(req.body.note ? { note: req.body.note } : {}),
       });
+      const [task] = await db
+        .select()
+        .from(maintenanceTasks)
+        .where(eq(maintenanceTasks.id, req.params.id));
+
+      const nextDue = task ? nextDueAfter(rowToTask(task), new Date(completedAt)) : null;
+
       await db
         .update(maintenanceTasks)
-        .set({ lastDoneAt: completedAt })
+        .set({ lastDoneAt: completedAt, ...(nextDue ? { nextDueAt: nextDue } : {}) })
         .where(eq(maintenanceTasks.id, req.params.id));
       return reply.status(201).send(ok(completion));
     },
@@ -118,7 +158,71 @@ export async function maintenanceRoutes(app: FastifyInstance): Promise<void> {
         ...completion,
         ...(req.body.note ? { note: req.body.note } : {}),
       });
+
+      // A skip still moves the task on. Leaving it due would mean skipping the
+      // same task again tomorrow, and the day after.
+      const [task] = await db
+        .select()
+        .from(maintenanceTasks)
+        .where(eq(maintenanceTasks.id, req.params.id));
+      const nextDue = task ? nextDueAfter(rowToTask(task), new Date(completedAt)) : null;
+      if (nextDue) {
+        await db
+          .update(maintenanceTasks)
+          .set({ nextDueAt: nextDue })
+          .where(eq(maintenanceTasks.id, req.params.id));
+      }
+
       return reply.status(201).send(ok(completion));
+    },
+  );
+
+  /**
+   * Completion history, newest first.
+   *
+   * The History view needs what was actually done and when, which the tasks
+   * table cannot answer: a task carries only its last completion, so anything
+   * done twice or skipped is invisible there.
+   */
+  app.get<{ Params: { workspaceId: string }; Querystring: { limit?: string } }>(
+    "/workspaces/:workspaceId/maintenance/completions",
+    async (req, reply) => {
+      const limit = Math.min(Number(req.query.limit ?? 100), 500);
+      const rows = await db
+        .select()
+        .from(maintenanceCompletions)
+        .where(eq(maintenanceCompletions.workspaceId, req.params.workspaceId))
+        .orderBy(desc(maintenanceCompletions.completedAt))
+        .limit(limit);
+
+      const completions: MaintenanceCompletion[] = rows.map((row) => ({
+        id: row.id,
+        taskId: row.taskId,
+        workspaceId: row.workspaceId,
+        status: row.status as MaintenanceCompletion["status"],
+        completedAt: row.completedAt,
+        ...(row.growId ? { growId: row.growId } : {}),
+        ...(row.growDay != null ? { growDay: row.growDay } : {}),
+        ...(row.note ? { note: row.note } : {}),
+      }));
+
+      return reply.send(ok(completions));
+    },
+  );
+
+  /** Remove a task. Its completion history is kept — it still happened. */
+  app.delete<{ Params: { workspaceId: string; id: string } }>(
+    "/workspaces/:workspaceId/maintenance/:id",
+    async (req, reply) => {
+      await db
+        .delete(maintenanceTasks)
+        .where(
+          and(
+            eq(maintenanceTasks.id, req.params.id),
+            eq(maintenanceTasks.workspaceId, req.params.workspaceId),
+          ),
+        );
+      return reply.send(ok({ deleted: true as const }));
     },
   );
 

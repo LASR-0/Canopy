@@ -19,3 +19,19 @@ export function useHealthStatus() {
     uptimeSec: data?.uptimeSec,
   };
 }
+
+/**
+ * Controller status: lifecycle state, broker liveness, device count, uptime.
+ *
+ * Separate from the health probe above, which only answers "is it reachable".
+ * Polled on the scheduler's own cadence, since uptime is the only value that
+ * moves continuously.
+ */
+export function useControllerStatus() {
+  return useQuery({
+    queryKey: ["controller-status"],
+    queryFn: ({ signal }) => api("GET /controller/status", { signal }),
+    refetchInterval: 60_000,
+    retry: false,
+  });
+}

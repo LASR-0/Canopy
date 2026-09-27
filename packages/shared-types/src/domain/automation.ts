@@ -91,4 +91,10 @@ export interface Automation {
   /** Description of the active override e.g. "held off", "held at 80%". */
   overrideState?: string;
   sortOrder: number;
+  /**
+   * When this next fires, computed by the controller on read.
+   * Absent for rule triggers, which have no schedule, and for anything the
+   * controller cannot resolve. Never stored.
+   */
+  nextRunAt?: string;
 }

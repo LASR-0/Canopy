@@ -71,7 +71,7 @@ as blocked. All three were wrong. What follows was checked against the code.
   reading rollups and retention pruning run as tracked jobs. See Phase 5.
 - **Rules engine** — readings drive condition → action automations, with
   threshold alerts and device up/down recorded to the timeline. See Phase 6.
-- **Tests** — 214 passing across 12 files.
+- **Tests** — 222 passing across 13 files.
 
 ### Recently fixed (Phase 0)
 
@@ -124,10 +124,12 @@ DB-backed and real: `grows`, `workspaces`, `maintenance`, `devices`, `settings`,
 ### Placeholder pages
 
 17–18 line "coming soon" shells: `Automation`, `GrowCycle`, `Journal`,
-`Logging`, `Maintenance`, `SetupView`.
+`Logging`, `SetupView`.
 
-Note that **Maintenance already has a complete DB-backed backend** — only the
-page is missing. It is the cheapest win on the board.
+**Maintenance is built** (Phase 7). Its CSS was ported wholesale from the
+prototype and resolves entirely against the existing Primer tokens, which is
+the pattern to repeat for the remaining pages: the design debt is zero, but the
+stylesheet still has to be carried across.
 
 ### Not started
 
@@ -390,8 +392,29 @@ multi-tent screen. See "Not started".
 
 In dependency order:
 
-1. **Maintenance** — backend already done, cheapest win.
-2. **Automation** — needs Phases 5 and 6.
+1. **Maintenance** ✅ done — Today / Week / History, built from the prototype.
+
+   Three backend gaps surfaced while building it, all invisible until a screen
+   actually used the data. Completing a task set `lastDoneAt` but never advanced
+   `nextDueAt`, so a completed daily task stayed due forever and the completion
+   looked like it had not registered; a skip did the same. There was no way to
+   list completions, which History needs — a task carries only its *last*
+   completion, so anything done twice or skipped was invisible. And there was no
+   delete.
+
+   `nextDueAfter` returns null for `stage` and `runtime` deliberately rather
+   than inventing a date: a stage task is moved on by the grow, and a runtime
+   task needs device hours that nothing accumulates. The Week view lists those
+   under "Not on a date" instead of guessing them onto a day, and carries
+   anything already overdue into Today — a task that fell due last week has a
+   date outside the window, and dropping it would hide the one task most needing
+   attention.
+
+   "Needs attention" is derived from real state, offline devices and overdue
+   tasks, rather than a separate health model.
+
+2. **Automation** *(next)* — Phases 5 and 6 supply everything it needs: window
+   and cron schedules, rule triggers, and a DB-backed automations route.
 3. **Logging** — unblocked: Phase 3 supplies the readings and Phase 5 the
    rollups the longer ranges chart from.
 4. **Grow Cycle** and **Journal** — their routes are stubs; do the backend

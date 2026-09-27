@@ -11,11 +11,13 @@ import { useThresholds } from "@/hooks/useThresholds";
 import { useEvents } from "@/hooks/useEvents";
 import { useMaintenanceToday, useCompleteTask } from "@/hooks/useMaintenance";
 import { useDevices, useScan } from "@/hooks/useDevices";
+import { useAutomations } from "@/hooks/useAutomations";
+import { useControllerStatus } from "@/hooks/useBackend";
 import { evalThreshold } from "@/lib/thresholds";
 import { calcGrowStage } from "@/lib/growStage";
 import { api } from "@/lib/http";
 import type { Reading, SensorThreshold, GrowCycle, AppEvent, MaintenanceTask, Device, ReadingResolution } from "@canopy/shared-types";
-import type { Metric, GrowStageName } from "@canopy/shared-types";
+import type { Metric, GrowStageName, Automation } from "@canopy/shared-types";
 
 // ── Metric display config ────────────────────────────────────────────────
 
@@ -234,6 +236,182 @@ function FeedRow({ event }: { event: AppEvent }) {
   );
 }
 
+
+/** "in 3h 42m", or "now" when it is due within the minute. */
+function untilText(iso: string, now = Date.now()): string {
+  const ms = new Date(iso).getTime() - now;
+  if (ms <= 60_000) return "now";
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `in ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `in ${hours}h ${mins % 60}m`;
+  return `in ${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+function uptimeText(seconds: number): string {
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${String(hours).padStart(2, "0")}h`;
+  if (hours > 0) return `${hours}h ${String(mins).padStart(2, "0")}m`;
+  return `${mins}m`;
+}
+
+/**
+ * The four-cell summary from the prototype, backed by real state.
+ *
+ * Every figure here is measured, not placeholder: metrics judged against their
+ * configured bands, automations that are actually enabled, the soonest
+ * scheduled fire time the controller computed, and the controller's own uptime.
+ */
+function SummaryStrip({
+  readings, thresholds, stage, automations, uptimeSec, brokerOnline,
+}: {
+  readings: Reading[];
+  thresholds: SensorThreshold[];
+  stage?: GrowStageName;
+  automations: Automation[];
+  uptimeSec?: number;
+  brokerOnline?: boolean;
+}) {
+  const offTarget = readings.filter(
+    (r) => evalThreshold(r.value, r.metric, thresholds, stage) !== "ok",
+  ).length;
+  const breached = readings.filter(
+    (r) => evalThreshold(r.value, r.metric, thresholds, stage) === "err",
+  ).length;
+
+  const enabled = automations.filter((a) => a.enabled);
+
+  const next = enabled
+    .filter((a) => a.nextRunAt)
+    .sort((a, b) => a.nextRunAt!.localeCompare(b.nextRunAt!))[0];
+
+  const environmentLabel = breached > 0 ? "Off target" : offTarget > 0 ? "Drifting" : "Stable";
+  const environmentTag = breached > 0 ? "b-err" : offTarget > 0 ? "b-warn" : "b-ok";
+
+  return (
+    <div className="summary-strip">
+      <div className="summary-cell">
+        <div className="sc-label">Environment</div>
+        <div className="sc-val">
+          {environmentLabel}
+          <span className={`tag ${environmentTag}`}>
+            {breached > 0 ? "Breached" : offTarget > 0 ? "Watch" : "Nominal"}
+          </span>
+        </div>
+        <div className="sc-sub">
+          {thresholds.length === 0
+            ? "no thresholds configured"
+            : `${offTarget} metric${offTarget === 1 ? "" : "s"} outside target`}
+        </div>
+      </div>
+
+      <div className="summary-cell">
+        <div className="sc-label">Automations</div>
+        <div className="sc-val">
+          {enabled.length}
+          <span style={{ fontSize: 13, color: "var(--fg-muted)", fontWeight: 400 }}>
+            / {automations.length} active
+          </span>
+        </div>
+        <div className="sc-sub">
+          {automations.length === 0 ? "none configured" : `${automations.length - enabled.length} paused`}
+        </div>
+      </div>
+
+      <div className="summary-cell">
+        <div className="sc-label">Next event</div>
+        <div className="sc-val">{next?.name ?? "—"}</div>
+        <div className="sc-sub">
+          {next?.nextRunAt ? `${untilText(next.nextRunAt)} · ${next.subsystem}` : "nothing scheduled"}
+        </div>
+      </div>
+
+      <div className="summary-cell">
+        <div className="sc-label">Uptime</div>
+        <div className="sc-val">{uptimeSec != null ? uptimeText(uptimeSec) : "—"}</div>
+        <div className="sc-sub">controller · broker {brokerOnline ? "online" : "offline"}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Activity feed.
+ *
+ * One box showing one kind of activity at a time. The two feeds used to sit
+ * stacked in the sidebar, which pushed the page far past the readings it exists
+ * to show. The arrow switches between them and the count button cycles how much
+ * is shown, so the default stays a summary and opens up only when something
+ * needs chasing.
+ */
+const FEED_LIMITS = [5, 10, 15, 0] as const;
+type FeedLimit = (typeof FEED_LIMITS)[number];
+
+const FEED_VIEWS = [
+  { id: "automation", label: "Automation", icon: "automation" as IconName },
+  { id: "system", label: "Activity", icon: "clock" as IconName },
+] as const;
+
+function ActivityFeed({ events }: { events: AppEvent[] }) {
+  const [viewIndex, setViewIndex] = useState(0);
+  const [limitIndex, setLimitIndex] = useState(0);
+
+  const view = FEED_VIEWS[viewIndex]!;
+  const limit = FEED_LIMITS[limitIndex]!;
+
+  const visible = useMemo(
+    () =>
+      events.filter((e) =>
+        view.id === "automation"
+          ? e.type === "automation_fired"
+          : e.type !== "automation_fired",
+      ),
+    [events, view.id],
+  );
+
+  const shown = limit === 0 ? visible : visible.slice(0, limit);
+
+  return (
+    <div className="box">
+      <div className="box-head">
+        <Icon name={view.icon} size={14} />
+        <h3>{view.label}</h3>
+        <span className="count">{visible.length}</span>
+
+        <button
+          className="feed-switch"
+          onClick={() => setViewIndex((i) => (i + 1) % FEED_VIEWS.length)}
+          title={`Show ${FEED_VIEWS[(viewIndex + 1) % FEED_VIEWS.length]!.label.toLowerCase()}`}
+        >
+          <Icon name="arrow-right" size={13} />
+        </button>
+
+        <span className="rule" />
+
+        <button
+          className="feed-limit"
+          onClick={() => setLimitIndex((i) => (i + 1) % FEED_LIMITS.length)}
+          title="Change how many are shown"
+        >
+          {limit === 0 ? "All" : limit}
+        </button>
+      </div>
+
+      {visible.length > 0 ? (
+        <div className="feed">
+          {shown.map((e) => <FeedRow key={e.id} event={e} />)}
+        </div>
+      ) : (
+        <div className="feed-empty">
+          {view.id === "automation" ? "No automation activity yet" : "Nothing else has happened yet"}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DevicePill({ device }: { device: Device }) {
   return (
     <div className="device-pill">
@@ -271,14 +449,13 @@ export function Overview() {
   const { data: events = [] }       = useEvents(workspace?.id);
   const maintenanceToday            = useMaintenanceToday(workspace?.id);
   const { data: devices = [] }      = useDevices(workspace?.id);
+  const { data: automations = [] }  = useAutomations(workspace?.id);
+  const { data: controller }        = useControllerStatus();
   const scan                        = useScan(workspace?.id);
 
   const stageInfo    = grow ? calcGrowStage(grow) : undefined;
   const currentStage = stageInfo?.stage;
   const readingList  = useMemo(() => Array.from(readings.values()), [readings]);
-
-  const automationEvents = useMemo(() => events.filter((e) => e.type === "automation_fired"), [events]);
-  const recentEvents     = useMemo(() => events.filter((e) => e.type !== "automation_fired"), [events]);
 
   const crumbs = workspace
     ? grow && stageInfo
@@ -351,8 +528,19 @@ export function Overview() {
           {grow && <GrowBanner grow={grow} />}
 
           <div className="ov-layout">
-            {/* ── Left column: sensors + devices ─────────── */}
+            {/* ── Left column: summary, sensors, devices ─── */}
+            {/* The strip lives inside the grid rather than above it, so the
+                activity column starts level with it at the top of the page
+                instead of below a full-width band. */}
             <div>
+              <SummaryStrip
+                readings={readingList}
+                thresholds={thresholds}
+                {...(currentStage ? { stage: currentStage } : {})}
+                automations={automations}
+                {...(controller ? { uptimeSec: controller.uptimeSec, brokerOnline: controller.brokerOnline } : {})}
+              />
+
               {readingList.length === 0 && (
                 <div className="set-empty">
                   <div className="se-ico"><Icon name="leaf" size={30} /></div>
@@ -439,39 +627,7 @@ export function Overview() {
                 </div>
               )}
 
-              <div className="box">
-                <div className="box-head">
-                  <Icon name="automation" size={14} />
-                  <h3>Automation Activity</h3>
-                  {automationEvents.length > 0 && <span className="count">{automationEvents.length}</span>}
-                </div>
-                {automationEvents.length > 0 ? (
-                  <div className="feed">
-                    {automationEvents.slice(0, 15).map((e) => <FeedRow key={e.id} event={e} />)}
-                  </div>
-                ) : (
-                  <div style={{ padding: "20px 16px", fontSize: 13, color: "var(--fg-subtle)", textAlign: "center" }}>
-                    No automation activity yet
-                  </div>
-                )}
-              </div>
-
-              <div className="box">
-                <div className="box-head">
-                  <Icon name="clock" size={14} />
-                  <h3>Recent Activity</h3>
-                  {recentEvents.length > 0 && <span className="count">{recentEvents.length}</span>}
-                </div>
-                {recentEvents.length > 0 ? (
-                  <div className="feed">
-                    {recentEvents.slice(0, 15).map((e) => <FeedRow key={e.id} event={e} />)}
-                  </div>
-                ) : (
-                  <div style={{ padding: "20px 16px", fontSize: 13, color: "var(--fg-subtle)", textAlign: "center" }}>
-                    No activity yet
-                  </div>
-                )}
-              </div>
+              <ActivityFeed events={events} />
             </div>
           </div>
         </div>

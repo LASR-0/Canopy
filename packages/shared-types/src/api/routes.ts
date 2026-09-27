@@ -107,6 +107,8 @@ export interface ApiRoutes {
   "PATCH /workspaces/:workspaceId/maintenance/:id":               { body: Partial<MaintenanceTask>; res: MaintenanceTask };
   "POST /workspaces/:workspaceId/maintenance/:id/complete":       { body: { note?: string }; res: MaintenanceCompletion };
   "POST /workspaces/:workspaceId/maintenance/:id/skip":           { body: { note?: string }; res: MaintenanceCompletion };
+  "GET /workspaces/:workspaceId/maintenance/completions":         { res: MaintenanceCompletion[] };
+  "DELETE /workspaces/:workspaceId/maintenance/:id":              { res: { deleted: true } };
   "GET /workspaces/:workspaceId/maintenance/day-notes":           { res: MaintenanceDayNote[] };
   "POST /workspaces/:workspaceId/maintenance/day-notes":          { body: Partial<MaintenanceDayNote>; res: MaintenanceDayNote };
 

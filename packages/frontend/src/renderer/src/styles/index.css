@@ -374,8 +374,11 @@ body {
 .ch-titles { flex: 1; min-width: 0; }
 .ch-crumb { font-size: 12px; color: var(--fg-muted); display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .ch-crumb .sep { color: var(--fg-subtle); }
-.ch-title { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px; color: var(--fg-default); }
-.ch-actions { display: flex; align-items: center; gap: 8px; }
+.ch-title { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px; color: var(--fg-default); flex-wrap: wrap; row-gap: 6px; }
+/* Badges wrap under the title rather than being clipped by the actions, which
+   keep their natural width. The Maintenance header is the crowded case: two
+   badges, a notification control and three tabs. */
+.ch-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
 /* ── buttons ───────────────────────────────────────────────── */
 .btn {
@@ -611,7 +614,11 @@ body {
 .icon-ghost:hover { color: var(--fg-default); background: var(--canvas-subtle); }
 .dev-caps { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid var(--border-muted); padding-top: 11px; }
 .cap-group { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.cap-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-subtle); width: 50px; flex: 0 0 50px; }
+/* Was a fixed 50px, which clipped "CONTROLS" and let the chips overlap it.
+   Sized to its own text instead: forcing a shared width to line the two rows
+   up padded "READS" out with dead space for the sake of an alignment nobody
+   was reading. */
+.cap-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-subtle); flex: 0 0 auto; white-space: nowrap; padding-right: 2px; }
 .cap-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; background: var(--canvas-subtle); border: 1px solid var(--border-muted); border-radius: 6px; padding: 2px 8px; color: var(--fg-default); }
 .ctrl-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; color: var(--fg-default); background: var(--canvas-subtle); border: 1px solid var(--border-muted); border-radius: 6px; padding: 2px 8px; }
 .ctrl-chip svg { color: var(--fg-muted); }
@@ -1313,3 +1320,212 @@ body {
 .maint-row       { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border-muted); }
 .maint-row:last-child { border-bottom: none; }
 .maint-name      { flex: 1; font-size: 13px; color: var(--fg-default); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ==========================================================================
+   MAINTENANCE
+   Ported from prototype/SetupView_Configured_dark.html. Every value already
+   resolves against the Primer tokens above, so nothing new is introduced here.
+   ========================================================================== */
+.mt-prog { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-muted); font-family: var(--mono); }
+.mt-prog-bar { width: 90px; height: 6px; border-radius: 4px; background: var(--canvas-subtle); border: 1px solid var(--border-muted); overflow: hidden; }
+.mt-prog-fill { height: 100%; background: var(--success-fg); border-radius: 4px; transition: width .2s; }
+.notif-pref { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg-muted); border: 1px solid var(--border-default); border-radius: 6px; padding: 4px 10px 4px 11px; background: var(--canvas-default); white-space: nowrap; }
+.notif-pref svg { color: var(--fg-muted); }
+
+/* needs attention */
+.na-panel { border: 1px solid rgba(187,128,9,0.35); border-radius: 8px; background: var(--canvas-default); margin-bottom: 18px; overflow: hidden; }
+.na-head { display: flex; align-items: center; gap: 9px; padding: 10px 14px; background: var(--attention-muted); border-bottom: 1px solid rgba(187,128,9,0.22); }
+.na-head .na-ico { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; background: rgba(187,128,9,0.18); color: var(--attention-fg); flex: 0 0 24px; }
+.na-head h3 { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.na-head .na-count { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); border: 1px solid var(--border-muted); border-radius: 20px; padding: 0 7px; }
+.na-head .na-note { margin-left: auto; font-size: 11px; color: var(--fg-muted); font-family: var(--mono); display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.na-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--border-muted); }
+.na-row:first-child { border-top: none; }
+.na-sev { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; flex: 0 0 30px; }
+.na-sev.warn { background: var(--attention-muted); color: var(--attention-fg); }
+.na-sev.err { background: var(--danger-muted); color: var(--danger-fg); }
+.na-info { flex: 1; min-width: 0; }
+.na-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.na-meta { font-size: 11.5px; color: var(--fg-muted); font-family: var(--mono); margin-top: 1px; }
+.na-meta .na-dev { color: var(--accent-fg); }
+.na-act { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+/* task list */
+.mt-group { margin-bottom: 8px; }
+.mt-group-h { display: flex; align-items: center; gap: 9px; padding: 8px 2px; }
+.mt-group-h h4 { font-size: 12px; font-weight: 600; color: var(--fg-default); }
+.mt-group-h .gh-sub { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); }
+.mt-group-h .rule { flex: 1; height: 1px; background: var(--border-muted); }
+.task-list { border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; background: var(--canvas-default); }
+.task-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--border-muted); }
+.task-row:first-child { border-top: none; }
+.task-row:hover { background: var(--canvas-subtle); }
+.task-row.done { background: color-mix(in srgb, var(--success-fg) 5%, var(--canvas-default)); }
+.task-row.done:hover { background: color-mix(in srgb, var(--success-fg) 9%, var(--canvas-default)); }
+.tcheck { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--border-default); background: var(--canvas-inset); cursor: pointer; display: grid; place-items: center; flex: 0 0 20px; color: transparent; transition: all .12s; }
+.tcheck:hover { border-color: var(--success-fg); }
+.tcheck.on { background: var(--success-emphasis); border-color: var(--success-emphasis); color: #fff; }
+.t-ico { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: 0 0 28px; background: var(--canvas-subtle); border: 1px solid var(--border-muted); }
+.t-info { flex: 1; min-width: 0; }
+.t-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-row.done .t-name { color: var(--fg-muted); text-decoration: line-through; text-decoration-color: var(--fg-subtle); }
+.t-sub { font-size: 11.5px; color: var(--fg-muted); font-family: var(--mono); margin-top: 1px; display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-sub > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-sub > span:first-child { flex: 0 0 auto; }
+.t-sub .t-dev { color: var(--fg-subtle); }
+.cadence-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; font-family: var(--sans); padding: 1px 7px; border-radius: 20px; cursor: pointer; border: 1px solid transparent; white-space: nowrap; }
+.cadence-tag:hover { border-color: var(--fg-subtle); }
+.cad-daily { background: var(--accent-muted); color: var(--accent-fg); }
+.cad-weekly { background: var(--done-muted); color: var(--done-fg); }
+.cad-stage { background: var(--success-muted); color: var(--success-fg); }
+.cad-runtime { background: var(--attention-muted); color: var(--attention-fg); }
+.cad-custom { background: var(--canvas-subtle); color: var(--fg-muted); border: 1px solid var(--border-muted); }
+.t-bell { width: 28px; height: 28px; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; display: grid; place-items: center; flex: 0 0 28px; color: var(--fg-subtle); }
+.t-bell:hover { background: var(--canvas-subtle); color: var(--fg-default); border-color: var(--border-default); }
+.t-bell.on { color: var(--accent-fg); }
+.t-done-at { font-size: 11px; color: var(--success-fg); font-family: var(--mono); flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
+.t-del { width: 28px; height: 28px; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; display: grid; place-items: center; flex: 0 0 28px; color: var(--fg-subtle); }
+.t-del:hover { background: var(--danger-muted); color: var(--danger-fg); }
+
+/* cadence editor popover (inline) */
+.cad-pop { border-top: 1px solid var(--border-muted); background: var(--canvas-inset); padding: 11px 14px 12px 54px; display: flex; flex-direction: column; gap: 10px; }
+.cad-opts { display: flex; flex-wrap: wrap; gap: 7px; }
+.cad-opt { font-size: 12px; font-weight: 500; font-family: var(--sans); padding: 4px 11px; border-radius: 6px; border: 1px solid var(--border-default); background: var(--canvas-default); color: var(--fg-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cad-opt:hover { color: var(--fg-default); border-color: var(--fg-subtle); }
+.cad-opt.on { background: var(--accent-muted); border-color: var(--accent-emphasis); color: var(--accent-fg); font-weight: 600; }
+.cad-detail { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--fg-muted); }
+.cad-detail input[type=range] { width: 150px; accent-color: var(--accent-fg); }
+.cad-detail b { color: var(--fg-default); font-family: var(--mono); }
+.cad-foot { display: flex; gap: 8px; align-items: center; }
+
+/* add task inline */
+.add-task { display: flex; align-items: center; gap: 11px; padding: 11px 14px; border-top: 1px dashed var(--border-default); }
+.add-task input.atext { flex: 1; }
+.add-task-trigger { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 10px; border: none; border-top: 1px solid var(--border-muted); background: transparent; color: var(--accent-fg); font-size: 12.5px; font-weight: 600; font-family: var(--sans); cursor: pointer; }
+.add-task-trigger:hover { background: var(--canvas-subtle); }
+
+/* week grid */
+.wk-grid { border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; background: var(--canvas-default); }
+.wk-scroll { overflow-x: auto; }
+.wk-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.wk-table th, .wk-table td { border-bottom: 1px solid var(--border-muted); border-right: 1px solid var(--border-muted); }
+.wk-table th:last-child, .wk-table td:last-child { border-right: none; }
+.wk-table thead th { background: var(--canvas-subtle); padding: 9px 10px; text-align: center; font-size: 11px; font-weight: 600; color: var(--fg-muted); position: sticky; top: 0; }
+.wk-table thead th.tcol { text-align: left; width: 250px; }
+.wk-table th .wd { font-size: 13px; color: var(--fg-default); }
+.wk-table th .wn { font-size: 10px; color: var(--fg-subtle); font-family: var(--mono); font-weight: 400; }
+.wk-table th.today { background: var(--accent-muted); }
+.wk-table th.today .wd { color: var(--accent-fg); }
+.wk-tname { padding: 8px 12px; font-size: 12.5px; }
+.wk-tname .wt-n { font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.wk-tname .wt-s { font-size: 10.5px; color: var(--fg-subtle); font-family: var(--mono); margin-top: 1px; }
+.wk-cell { text-align: center; height: 44px; vertical-align: middle; }
+.wk-cell.today { background: color-mix(in srgb, var(--accent-fg) 5%, transparent); }
+.wk-mark { width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; }
+.wk-mark.done { background: var(--success-muted); color: var(--success-fg); }
+.wk-mark.missed { background: var(--danger-muted); color: var(--danger-fg); }
+.wk-mark.due { background: var(--attention-muted); color: var(--attention-fg); border: 1px dashed rgba(187,128,9,0.5); }
+.wk-na { color: var(--fg-subtle); font-size: 13px; }
+.wk-legend { display: flex; gap: 16px; padding: 11px 14px; font-size: 11.5px; color: var(--fg-muted); }
+.wk-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.wk-legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+
+/* history */
+.hist-grid { display: grid; grid-template-columns: 300px 1fr; gap: 18px; align-items: start; }
+@media (max-width: 900px) { .hist-grid { grid-template-columns: 1fr; } }
+.hist-weeks { display: flex; flex-direction: column; }
+.hw-week { border: 1px solid var(--border-default); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+.hw-wlabel { padding: 9px 13px; background: var(--canvas-subtle); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.hw-wlabel .hw-rate { margin-left: auto; font-size: 11px; font-family: var(--mono); color: var(--fg-muted); }
+.hw-day { display: flex; align-items: center; gap: 10px; padding: 9px 13px; border-top: 1px solid var(--border-muted); cursor: pointer; width: 100%; background: transparent; border-left: none; border-right: none; border-bottom: none; font-family: var(--sans); text-align: left; }
+.hw-day:hover { background: var(--canvas-subtle); }
+.hw-day.sel { background: var(--accent-muted); }
+.hw-ring { width: 26px; height: 26px; flex: 0 0 26px; }
+.hw-dinfo { flex: 1; min-width: 0; }
+.hw-dname { font-size: 12.5px; font-weight: 600; }
+.hw-dsub { font-size: 10.5px; color: var(--fg-subtle); font-family: var(--mono); }
+.hw-dcount { font-size: 11px; font-family: var(--mono); color: var(--fg-muted); }
+.rec-card { border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); overflow: hidden; }
+.rec-head { padding: 13px 16px; border-bottom: 1px solid var(--border-default); background: var(--canvas-subtle); display: flex; align-items: center; gap: 11px; }
+.rec-head .rh-day { font-size: 15px; font-weight: 700; }
+.rec-head .rh-date { font-size: 11.5px; color: var(--fg-muted); font-family: var(--mono); }
+.rec-head .rh-badge { margin-left: auto; }
+.rec-ro { margin-left: 8px; font-size: 10.5px; color: var(--fg-subtle); font-family: var(--mono); display: inline-flex; align-items: center; gap: 4px; }
+.rec-sec { padding: 6px 0; }
+.rec-sec-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-subtle); font-weight: 600; padding: 9px 16px 4px; }
+.rec-row { display: flex; align-items: center; gap: 11px; padding: 7px 16px; font-size: 12.5px; }
+.rec-mk { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; flex: 0 0 18px; }
+.rec-mk.done { background: var(--success-muted); color: var(--success-fg); }
+.rec-mk.skip { background: var(--canvas-subtle); color: var(--fg-subtle); border: 1px solid var(--border-muted); }
+.rec-row.skipped .rt { color: var(--fg-muted); }
+.rec-row .rt { flex: 1; }
+.rec-row .rt-time { font-size: 10.5px; color: var(--fg-subtle); font-family: var(--mono); }
+.rec-note { margin: 6px 16px 12px; padding: 10px 12px; background: var(--canvas-inset); border: 1px solid var(--border-muted); border-radius: 7px; font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; }
+.rec-note b { color: var(--fg-default); font-weight: 600; }
+
+/* Inline "add task" field. The prototype had no equivalent, so this borrows
+   the .field input treatment rather than introducing a new look. */
+.mt-add-input {
+  flex: 1;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--fg-default);
+  font-size: 13px;
+  padding: 7px 10px;
+  font-family: var(--sans);
+}
+.mt-add-input:focus {
+  outline: none;
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+/* Narrow windows: drop the notification control's label before the header
+   starts clipping. The icon and the switch still say what it is. */
+@media (max-width: 1150px) {
+  .notif-pref .notif-label { display: none; }
+}
+
+/* Row labels inside the add-task form, aligned so the option groups line up. */
+.mt-form-label {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  min-width: 52px;
+  flex: 0 0 auto;
+}
+
+/* ── overview activity feed controls ───────────────────────── */
+/* The feed used to be two boxes stacked in the sidebar, which pushed the page
+   far past the readings. One box: the arrow switches which kind of activity is
+   shown, the count button cycles how much of it. */
+.feed-switch,
+.feed-limit {
+  display: inline-grid;
+  place-items: center;
+  height: 20px;
+  border: 1px solid var(--border-muted);
+  border-radius: 5px;
+  background: var(--canvas-default);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.feed-switch:hover,
+.feed-limit:hover { color: var(--fg-default); border-color: var(--fg-subtle); }
+
+.feed-switch { width: 20px; }
+
+.feed-limit {
+  min-width: 30px;
+  padding: 0 7px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
+.feed-empty {
+  padding: 18px 16px;
+  font-size: 12.5px;
+  color: var(--fg-subtle);
+  text-align: center;
+}

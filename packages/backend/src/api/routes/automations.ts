@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../store/index.js";
-import { automations } from "../../store/schema.js";
-import { isValidCron, parseClockTime } from "../../scheduler/schedule.js";
+import { automations, workspaces } from "../../store/schema.js";
+import { isValidCron, nextScheduledRun, parseClockTime } from "../../scheduler/schedule.js";
 import { refreshRules } from "../../rules/index.js";
 import { ok, err } from "../reply.js";
 import type { Automation, AutomationTrigger } from "@canopy/shared-types";
@@ -87,7 +87,28 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
         .from(automations)
         .where(eq(automations.workspaceId, req.params.workspaceId))
         .orderBy(automations.sortOrder);
-      return reply.send(ok(rows.map(rowToAutomation)));
+
+      // Next fire time is computed here rather than stored: it depends on the
+      // clock, and a stored value would be stale the moment it was written.
+      const [space] = await db
+        .select({ timezone: workspaces.timezone })
+        .from(workspaces)
+        .where(eq(workspaces.id, req.params.workspaceId));
+      const timeZone = space?.timezone ?? "UTC";
+      const now = new Date();
+
+      const list = rows.map((row) => {
+        const automation = rowToAutomation(row);
+        if (!automation.enabled) return automation;
+        const next = nextScheduledRun(
+          automation.trigger as { kind: string; cron?: string; on?: string; off?: string },
+          timeZone,
+          now,
+        );
+        return next ? { ...automation, nextRunAt: next.toISOString() } : automation;
+      });
+
+      return reply.send(ok(list));
     },
   );
 
