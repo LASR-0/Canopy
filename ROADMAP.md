@@ -10,7 +10,7 @@ and the current plan. **Read it before changing anything.** The project is
 already scaffolded — never run a scaffolder or re-init; add dependencies with
 `pnpm add` inside the right package.
 
-Last verified against the code: **2026-09-26**.
+Last verified against the code: **2026-09-29**.
 
 ---
 
@@ -73,9 +73,9 @@ as blocked. All three were wrong. What follows was checked against the code.
   threshold alerts and device up/down recorded to the timeline. See Phase 6.
 - **Broker publish ACL** — command topics are closed to MQTT clients, so nothing
   on the LAN can switch hardware. See "MQTT hardening".
-- **Maintenance and Automation pages** are built and wired to real endpoints.
-  See Phase 7.
-- **Tests** — 295 passing across 17 files.
+- **Maintenance, Automation, Logging, Grow Cycle and Journal pages** are built
+  and wired to real endpoints. See Phase 7.
+- **Tests** — 327 passing across 19 files.
 
 ### Recently fixed (Phase 0)
 
@@ -133,7 +133,8 @@ numbers. What remains:
 
 ### Stubbed routes
 
-Return fabricated or empty data, not persisted: `journal`.
+None. `journal` and grow `milestones` were the last two, and are DB-backed as
+of Phase 7.
 
 `events` is written by the scheduler, the rules engine, threshold checking and
 the heartbeat monitor as of Phase 6. It still has no write route, which is
@@ -144,20 +145,21 @@ correct: events are recorded by the subsystem that caused them, not posted.
 `controller` is fully real: `brokerOnline` and `deviceCount` since Phase 3, and
 `POST /controller/command` honours pause/resume/stop since Phase 4.
 
-DB-backed and real: `grows`, `workspaces`, `maintenance`, `devices`, `settings`,
-`chart-layouts`, `thresholds`, `readings` (read and write paths).
+DB-backed and real: `grows`, `milestones`, `journal`, `workspaces`,
+`maintenance`, `devices`, `settings`, `chart-layouts`, `thresholds`, `readings`
+(read and write paths).
 
 ### Placeholder pages
 
-17–18 line "coming soon" shells: `GrowCycle`, `Journal`, `SetupView`.
+One "coming soon" shell left: `SetupView`.
 
-**Maintenance, Automation and Logging are built** (Phase 7). Their CSS was
+**Maintenance, Automation, Logging, Grow Cycle and Journal are built** (Phase 7). Their CSS was
 ported wholesale from the prototype and resolves entirely against the existing
 Primer tokens, which is the pattern to repeat for the remaining pages: the design
 debt is zero, but the stylesheet still has to be carried across.
 
 **The target-ranges editor is a modal and should not stay one** — see Phase 7
-item 6. It works, so nothing is blocked on it; the shape is the open question.
+item 7. It works, so nothing is blocked on it; the shape is the open question.
 
 ### Not started
 
@@ -661,29 +663,82 @@ In dependency order:
 
    `chart-layouts` is now wired: the route had been DB-backed since the first
    commit with nothing reading it, and this is the screen it was written for.
-4. **Grow Cycle** and **Journal** *(next)* — their routes are stubs; do the
-   backend persistence first.
+4. **Grow Cycle** ✅ done — setup, timeline, stage steppers, abort and complete.
 
-   **Stage-scoped automations belong here.** `Automation.stage` is stored, and
-   both the scheduler and the rules engine read it back — and neither filters on
-   it, so a "flowering only" automation currently runs in every stage. It was
-   left out of the Automation page rather than shipped as a control that does
-   nothing.
+   **Stage-scoped automations now run only in their stage.** `grow/stage.ts`
+   caches the active grow per workspace and answers `appliesInCurrentStage` for
+   both the scheduler and the rules engine, so three subsystems read one answer
+   rather than three copies drifting apart. Refreshed whenever a grow is
+   created, started, re-planned or ended, so a change takes effect without a
+   restart.
 
-   The filter is two lines in each engine. What is not mechanical is what a
-   stage-scoped automation should do when there is *no* active grow, which is
-   the state today: skip it, and a forgotten grow leaves the tent doing nothing;
-   ignore the scope, and the setting is a lie. Thresholds avoid the question
-   because their `stage` is a refinement over an unscoped default, so an absent
-   grow degrades to the workspace band. An automation has no such fallback —
-   `stage` there is a gate. The decision needs the screen where a grow is
-   started and ended, which is this one. `rules/thresholds.ts` already caches
-   the active grow per workspace and resolves `calcGrowStage`, so the resolution
-   pattern to copy exists.
-5. **Setup View** — last, being the least operationally urgent, but it is
+   The open question is decided: **a stage-scoped automation idles when no grow
+   is running.** There is no stage for the scope to match, and running it anyway
+   would make the setting a lie. Unscoped automations are unaffected, so the tent
+   is not unmanaged, and the Grow Cycle page names the automations that are idle
+   for this reason rather than leaving it silent. Thresholds keep their own rule:
+   a stage band refines an unscoped default, so an absent grow degrades to the
+   default instead of idling.
+
+   Left for later, deliberately:
+
+   - **The Automation page still has no stage control.** The engines honour
+     `stage` now, so the control would be real, but it has not been added.
+     Small, and the next thing to pull forward if it is wanted.
+   - **The harvest report is not built.** Completing a grow records the actual
+     stage weeks, but nothing yet asks for yield, rating or notes, and the
+     `env*` summary fields are never compiled. Journal → History shows these as
+     "—" rather than inventing them, so the page works now and will fill in
+     once the report writes them.
+
+5. **Journal** ✅ done — Current (activity graph, milestones, composer,
+   notebook) and History (archive with a two-grow compare), from the prototype.
+
+   **The day and the conditions are stamped by the server, once.** `growDay`
+   and `growWeek` come from the grow's `startedAt` at write time, and any value
+   in the request body is ignored; accepting them would let two clocks disagree
+   about which day an entry belongs to. The environment snapshot is read by
+   **role**, as VPD derivation is, so a reservoir probe is never stamped as air
+   temperature. Readings older than **15 minutes** are not stamped: a sensor
+   that dropped out an hour ago still has a "latest" value, and stamping it
+   would put a confident, wrong number beside the note. The field is left empty
+   and shows as "—".
+
+   VPD is computed from the stamped pair rather than read from the derived
+   series, so the three numbers on an entry always agree with each other.
+   `computeVpd` moved to `@canopy/shared-types` so the composer's live preview
+   uses the same formula (`derived.ts` re-exports it), the same move that
+   `calcGrowStage` made.
+
+   Three places the port diverges from the prototype, all because the prototype
+   had mock data:
+
+   - **The activity graph shows only what happened.** The prototype padded quiet
+     days with invented activity. Here the shade is the number of entries that
+     day, and a milestone reached lifts an empty day to the first step. The
+     graph exists to show gaps, and fake activity would hide them.
+   - **Photo entries are not offered.** Attachments need file storage and
+     serving that do not exist, so offering the type would file a text note as
+     "Photo" beside an "Attach photo" button that does nothing. An existing
+     photo entry still renders.
+   - **Milestones can be added, ticked and removed** from the Journal, and
+     entries can be edited and deleted. The prototype only displayed them. An
+     experiment's result is usually known a week after its hypothesis, so
+     editing is what makes the experiment type work.
+
+   History opens a finished grow's journal read-only in place of the prototype's
+   "Open report", which links to the harvest report that does not exist yet.
+
+   Milestone routes were stubs as well (no persistence, no delete) and are now
+   real, scoped to the grow *and* the workspace. A `DELETE` route was added to
+   `ApiRoutes`.
+
+   **The sidebar counts are hard-coded** (`Journal 28`, `Automation 6`, …),
+   left from the prototype. Harmless but wrong; wire them or drop them.
+6. **Setup View** — last, being the least operationally urgent, but it is
    *designed* and no longer blocked.
 
-6. **Target ranges — revisit the UI.** The design is liked; the *modal* is the
+7. **Target ranges — revisit the UI.** The design is liked; the *modal* is the
    problem. Whether it becomes its own page or a tab is undecided, and that is
    the decision to make when this is picked up rather than now.
 
@@ -712,7 +767,7 @@ In dependency order:
 
 All eight pages have a high-fidelity prototype to build from — see "Reference
 material". The one exception is the target-ranges editor, which the prototype
-links to and never designs: item 6 is the only place in this phase with real
+links to and never designs: item 7 is the only place in this phase with real
 design work left.
 
 ### Phase 8 — Service install & packaging
