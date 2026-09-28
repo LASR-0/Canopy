@@ -35,11 +35,17 @@ export interface Device {
  * roles, not device IDs, so hardware can be swapped without breaking rules.
  */
 export type RoleKind =
+  // Sensing
   | "canopy_temp"
   | "canopy_rh"
+  | "canopy_light"
   | "rootzone"
   | "co2_probe"
   | "res_temp"
+  | "res_ph"
+  | "res_ec"
+  | "power_draw"
+  // Equipment
   | "exhaust"
   | "intake"
   | "circ"

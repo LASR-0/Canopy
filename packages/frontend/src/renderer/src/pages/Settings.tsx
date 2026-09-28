@@ -22,29 +22,13 @@ import {
   useDeleteWorkspace,
 } from "@/hooks/useWorkspace";
 import { useDevices, useRoles, useAssignRole, useScan } from "@/hooks/useDevices";
+import { ROLE_IDS, ROLE_META } from "@/lib/roles";
 import { useHealthStatus } from "@/hooks/useBackend";
 import { api } from "@/lib/http";
 import { wsManager } from "@/lib/ws";
 import { cn } from "@/lib/utils";
 import type { Device, RoleAssignment, AppSettings } from "@canopy/shared-types";
 
-// ── Role definitions (mirrors prototype ROLES) ────────────────────────────────
-const ROLES: { id: RoleAssignment["role"]; name: string; kind: "sense" | "control"; unlocks?: string }[] = [
-  { id: "canopy_temp",   name: "Canopy temp",        kind: "sense" },
-  { id: "canopy_rh",    name: "Canopy humidity",    kind: "sense" },
-  { id: "rootzone",     name: "Root-zone moisture", kind: "sense" },
-  { id: "co2_probe",    name: "CO₂ probe",          kind: "sense" },
-  { id: "res_temp",     name: "Reservoir temp",     kind: "sense" },
-  { id: "exhaust",      name: "Exhaust fan",        kind: "control", unlocks: "VPD / temp control" },
-  { id: "intake",       name: "Intake fan",         kind: "control", unlocks: "fresh-air exchange" },
-  { id: "circ",         name: "Circulation fan",    kind: "control", unlocks: "air mixing" },
-  { id: "light",        name: "Grow light",         kind: "control", unlocks: "photoperiod schedule" },
-  { id: "pump",         name: "Water pump",         kind: "control", unlocks: "irrigation cycles" },
-  { id: "humidifier",   name: "Humidifier",         kind: "control", unlocks: "humidity hold" },
-  { id: "dehumidifier", name: "Dehumidifier",       kind: "control", unlocks: "humidity hold" },
-  { id: "co2_valve",    name: "CO₂ valve",          kind: "control", unlocks: "CO₂ dosing" },
-  { id: "heater",       name: "Heater",             kind: "control", unlocks: "temp floor" },
-];
 
 // ── Device card ───────────────────────────────────────────────────────────────
 function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: string) => void }) {
@@ -110,6 +94,74 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
   );
 }
 
+// ── Retention value entry ─────────────────────────────────────────────────────
+/**
+ * Typed entry for a retention setting, beside its slider.
+ *
+ * The draft is held as text while the field has focus and only committed on
+ * blur or Enter. Clamping every keystroke sounds safer and is not: with a
+ * 30–365 range, typing "50" snaps the leading "5" up to 30 and the rest of the
+ * number can never be entered. Escape abandons the draft.
+ *
+ * On commit the value is snapped to the slider's step and clamped to its range,
+ * so the two controls cannot disagree about what is representable, and anything
+ * unparseable falls back to the stored value rather than writing NaN.
+ */
+function RetentionInput({ value, min, max, step, unit, onCommit }: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  onCommit: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+
+  // Follow the slider while it is being dragged, but never overwrite a draft
+  // the user is part-way through typing.
+  useEffect(() => {
+    if (!editing) setDraft(String(value));
+  }, [value, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const parsed = Number(draft.trim());
+    if (draft.trim() === "" || !Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+    const snapped = Math.round(parsed / step) * step;
+    const clamped = Math.min(max, Math.max(min, snapped));
+    setDraft(String(clamped));
+    if (clamped !== value) onCommit(clamped);
+  };
+
+  return (
+    <span className="retention-field">
+      <input
+        className="retention-input"
+        type="text"
+        inputMode="numeric"
+        aria-label={`${unit} (${min}–${max})`}
+        value={draft}
+        onFocus={() => setEditing(true)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setDraft(String(value));
+            setEditing(false);
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      <span className="retention-unit">{unit}</span>
+    </span>
+  );
+}
+
 // ── Role assignment row ───────────────────────────────────────────────────────
 function RoleRow({ device, roles, onAssign }: {
   device: Device;
@@ -118,7 +170,7 @@ function RoleRow({ device, roles, onAssign }: {
 }) {
   const isControl = device.capabilities.some((c) => c.kind === "actuator");
   const assigned = roles.find((r) => r.deviceId === device.id);
-  const roleInfo = ROLES.find((r) => r.id === assigned?.role);
+  const roleInfo = assigned ? ROLE_META[assigned.role] : undefined;
   const [localRole, setLocalRole] = useState(assigned?.role ?? "");
   const caps = [
     ...device.capabilities.filter((c) => c.kind === "sensor").map((c) => c.metric),
@@ -126,7 +178,8 @@ function RoleRow({ device, roles, onAssign }: {
   ].join(" · ") || "—";
 
   const channel = device.capabilities[0]?.channel ?? "default";
-  const compatibleRoles = ROLES.filter((r) => isControl ? r.kind === "control" : r.kind === "sense");
+  const wanted = isControl ? "control" : "sense";
+  const compatibleRoles = ROLE_IDS.filter((id) => ROLE_META[id].kind === wanted);
 
   // Keep local state in sync once the server confirms (or rolls back on error)
   useEffect(() => {
@@ -162,8 +215,8 @@ function RoleRow({ device, roles, onAssign }: {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Unassigned</SelectItem>
-            {compatibleRoles.map((r) => (
-              <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+            {compatibleRoles.map((id) => (
+              <SelectItem key={id} value={id}>{ROLE_META[id].name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -545,7 +598,11 @@ export function Settings() {
                 ))}
               </div>
 
-              {scanState === "done" && (
+              {/* Roles belong to the devices that are adopted, not to the scan
+                  that found them: gating this on scan state made the only way
+                  to assign a role the few seconds after a scan completed, and
+                  it vanished on the next remount. */}
+              {deviceList.length > 0 && (
                 <>
                   <div className="sec-head" style={{ marginTop: 28 }}>
                     <h2>Device roles</h2>
@@ -674,9 +731,7 @@ export function Settings() {
                       <div key={key} className="auto-row">
                         <div className="auto-meta">
                           <div className="auto-name">{label}</div>
-                          <div className="auto-desc" style={{ fontVariantNumeric: "tabular-nums" }}>
-                            <b>{settings[key] as number}</b> {unit}
-                          </div>
+                          <div className="auto-desc">{min}–{max} {unit}</div>
                         </div>
                         <input
                           type="range"
@@ -696,6 +751,19 @@ export function Settings() {
                           }}
                           onPointerUp={(e) => {
                             patchSettings.mutate({ [key]: Number((e.target as HTMLInputElement).value) } as never);
+                          }}
+                        />
+                        <RetentionInput
+                          value={settings[key] as number}
+                          min={min}
+                          max={max}
+                          step={step}
+                          unit={unit}
+                          onCommit={(next) => {
+                            qc.setQueryData(["settings"], (old: typeof settings) =>
+                              old ? { ...old, [key]: next } : old,
+                            );
+                            patchSettings.mutate({ [key]: next } as never);
                           }}
                         />
                       </div>

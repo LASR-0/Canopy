@@ -1074,6 +1074,40 @@ body {
   animation: canopy-select-close 0.12s ease-in forwards;
 }
 
+/*
+ * Radix injects `[data-radix-select-viewport]{scrollbar-width:none}` plus a
+ * `::-webkit-scrollbar{display:none}` rule into the head at render time, so the
+ * viewport scrolls with no visible scrollbar and the only affordance is a small
+ * chevron button. With fourteen roles in a 832px window the list is routinely
+ * taller than the space under the trigger, and options below the fold read as
+ * missing rather than scrollable.
+ *
+ * Two selectors deep so this beats Radix's single-attribute rule on specificity
+ * — it is injected after this stylesheet, so source order cannot win.
+ */
+[data-slot="select-content"] [data-radix-select-viewport] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+[data-slot="select-content"] [data-radix-select-viewport]::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+}
+[data-slot="select-content"] [data-radix-select-viewport]::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
+}
+[data-slot="select-content"] [data-radix-select-viewport]::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-subtle);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+[data-slot="select-content"] [data-radix-select-viewport]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* Items */
 [data-slot="select-item"] {
   padding-left: 14px;
@@ -1463,22 +1497,149 @@ body {
 .rec-note { margin: 6px 16px 12px; padding: 10px 12px; background: var(--canvas-inset); border: 1px solid var(--border-muted); border-radius: 7px; font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; }
 .rec-note b { color: var(--fg-default); font-weight: 600; }
 
-/* Inline "add task" field. The prototype had no equivalent, so this borrows
-   the .field input treatment rather than introducing a new look. */
-.mt-add-input {
-  flex: 1;
+/* ── new task form (Maintenance ▸ Today) ───────────────────── */
+/* The prototype had no add-task form. This one follows the .box / .box-head
+   convention the rest of the app already uses — head, body, footer — rather
+   than inventing a third container look. It deliberately does NOT reuse the
+   .cad-* classes: those belong to the cadence editor that opens inside a task
+   row, whose 54px indent aligns it under the row's icon column. This form sits
+   directly under the section header and has no column to align to. */
+.tf-card {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--canvas-default);
+  overflow: hidden;
+  margin: 14px 0 18px;
+  box-shadow: 0 1px 2px rgba(1, 4, 9, 0.06);
+}
+.tf-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--canvas-subtle);
+  border-bottom: 1px solid var(--border-default);
+}
+.tf-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg-default);
+}
+.tf-close {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.tf-close:hover {
+  background: var(--canvas-hover);
+  border-color: var(--border-muted);
+  color: var(--fg-default);
+}
+
+.tf-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+/* The name is the one thing that must be typed, so it gets the full width and
+   a size above the surrounding controls. */
+.tf-name {
+  width: 100%;
   background: var(--canvas-inset);
   border: 1px solid var(--border-default);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--fg-default);
-  font-size: 13px;
-  padding: 7px 10px;
   font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px 12px;
 }
-.mt-add-input:focus {
+.tf-name::placeholder { color: var(--fg-subtle); }
+.tf-name:focus {
   outline: none;
   border-color: var(--accent-emphasis);
   box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+/* Side by side while there is room, stacked once there is not. */
+.tf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px 18px;
+}
+.tf-group { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.tf-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+.tf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tf-chip {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 7px;
+  border: 1px solid var(--border-default);
+  background: var(--canvas-default);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.tf-chip:hover {
+  color: var(--fg-default);
+  border-color: var(--fg-subtle);
+  background: var(--canvas-subtle);
+}
+.tf-chip.on {
+  background: var(--accent-muted);
+  border-color: var(--accent-emphasis);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.tf-chip:focus-visible {
+  outline: none;
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+.tf-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  background: var(--canvas-subtle);
+  border-top: 1px solid var(--border-default);
+}
+/* States the consequence of the two choices before the task is created. */
+.tf-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+.tf-preview b { color: var(--fg-default); font-weight: 600; }
+.tf-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.tf-hint {
+  font-size: 10.5px;
+  font-family: var(--mono);
+  color: var(--fg-subtle);
+}
+/* The keyboard hint is the first thing worth dropping when the footer wraps. */
+@media (max-width: 900px) {
+  .tf-hint { display: none; }
 }
 
 /* Narrow windows: drop the notification control's label before the header
@@ -1487,12 +1648,165 @@ body {
   .notif-pref .notif-label { display: none; }
 }
 
-/* Row labels inside the add-task form, aligned so the option groups line up. */
-.mt-form-label {
+/* ── automation page ───────────────────────────────────────── */
+/* Cards reuse the .tf-* editor from the Maintenance form, so creating a task
+   and creating an automation look like the same act. Only the list row and the
+   trigger-specific inputs are new. */
+.au-list { display: flex; flex-direction: column; gap: 8px; }
+
+.au-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--canvas-default);
+  transition: border-color .15s, background .15s;
+}
+.au-card:hover { border-color: var(--fg-subtle); background: var(--canvas-subtle); }
+/* Disabled automations stay legible: they are configuration, not noise, and a
+   grower scanning the list needs to see what is switched off. */
+.au-card.off { opacity: 0.62; }
+
+.au-card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.au-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.au-name { font-size: 13px; font-weight: 600; color: var(--fg-default); }
+
+.au-detail {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
   font-size: 11.5px;
   color: var(--fg-muted);
-  min-width: 52px;
-  flex: 0 0 auto;
+}
+.au-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  color: var(--fg-default);
+}
+.au-arrow { color: var(--fg-subtle); }
+.au-effect { font-family: var(--mono); }
+
+.au-card-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.au-next {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--fg-muted);
+  border: 1px solid var(--border-muted);
+  border-radius: 20px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* ── editor: trigger-specific controls ─────────────────────── */
+.au-hint {
+  font-size: 11px;
+  color: var(--fg-subtle);
+  line-height: 1.45;
+  margin: 1px 0 0;
+  max-width: 62ch;
+}
+
+.au-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.au-inline-label { font-size: 12px; color: var(--fg-muted); }
+
+.au-time, .au-num {
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  color: var(--fg-default);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  padding: 7px 9px;
+}
+.au-time { width: 118px; }
+.au-num { width: 72px; text-align: right; }
+.au-time:focus, .au-num:focus {
+  outline: none;
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+/* The clock widget's own icon is invisible against the dark canvas. */
+[data-theme="dark"] .au-time::-webkit-calendar-picker-indicator {
+  filter: invert(0.75);
+}
+
+/* The stored cron, shown so the shortcut above it is never a black box. */
+.au-cron {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--fg-subtle);
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-muted);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+.au-actions-list { display: flex; flex-direction: column; gap: 7px; }
+.au-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 8px 9px;
+  border: 1px solid var(--border-muted);
+  border-radius: 8px;
+  background: var(--canvas-inset);
+}
+.au-action .tf-close { margin-left: auto; }
+.au-action .tf-close:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.au-level { display: inline-flex; align-items: center; gap: 8px; }
+.au-level input[type=range] { width: 108px; accent-color: var(--accent-fg); }
+.au-level b {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--fg-default);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+}
+
+.au-add-action { align-self: flex-start; }
+
+/* Group headings carry an icon, so the label needs to align with it. */
+.mt-group-h h4 { display: flex; align-items: center; gap: 6px; }
+
+/* ── retention entry (Settings ▸ Data & Storage) ────────────── */
+/* Typed entry beside each retention slider, so a value can be set exactly
+   rather than hunted for by dragging. */
+.retention-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.retention-input {
+  width: 46px;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--fg-default);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 4px 7px;
+}
+.retention-input:hover { border-color: var(--fg-subtle); }
+.retention-input:focus {
+  outline: none;
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+.retention-unit {
+  font-size: 10.5px;
+  color: var(--fg-muted);
+  font-family: var(--mono);
 }
 
 /* ── overview activity feed controls ───────────────────────── */
@@ -1515,6 +1829,17 @@ body {
 .feed-limit:hover { color: var(--fg-default); border-color: var(--fg-subtle); }
 
 .feed-switch { width: 20px; }
+
+/* Both controls sit together in the right corner. Previously they followed the
+   title and count inline, so switching between "Automation" and "Activity"
+   moved them — the label widths differ. */
+.feed-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 
 .feed-limit {
   min-width: 30px;

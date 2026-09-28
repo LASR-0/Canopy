@@ -18,24 +18,11 @@ import { calcGrowStage } from "@/lib/growStage";
 import { api } from "@/lib/http";
 import type { Reading, SensorThreshold, GrowCycle, AppEvent, MaintenanceTask, Device, ReadingResolution } from "@canopy/shared-types";
 import type { Metric, GrowStageName, Automation } from "@canopy/shared-types";
+import { METRIC_META } from "@/lib/metrics";
 
 // ── Metric display config ────────────────────────────────────────────────
-
-type MetricMeta = { label: string; color: string; icon: IconName };
-
-const METRIC_META: Record<Metric, MetricMeta> = {
-  temperature:   { label: "Temperature",   color: "#e07b39", icon: "temp"    },
-  humidity:      { label: "Humidity",      color: "#4a9eda", icon: "drop"    },
-  co2:           { label: "CO₂",           color: "#4caf7d", icon: "co2"     },
-  vpd:           { label: "VPD",           color: "#a67cd6", icon: "vpd"     },
-  soil_moisture: { label: "Soil Moisture", color: "#8d7a5f", icon: "leaf"    },
-  ph:            { label: "pH",            color: "#26b8c8", icon: "beaker"  },
-  ec:            { label: "EC",            color: "#f5a623", icon: "beaker"  },
-  lux:           { label: "Lux",           color: "#e8c53a", icon: "sun"     },
-  ppfd:          { label: "PPFD",          color: "#e8c53a", icon: "sun"     },
-  power:         { label: "Power",         color: "#e05252", icon: "power"   },
-  water_level:   { label: "Water Level",   color: "#4a9eda", icon: "ruler"   },
-};
+// The metric catalogue itself lives in lib/metrics.ts, shared with Automation.
+// Units and decimals stay here, with the cards that do the formatting.
 
 const UNIT_DISPLAY: Record<string, string> = {
   C: "°C", F: "°F", percent: "%", ppm: "ppm", kPa: "kPa",
@@ -380,23 +367,25 @@ function ActivityFeed({ events }: { events: AppEvent[] }) {
         <h3>{view.label}</h3>
         <span className="count">{visible.length}</span>
 
-        <button
-          className="feed-switch"
-          onClick={() => setViewIndex((i) => (i + 1) % FEED_VIEWS.length)}
-          title={`Show ${FEED_VIEWS[(viewIndex + 1) % FEED_VIEWS.length]!.label.toLowerCase()}`}
-        >
-          <Icon name="arrow-right" size={13} />
-        </button>
+        {/* Pinned right and adjacent, so the controls stay put when the feed
+            switches and the title's width changes underneath them. */}
+        <span className="feed-actions">
+          <button
+            className="feed-switch"
+            onClick={() => setViewIndex((i) => (i + 1) % FEED_VIEWS.length)}
+            title={`Show ${FEED_VIEWS[(viewIndex + 1) % FEED_VIEWS.length]!.label.toLowerCase()}`}
+          >
+            <Icon name="arrow-right" size={13} />
+          </button>
 
-        <span className="rule" />
-
-        <button
-          className="feed-limit"
-          onClick={() => setLimitIndex((i) => (i + 1) % FEED_LIMITS.length)}
-          title="Change how many are shown"
-        >
-          {limit === 0 ? "All" : limit}
-        </button>
+          <button
+            className="feed-limit"
+            onClick={() => setLimitIndex((i) => (i + 1) % FEED_LIMITS.length)}
+            title="Change how many are shown"
+          >
+            {limit === 0 ? "All" : limit}
+          </button>
+        </span>
       </div>
 
       {visible.length > 0 ? (
