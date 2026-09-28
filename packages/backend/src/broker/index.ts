@@ -7,6 +7,7 @@
  */
 import { Aedes, type AedesPublishPacket, type Client } from "aedes";
 import { createServer } from "node:net";
+import { authorizeClientPublish, commandTopicCount, refreshCommandTopics } from "./acl.js";
 
 export const MQTT_PORT = Number(process.env["MQTT_PORT"] ?? 1883);
 
@@ -38,6 +39,9 @@ export function connectedClientCount(): number {
  * Note that aedes does not deliver a broker-originated publish back to this
  * process's own `publish` handlers, so ingestion never sees these. Devices
  * echoing their new state on the state topic is what closes the loop.
+ *
+ * This path does not run `authorizePublish` either, which is what lets the ACL
+ * in `acl.ts` refuse command topics outright without excepting the controller.
  */
 export async function publishToBroker(topic: string, payload: string): Promise<void> {
   const broker = getBroker();
@@ -72,6 +76,10 @@ export async function startBroker(): Promise<void> {
   // clients just hang until connack timeout.
   _broker = await Aedes.createBroker();
 
+  // Command topics are controller-only. Installed before the server accepts a
+  // connection, so there is no window in which a client can drive a device.
+  _broker.authorizePublish = authorizeClientPublish;
+
   _broker.on("publish", (packet: AedesPublishPacket, client: Client | null) => {
     if (!client) return;
     for (const handler of messageHandlers) {
@@ -91,6 +99,10 @@ export async function startBroker(): Promise<void> {
     console.error(`[broker] client error (${client.id}):`, err.message);
   });
 
+  // Devices paired in an earlier run must be protected from the first packet,
+  // not from whenever the device manager finishes starting.
+  await refreshCommandTopics();
+
   const server = createServer(_broker.handle.bind(_broker));
 
   return new Promise<void>((resolve, reject) => {
@@ -98,7 +110,10 @@ export async function startBroker(): Promise<void> {
     server.on("close", () => { _listening = false; });
     server.listen(MQTT_PORT, "0.0.0.0", () => {
       _listening = true;
-      console.log(`[broker] MQTT listening on port ${MQTT_PORT}`);
+      console.log(
+        `[broker] MQTT listening on port ${MQTT_PORT} — ` +
+          `${commandTopicCount()} command topic(s) closed to clients`,
+      );
       resolve();
     });
   });

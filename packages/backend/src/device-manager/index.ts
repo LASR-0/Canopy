@@ -7,18 +7,20 @@
 import { onMqttMessage } from "../broker/index.js";
 import { handleMqttMessage } from "./mqtt-discovery.js";
 import { startHeartbeatMonitor } from "./heartbeat.js";
-import { handleTelemetry, indexedTopicCount, refreshTopicIndex } from "./ingest.js";
+import { handleTelemetry, indexedTopicCount } from "./ingest.js";
+import { refreshDeviceTopics } from "./topics.js";
 import { activeRuleCount, refreshRules } from "../rules/index.js";
 import { refreshThresholds } from "../rules/thresholds.js";
 
 export { startScan } from "./scan-session.js";
-export { refreshTopicIndex } from "./ingest.js";
+export { refreshDeviceTopics } from "./topics.js";
 
 export async function startDeviceManager(): Promise<void> {
   // Devices paired in an earlier run must be ingested from the first message,
   // without waiting for a scan, so the index is loaded before the broker's
-  // messages start flowing through.
-  await refreshTopicIndex();
+  // messages start flowing through. The broker loads its own ACL at startup,
+  // ahead of this, so command topics are never briefly open.
+  await refreshDeviceTopics();
 
   // Route all MQTT messages to discovery and to telemetry ingestion. The two
   // are independent: discovery only listens during a scan, ingestion always.

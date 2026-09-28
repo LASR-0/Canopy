@@ -4,7 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { devices, roleAssignments } from "../../store/schema.js";
 import { ok, err } from "../reply.js";
-import { startScan, refreshTopicIndex } from "../../device-manager/index.js";
+import { startScan, refreshDeviceTopics } from "../../device-manager/index.js";
 import { actuateDevice, validateCommand } from "../../device-manager/actuate.js";
 import type { ActuateBody, ApiErrorCode, Device, RoleAssignment } from "@canopy/shared-types";
 
@@ -78,8 +78,9 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         .set({ online: false, forgotten: true })
         .where(eq(devices.workspaceId, req.params.workspaceId));
       // Forgotten devices are excluded from the index, so their telemetry stops
-      // being recorded.
-      await refreshTopicIndex();
+      // being recorded. Their command topics stay closed — forgetting a device
+      // does not unplug it. See broker/acl.ts.
+      await refreshDeviceTopics();
       return reply.send(ok({ forgotten: true as const }));
     },
   );
@@ -103,7 +104,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     "/devices/:deviceId",
     async (req, reply) => {
       await db.delete(devices).where(eq(devices.id, req.params.deviceId));
-      await refreshTopicIndex();
+      await refreshDeviceTopics();
       return reply.send(ok({ deleted: true as const }));
     },
   );

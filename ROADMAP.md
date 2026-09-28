@@ -71,7 +71,9 @@ as blocked. All three were wrong. What follows was checked against the code.
   reading rollups and retention pruning run as tracked jobs. See Phase 5.
 - **Rules engine** — readings drive condition → action automations, with
   threshold alerts and device up/down recorded to the timeline. See Phase 6.
-- **Tests** — 222 passing across 13 files.
+- **Broker publish ACL** — command topics are closed to MQTT clients, so nothing
+  on the LAN can switch hardware. See "MQTT hardening".
+- **Tests** — 242 passing across 14 files.
 
 ### Recently fixed (Phase 0)
 
@@ -150,18 +152,49 @@ stylesheet still has to be carried across.
   matches nothing. Invisible while the websocket is up; after a dropped socket
   the numbers cannot be recovered without reopening the app.
 
-### Security note — decide deliberately
+### MQTT hardening — Tier 1 done, Tier 2 in Phase 8
 
-The MQTT broker binds `0.0.0.0:1883` **unauthenticated**, while HTTP binds
-`127.0.0.1`. LAN-reachable is presumably intentional (devices must connect), but
-anonymous write access to the broker means anything on the network can inject
-readings or commands. Decide on this explicitly rather than by default.
+The broker binds `0.0.0.0:1883` **unauthenticated**, while HTTP binds
+`127.0.0.1`. LAN-reachable is intentional — devices have to connect — but
+anonymous access means anything on the network can reach it.
 
-Phase 4 raised the stakes. Command topics are now real, so anything on the LAN
-can publish to one and switch a pump or a light — no longer a data-integrity
-question but a physical one. Aedes supports an `authenticate` hook; the awkward
-part is credential provisioning for devices that were adopted anonymously, which
-is why this is a decision and not a ticket.
+That is two problems, not one, and they cost very different amounts to fix:
+anything on the LAN can **switch hardware**, and anything on the LAN can
+**connect and inject readings**. Splitting them is what made the first one
+shippable on its own.
+
+**Tier 1 — command-topic ACL ✅ done.** `broker/acl.ts` refuses any *client*
+publish to a command topic. No connected client ever has cause to publish to
+one: commands originate from the controller, and the controller does not publish
+as a client. `publishToBroker()` calls `Aedes.prototype.publish`, which never
+runs `authorizePublish` — aedes invokes that hook only from the client PUBLISH
+path and the will path. So the rule needs no exception carved for the
+controller, which is the reason it is safe to make it absolute.
+
+The topic set is rebuilt from the devices table, because command topics are
+declared by the device at discovery (`config.command_topic`, or the Shelly
+prefix) and are not reconstructable from a device id. Forgotten devices are
+**included**: forgetting a device stops Canopy talking to it, it does not unplug
+it, and the "forget" button must not quietly open a hole. `refreshDeviceTopics()`
+rebuilds the ingest index and the ACL together — refreshing them at separate
+call sites would fail silently and in one direction, leaving a newly paired
+device ingested but drivable from the LAN.
+
+Overriding `authorizePublish` also replaces aedes' default, which is the only
+thing refusing client writes to `$SYS`, so that check is carried across
+explicitly rather than inherited.
+
+Verified against a live broker with a real MQTT client: a publish to
+`tent/fan/command` is refused and the connection closed, state topics, discovery
+topics and unrelated topics are accepted, and `POST /devices/:id/actuate` still
+lands on that same command topic.
+
+**Tier 2 — authentication.** Deferred to Phase 8, where it belongs: see below.
+
+**Tier 3 — per-device credentials.** Only meaningful for devices with a config
+channel to push a credential through — Shelly has an HTTP API, ESPHome and
+generic MQTT firmware are configured out of band at flash time. Revisit when
+Tier 2 lands, scoped to the families that can actually be provisioned.
 
 ---
 
@@ -437,6 +470,42 @@ The real cross-platform push, with everything else working:
 
 The rule from the original architecture still holds: **the service is never
 spawned or owned by the UI.** Closing the window must never stop the controller.
+
+**Tier 2 MQTT authentication** belongs here, because this is the phase where
+Canopy stops being a dev box and becomes a service that boots unattended.
+
+The chicken-and-egg: devices are discovered *over MQTT itself* — retained
+`homeassistant/+/+/config` and `shellies/announce` — so requiring credentials at
+CONNECT breaks zero-config discovery outright. A device cannot present a
+credential it has not been given, and it cannot be given one before it has been
+found.
+
+The scan session is the seam that resolves it. `SCAN_DURATION_MS` is already a
+20-second window opened by a deliberate user action, so use it as the security
+boundary in an `authenticate` hook:
+
+- **Known device** (credential on file) — authenticate, full rights.
+- **Anonymous, scan open** — accept, but mark the client unprovisioned so the
+  Tier 1 ACL narrows it to discovery topics only. It can announce itself; it
+  cannot inject readings.
+- **Anonymous, no scan open** — reject with `BAD_USERNAME_OR_PASSWORD`.
+
+This keeps the "press scan, devices appear" flow exactly as it is, and shrinks
+the anonymous surface from *always, everything* to *20 seconds, discovery
+topics only, while a human is watching the screen*.
+
+Three things to settle when it is built, none of which have an obvious default:
+
+- **The simulator** connects to `mqtt://127.0.0.1:1883` with no credentials, so
+  Tier 2 breaks `pnpm dev` unless loopback is exempted via `preConnect` or the
+  simulator is issued a dev credential. Exempting loopback also exempts anything
+  else running on the host.
+- **TLS, or not.** Without it, credentials cross the LAN in cleartext inside the
+  CONNECT packet. Cheap-device TLS support is patchy and cert distribution is its
+  own project. Accepting plaintext credentials on a trusted segment is
+  defensible for v1 — but decide it rather than drift into it.
+- **The bind address.** If devices live on one interface or VLAN, narrowing off
+  `0.0.0.0` is free defence in depth.
 
 ---
 

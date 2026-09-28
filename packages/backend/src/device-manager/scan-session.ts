@@ -12,7 +12,7 @@ import { devices } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
 import { runMdnsScan } from "./mdns-scanner.js";
 import { registerMqttDiscovery, unregisterMqttDiscovery } from "./mqtt-discovery.js";
-import { refreshTopicIndex } from "./ingest.js";
+import { refreshDeviceTopics } from "./topics.js";
 import type { Device } from "@canopy/shared-types";
 
 const SCAN_DURATION_MS = 20_000;
@@ -43,8 +43,8 @@ export async function startScan(workspaceId: string): Promise<string> {
     if (session) session.found++;
 
     // A newly paired device must start being ingested immediately, not on the
-    // next restart.
-    await refreshTopicIndex();
+    // next restart, and its command topic must close to the LAN just as fast.
+    await refreshDeviceTopics();
 
     broadcast({ type: "scan.device_found", payload: { device, scanId } });
   };
