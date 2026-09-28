@@ -73,6 +73,8 @@ as blocked. All three were wrong. What follows was checked against the code.
   threshold alerts and device up/down recorded to the timeline. See Phase 6.
 - **Broker publish ACL** — command topics are closed to MQTT clients, so nothing
   on the LAN can switch hardware. See "MQTT hardening".
+- **Maintenance and Automation pages** are built and wired to real endpoints.
+  See Phase 7.
 - **Tests** — 242 passing across 14 files.
 
 ### Recently fixed (Phase 0)
@@ -88,6 +90,28 @@ as blocked. All three were wrong. What follows was checked against the code.
   `EADDRINUSE` stack trace.
 - Build artifacts untracked, `.gitattributes` added — see "Two-machine
   workflow".
+
+### Recently fixed — `useLiveReadings` held its own state
+
+Two defects, one cause. The hook accumulated readings into a `useRef` that
+nothing cleared and fetched its snapshot outside the query cache.
+
+- **Switching workspace left the previous tent's sensors on the Overview.** The
+  effect did re-run, but it merged the new tent's readings *into* the old map —
+  and a tent with no readings returned nothing to merge, so the old values simply
+  stayed. Only a remount cleared it, which is why navigating away and back showed
+  the correct empty state. Every other page was fine because every other hook is
+  a `useQuery` keyed by workspace.
+- **The Overview refresh button did not refresh the readings.** It invalidates
+  `["readings", workspaceId]`, and while the snapshot lived in local state that
+  key matched nothing. Invisible with the socket up; after a dropped socket the
+  numbers could not be recovered without reopening the app.
+
+The snapshot now lives in the query cache under that key, and live pushes are
+held per workspace and reset on change. The two are reconciled **by `ts` rather
+than by precedence**, because neither source is reliably newer: a push beats a
+snapshot taken before it, and a refetch beats a push left stale by a dropped
+socket.
 
 ### The data pipe — now connected inbound, still open outbound
 
@@ -125,8 +149,8 @@ DB-backed and real: `grows`, `workspaces`, `maintenance`, `devices`, `settings`,
 
 ### Placeholder pages
 
-17–18 line "coming soon" shells: `Automation`, `GrowCycle`, `Journal`,
-`Logging`, `SetupView`.
+17–18 line "coming soon" shells: `GrowCycle`, `Journal`, `Logging`,
+`SetupView`.
 
 **Maintenance is built** (Phase 7). Its CSS was ported wholesale from the
 prototype and resolves entirely against the existing Primer tokens, which is
@@ -146,12 +170,6 @@ stylesheet still has to be carried across.
   the renderer never *sends* a subscribe frame, so server-side filtering today
   would be either inert or would cut the UI off from its own data. Both halves
   belong with the first multi-tent screen.
-- **The Overview refresh button does not refresh the readings.** It invalidates
-  the TanStack Query key `["readings", workspaceId]`, but `useLiveReadings`
-  holds its own `useState` and fetches the snapshot once on mount, so that key
-  matches nothing. Invisible while the websocket is up; after a dropped socket
-  the numbers cannot be recovered without reopening the app.
-
 ### MQTT hardening — Tier 1 done, Tier 2 in Phase 8
 
 The broker binds `0.0.0.0:1883` **unauthenticated**, while HTTP binds
@@ -421,7 +439,7 @@ renderer never sends a `subscribe` frame, so filtering would either be inert or
 would silently cut the UI off from its own data. It belongs with the first
 multi-tent screen. See "Not started".
 
-### Phase 7 — Pages *(next)*
+### Phase 7 — Pages *(in progress)*
 
 In dependency order:
 
@@ -446,12 +464,54 @@ In dependency order:
    "Needs attention" is derived from real state, offline devices and overdue
    tasks, rather than a separate health model.
 
-2. **Automation** *(next)* — Phases 5 and 6 supply everything it needs: window
-   and cron schedules, rule triggers, and a DB-backed automations route.
-3. **Logging** — unblocked: Phase 3 supplies the readings and Phase 5 the
-   rollups the longer ranges chart from.
+2. **Automation** ✅ done — all three trigger kinds, grouped by subsystem.
+
+   The grower is asked for a name, a trigger and the equipment to drive.
+   `kind`, `subsystem`, `driver` and `controlRes` are derived from those, because
+   asking would allow two answers that contradict each other — a "lighting"
+   automation driving a pump — and the list would group itself wrongly with no
+   way to tell which answer was meant.
+
+   Cron is offered as "daily at a time" or "every N hours" rather than an
+   expression field, with the generated cron shown beside it. A grower should not
+   have to write `0 */6 * * *`, but hiding what got stored would make the
+   shortcut a black box.
+
+   Two gaps surfaced that only a screen could find. **A typed client could not
+   release a manual override.** The PATCH route clears `overrideUntil` on an
+   explicit null, but the body type was `Partial<Automation>` and those fields
+   are optional-not-nullable, so under `exactOptionalPropertyTypes` no value
+   existed that a caller could send — omitting the key means "leave unchanged".
+   `AutomationPatch` now expresses the three clearable fields, and the Release
+   button works. **And the role and metric catalogues were page-local**, so
+   Settings and Automation could have disagreed about what a role is called;
+   both now read `lib/roles.ts` and `lib/metrics.ts`, the same move that shared
+   `evalThreshold`.
+
+   `windowHours` treats equal on/off times as 24h rather than a zero-length
+   window, matching the domain's note that equal times mean always on — a real
+   24h seedling setting.
+3. **Logging** *(next)* — unblocked: Phase 3 supplies the readings and Phase 5
+   the rollups the longer ranges chart from.
 4. **Grow Cycle** and **Journal** — their routes are stubs; do the backend
    persistence first.
+
+   **Stage-scoped automations belong here.** `Automation.stage` is stored, and
+   both the scheduler and the rules engine read it back — and neither filters on
+   it, so a "flowering only" automation currently runs in every stage. It was
+   left out of the Automation page rather than shipped as a control that does
+   nothing.
+
+   The filter is two lines in each engine. What is not mechanical is what a
+   stage-scoped automation should do when there is *no* active grow, which is
+   the state today: skip it, and a forgotten grow leaves the tent doing nothing;
+   ignore the scope, and the setting is a lie. Thresholds avoid the question
+   because their `stage` is a refinement over an unscoped default, so an absent
+   grow degrades to the workspace band. An automation has no such fallback —
+   `stage` there is a gate. The decision needs the screen where a grow is
+   started and ended, which is this one. `rules/thresholds.ts` already caches
+   the active grow per workspace and resolves `calcGrowStage`, so the resolution
+   pattern to copy exists.
 5. **Setup View** — last, being the least operationally urgent, but it is
    *designed* and no longer blocked.
 
