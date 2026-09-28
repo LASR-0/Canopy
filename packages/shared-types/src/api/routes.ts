@@ -6,6 +6,7 @@ import type {
   GrowTemplate,
   GrowMilestone,
   Automation,
+  AutomationPatch,
   JournalEntry,
   MaintenanceTask,
   MaintenanceCompletion,
@@ -92,7 +93,7 @@ export interface ApiRoutes {
   // ── Automations ───────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/automations":            { res: Automation[] };
   "POST /workspaces/:workspaceId/automations":           { body: Partial<Automation>; res: Automation };
-  "PATCH /workspaces/:workspaceId/automations/:id":      { body: Partial<Automation>; res: Automation };
+  "PATCH /workspaces/:workspaceId/automations/:id":      { body: AutomationPatch; res: Automation };
   "DELETE /workspaces/:workspaceId/automations/:id":     { res: { deleted: true } };
 
   // ── Journal ───────────────────────────────────────────────────────────────

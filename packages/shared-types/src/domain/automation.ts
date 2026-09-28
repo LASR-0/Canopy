@@ -98,3 +98,21 @@ export interface Automation {
    */
   nextRunAt?: string;
 }
+
+/**
+ * A PATCH body for an automation.
+ *
+ * Three fields are clearable, and `Partial<Automation>` cannot say so: they are
+ * optional-not-nullable, so under `exactOptionalPropertyTypes` there is no value
+ * a caller can send to unset one. Omitting a key means "leave unchanged" —
+ * which is what the route implements — so clearing needs an explicit null.
+ *
+ * Without this, releasing a manual override was expressible in the route and
+ * unreachable from a typed client.
+ */
+export type AutomationPatch =
+  Partial<Omit<Automation, "overrideUntil" | "overrideState" | "stage">> & {
+    overrideUntil?: string | null;
+    overrideState?: string | null;
+    stage?: GrowStageName | null;
+  };

@@ -6,7 +6,7 @@ import { automations, workspaces } from "../../store/schema.js";
 import { isValidCron, nextScheduledRun, parseClockTime } from "../../scheduler/schedule.js";
 import { refreshRules } from "../../rules/index.js";
 import { ok, err } from "../reply.js";
-import type { Automation, AutomationTrigger } from "@canopy/shared-types";
+import type { Automation, AutomationPatch, AutomationTrigger } from "@canopy/shared-types";
 
 function rowToAutomation(row: typeof automations.$inferSelect): Automation {
   const automation: Automation = {
@@ -159,7 +159,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.patch<{ Params: { workspaceId: string; id: string }; Body: Partial<Automation> }>(
+  app.patch<{ Params: { workspaceId: string; id: string }; Body: AutomationPatch }>(
     "/workspaces/:workspaceId/automations/:id",
     async (req, reply) => {
       const body = req.body ?? {};
