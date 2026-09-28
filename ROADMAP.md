@@ -151,10 +151,13 @@ DB-backed and real: `grows`, `workspaces`, `maintenance`, `devices`, `settings`,
 
 17–18 line "coming soon" shells: `GrowCycle`, `Journal`, `SetupView`.
 
-**Maintenance is built** (Phase 7). Its CSS was ported wholesale from the
-prototype and resolves entirely against the existing Primer tokens, which is
-the pattern to repeat for the remaining pages: the design debt is zero, but the
-stylesheet still has to be carried across.
+**Maintenance, Automation and Logging are built** (Phase 7). Their CSS was
+ported wholesale from the prototype and resolves entirely against the existing
+Primer tokens, which is the pattern to repeat for the remaining pages: the design
+debt is zero, but the stylesheet still has to be carried across.
+
+**The target-ranges editor is a modal and should not stay one** — see Phase 7
+item 6. It works, so nothing is blocked on it; the shape is the open question.
 
 ### Not started
 
@@ -680,8 +683,37 @@ In dependency order:
 5. **Setup View** — last, being the least operationally urgent, but it is
    *designed* and no longer blocked.
 
+6. **Target ranges — revisit the UI.** The design is liked; the *modal* is the
+   problem. Whether it becomes its own page or a tab is undecided, and that is
+   the decision to make when this is picked up rather than now.
+
+   Not blocked by anything and not dependent on the pages above it, so it can be
+   pulled forward whenever it starts to bite. It is listed last only because the
+   editor works: bands can be set, and the Overview's status colours, Logging's
+   target bands and threshold alerts all came alive once they were.
+
+   Four things observed while building it, which any of the three shapes has to
+   answer:
+
+   - **One entry point, easily missed.** A small link in the Overview's readings
+     header is the prototype's own answer and is the whole of it today. More
+     entry points were always intended; a page or a tab gives it an obvious home
+     rather than more links to a dialog.
+   - **A modal caps the height it can use.** Eleven metrics with a minimum and a
+     maximum each already scrolls inside the dialog, before any stage scoping.
+   - **Stage scoping multiplies the rows by five** and a modal shows one scope at
+     a time, so the default and the override it is overridden by can never be
+     seen together. That comparison is the main thing a grower wants here, and it
+     is what a full page could show side by side.
+   - **A band cannot be removed.** The route is `GET` plus an upsert `PUT`; there
+     is no `DELETE`, so a stage override can be moved but never cleared. Whatever
+     shape the UI takes needs a "clear override" action, and that needs the route
+     first. Small, and worth doing with this rather than before it.
+
 All eight pages have a high-fidelity prototype to build from — see "Reference
-material". There is no design debt on this phase.
+material". The one exception is the target-ranges editor, which the prototype
+links to and never designs: item 6 is the only place in this phase with real
+design work left.
 
 ### Phase 8 — Service install & packaging
 
