@@ -19,6 +19,7 @@ import { api } from "@/lib/http";
 import type { Reading, SensorThreshold, GrowCycle, AppEvent, MaintenanceTask, Device, ReadingResolution } from "@canopy/shared-types";
 import type { Metric, GrowStageName, Automation } from "@canopy/shared-types";
 import { METRIC_META, UNIT_DISPLAY, formatMetricValue } from "@/lib/metrics";
+import { ThresholdsModal } from "@/components/ThresholdsModal";
 
 // ── Metric display config ────────────────────────────────────────────────
 // The metric catalogue itself lives in lib/metrics.ts, shared with Automation.
@@ -425,6 +426,7 @@ export function Overview() {
   const workspace = useActiveWorkspace();
   const readings  = useLiveReadings(workspace?.id);
   const [range, setRange] = useState<RangeKey>("24H");
+  const [editingThresholds, setEditingThresholds] = useState(false);
 
   const { data: grow }              = useActiveGrow();
   const { data: thresholds = [] }   = useThresholds(workspace?.id);
@@ -558,6 +560,12 @@ export function Overview() {
                   {readingList.length > 0 ? readingList.length : "awaiting probes"}
                 </span>
                 <span className="rule" />
+                {/* The prototype's own entry point for target ranges. Not a
+                    detail screen: nothing is judged until a band is set, so
+                    without it every card reads "ok" whatever the reading. */}
+                <span className="link" onClick={() => setEditingThresholds(true)}>
+                  Configure thresholds
+                </span>
               </div>
 
               {readingList.length > 0 ? (
@@ -614,6 +622,19 @@ export function Overview() {
           </div>
         </div>
       </div>
+
+      {workspace && (
+        <ThresholdsModal
+          open={editingThresholds}
+          onClose={() => setEditingThresholds(false)}
+          workspaceId={workspace.id}
+          // Only metrics the tent reports: a band for an unmeasured one does
+          // nothing, and the unit comes from the sensor's own reading.
+          metrics={readingList.map((r) => r.metric)}
+          thresholds={thresholds}
+          unitFor={(metric) => readingList.find((r) => r.metric === metric)?.unit}
+        />
+      )}
     </>
   );
 }
