@@ -23,6 +23,7 @@ import { canIngest } from "../controller/state.js";
 import { onReading } from "../rules/index.js";
 import { checkThresholds } from "../rules/thresholds.js";
 import { recordHeartbeat } from "./heartbeat.js";
+import { deriveFromReading } from "./derived.js";
 import type { Capability, Metric, Reading, Unit } from "@canopy/shared-types";
 
 /** A sensor channel, resolved from the topic it publishes on. */
@@ -223,10 +224,19 @@ export async function handleTelemetry(topic: string, payload: Buffer): Promise<v
     broadcast({ type: "reading", payload: reading });
 
     // Reactive work happens here rather than on a poll, so a rule responds to a
-    // reading as it arrives. Both are awaited: a failure in either is caught
-    // below and must not silently drop the reading that caused it.
+    // reading as it arrives. All are awaited: a failure in any is caught below
+    // and must not silently drop the reading that caused it.
     await checkThresholds(reading, new Date(reading.ts));
     await onReading(reading, new Date(reading.ts));
+
+    // Derived metrics are judged like any other reading, so VPD crossing its
+    // threshold raises an alert and can trigger a rule. Derived *from* this one,
+    // so it has to follow rather than precede.
+    const derived = await deriveFromReading(reading, new Date(reading.ts));
+    if (derived) {
+      await checkThresholds(derived, new Date(derived.ts));
+      await onReading(derived, new Date(derived.ts));
+    }
   } catch (err) {
     // A bad message must never take the broker's publish handler down.
     console.error(`[ingest] failed to ingest ${topic}:`, err);

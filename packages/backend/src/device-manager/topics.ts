@@ -12,9 +12,13 @@
  * its command topic left open to the LAN.
  */
 import { refreshCommandTopics } from "../broker/acl.js";
+import { refreshDerivedRoles } from "./derived.js";
 import { refreshTopicIndex } from "./ingest.js";
 
 export async function refreshDeviceTopics(): Promise<void> {
   await refreshTopicIndex();
   await refreshCommandTopics();
+  // Which devices are the canopy sensors is a role question, so this also has to
+  // run when a role is assigned — see the roles route.
+  await refreshDerivedRoles();
 }

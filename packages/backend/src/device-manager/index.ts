@@ -9,6 +9,7 @@ import { handleMqttMessage } from "./mqtt-discovery.js";
 import { startHeartbeatMonitor } from "./heartbeat.js";
 import { handleTelemetry, indexedTopicCount } from "./ingest.js";
 import { refreshDeviceTopics } from "./topics.js";
+import { derivedRoleCount } from "./derived.js";
 import { activeRuleCount, refreshRules } from "../rules/index.js";
 import { refreshThresholds } from "../rules/thresholds.js";
 
@@ -38,6 +39,7 @@ export async function startDeviceManager(): Promise<void> {
   startHeartbeatMonitor();
   console.log(
     `[device-manager] started — ingesting ${indexedTopicCount()} device topics, ` +
-      `${activeRuleCount()} rule(s) armed`,
+      `${activeRuleCount()} rule(s) armed, ` +
+      `${derivedRoleCount()} canopy role(s) feeding derived metrics`,
   );
 }
