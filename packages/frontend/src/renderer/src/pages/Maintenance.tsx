@@ -377,6 +377,30 @@ function TodayView({
     setAdding(false);
   };
 
+  /**
+   * What the current selection will actually do, in the grower's words.
+   *
+   * The two choice sets are independent and their consequence is not obvious
+   * from either alone — "by stage" produces no date at all, which is worth
+   * saying before the task is created rather than after it fails to appear in
+   * the Week view.
+   */
+  const previewLine = useMemo(() => {
+    const preset = REPEAT_PRESETS.find((r) => r.id === newRepeat) ?? REPEAT_PRESETS[0]!;
+    const group = GROUPS.find((g) => g.id === newGroup) ?? GROUPS[0]!;
+
+    if (preset.cadence === "stage") {
+      return <>No fixed date — moves with the <b>grow stage</b>, shown under <b>{group.label}</b></>;
+    }
+    const days = preset.intervalDays ?? 1;
+    return (
+      <>
+        First due <b>today</b> · <b>{group.label}</b> ({group.sub}) · then every{" "}
+        <b>{days === 1 ? "day" : `${days} days`}</b>
+      </>
+    );
+  }, [newRepeat, newGroup]);
+
   const addTask = () => {
     const name = newName.trim();
     if (!name) return;
@@ -420,56 +444,83 @@ function TodayView({
       </div>
 
       {adding && (
-        <div className="cad-pop">
-          <input
-            className="mt-add-input"
-            autoFocus
-            placeholder="What needs doing?"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") addTask();
-              if (e.key === "Escape") resetForm();
-            }}
-          />
-
-          <div className="cad-detail">
-            <span className="mt-form-label">Repeat</span>
-            <div className="cad-opts">
-              {REPEAT_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  className={`cad-opt${newRepeat === preset.id ? " on" : ""}`}
-                  onClick={() => setNewRepeat(preset.id)}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="cad-detail">
-            <span className="mt-form-label">When</span>
-            <div className="cad-opts">
-              {GROUPS.map((group) => (
-                <button
-                  key={group.id}
-                  className={`cad-opt${newGroup === group.id ? " on" : ""}`}
-                  onClick={() => setNewGroup(group.id)}
-                >
-                  {group.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="cad-foot">
-            <button className="btn primary sm" onClick={addTask} disabled={!newName.trim()}>
-              <Icon name="plus" size={13} /> Add task
+        // Escape is handled on the card rather than the name field: once focus
+        // moves to a chip the form should still be dismissable.
+        <div className="tf-card" onKeyDown={(e) => { if (e.key === "Escape") resetForm(); }}>
+          <div className="tf-head">
+            <span className="tf-title"><Icon name="plus" size={12} /> New task</span>
+            <button className="tf-close" onClick={resetForm} title="Cancel (Esc)" aria-label="Cancel">
+              <Icon name="x" size={13} />
             </button>
-            <button className="btn sm" onClick={resetForm}>Cancel</button>
+          </div>
+
+          <div className="tf-body">
+            <input
+              className="tf-name"
+              autoFocus
+              placeholder="What needs doing?"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
+            />
+
+            <div className="tf-grid">
+              <div className="tf-group">
+                <span className="tf-label">Repeat</span>
+                <div className="tf-chips">
+                  {REPEAT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      className={`tf-chip${newRepeat === preset.id ? " on" : ""}`}
+                      aria-pressed={newRepeat === preset.id}
+                      onClick={() => setNewRepeat(preset.id)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="tf-group">
+                <span className="tf-label">When</span>
+                <div className="tf-chips">
+                  {GROUPS.map((group) => (
+                    <button
+                      key={group.id}
+                      className={`tf-chip${newGroup === group.id ? " on" : ""}`}
+                      aria-pressed={newGroup === group.id}
+                      onClick={() => setNewGroup(group.id)}
+                    >
+                      {group.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="tf-foot">
+            <span className="tf-preview">
+              <Icon name="clock" size={12} />
+              {previewLine}
+            </span>
+            <span className="tf-actions">
+              <span className="tf-hint">⏎ add · esc cancel</span>
+              <button className="btn sm" onClick={resetForm}>Cancel</button>
+              <button className="btn primary sm" onClick={addTask} disabled={!newName.trim()}>
+                <Icon name="plus" size={13} /> Add task
+              </button>
+            </span>
           </div>
         </div>
+      )}
+
+      {tasks.length === 0 && !adding && (
+        <EmptyState
+          icon="maintenance"
+          title="No maintenance tasks yet"
+          description="Nothing is scheduled for this tent. Add a task with the button above and Canopy will track when it next falls due."
+        />
       )}
 
       {GROUPS.map((group) => {
@@ -758,14 +809,8 @@ export function Maintenance() {
       />
 
       <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
-        {isLoading ? null : tasks.length === 0 && completions.length === 0 ? (
-          <EmptyState
-            icon="maintenance"
-            title="No maintenance tasks yet"
-            description="Tasks are seeded from the hardware in your tent, and you can add your own. Add one above to start tracking upkeep."
-          />
-        ) : tab === "today" ? (
-          <TodayView workspaceId={workspace!.id} tasks={tasks} devices={devices} />
+        {isLoading || !workspace ? null : tab === "today" ? (
+          <TodayView workspaceId={workspace.id} tasks={tasks} devices={devices} />
         ) : tab === "week" ? (
           <WeekView tasks={tasks} />
         ) : (
