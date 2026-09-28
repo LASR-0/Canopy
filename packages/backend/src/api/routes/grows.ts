@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { ok, err } from "../reply.js";
-import type { GrowCycle, GrowTemplate } from "@canopy/shared-types";
+import type { GrowCycle, GrowMilestone, GrowTemplate } from "@canopy/shared-types";
 import { db } from "../../store/index.js";
-import { grows, growTemplates, workspaces } from "../../store/schema.js";
+import { grows, growMilestones, growTemplates, workspaces } from "../../store/schema.js";
 import { refreshActiveGrows } from "../../grow/stage.js";
 import { refreshThresholds } from "../../rules/thresholds.js";
 
@@ -48,6 +48,24 @@ function rowToGrow(row: typeof grows.$inferSelect): GrowCycle {
   if (row.envFailsafeTrips != null) g.envFailsafeTrips = row.envFailsafeTrips;
   if (row.envFailsafeNote)          g.envFailsafeNote = row.envFailsafeNote;
   return g;
+}
+
+function rowToMilestone(row: typeof growMilestones.$inferSelect): GrowMilestone {
+  const m: GrowMilestone = { id: row.id, growId: row.growId, label: row.label, day: row.day, done: row.done };
+  if (row.doneAt) m.doneAt = row.doneAt;
+  return m;
+}
+
+const isGrowDay = (day: unknown): day is number =>
+  typeof day === "number" && Number.isInteger(day) && day >= 1;
+
+/** Whether the grow exists in this workspace — every nested route is scoped by both. */
+async function growIn(workspaceId: string, growId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: grows.id })
+    .from(grows)
+    .where(and(eq(grows.id, growId), eq(grows.workspaceId, workspaceId)));
+  return !!row;
 }
 
 export async function growRoutes(app: FastifyInstance): Promise<void> {
@@ -167,18 +185,99 @@ export async function growRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get<{ Params: { workspaceId: string; growId: string } }>(
+  // ── Milestones ──────────────────────────────────────────────────────────────
+  // Planned points on the grow's day line ("flip to flower", "first pistils"),
+  // ticked off as they happen. Listed on the Journal beside the notebook.
+
+  type MilestoneParams = { workspaceId: string; growId: string };
+
+  app.get<{ Params: MilestoneParams }>(
     "/workspaces/:workspaceId/grows/:growId/milestones",
-    async (_req, reply) => reply.send(ok([])),
+    async (req, reply) => {
+      if (!(await growIn(req.params.workspaceId, req.params.growId))) {
+        return reply.status(404).send(err("not_found", "Grow not found"));
+      }
+      const rows = await db
+        .select()
+        .from(growMilestones)
+        .where(eq(growMilestones.growId, req.params.growId))
+        .orderBy(asc(growMilestones.day));
+      return reply.send(ok(rows.map(rowToMilestone)));
+    },
   );
 
-  app.post<{ Params: { workspaceId: string; growId: string }; Body: unknown }>(
+  app.post<{ Params: MilestoneParams; Body: Partial<GrowMilestone> }>(
     "/workspaces/:workspaceId/grows/:growId/milestones",
-    async (req, reply) => reply.status(201).send(ok({ id: randomUUID(), growId: req.params.growId, label: "", day: 1, done: false })),
+    async (req, reply) => {
+      if (!(await growIn(req.params.workspaceId, req.params.growId))) {
+        return reply.status(404).send(err("not_found", "Grow not found"));
+      }
+      const label = req.body?.label?.trim();
+      const day = req.body?.day;
+      if (!label) return reply.status(400).send(err("validation_failed", "A milestone needs a label"));
+      if (!isGrowDay(day)) {
+        return reply.status(400).send(err("validation_failed", "A milestone needs a grow day of 1 or later"));
+      }
+
+      const id = randomUUID();
+      const done = req.body.done === true;
+      await db.insert(growMilestones).values({
+        id,
+        growId: req.params.growId,
+        label,
+        day,
+        done,
+        doneAt: done ? new Date().toISOString() : null,
+      });
+      const [row] = await db.select().from(growMilestones).where(eq(growMilestones.id, id));
+      return reply.status(201).send(ok(rowToMilestone(row!)));
+    },
   );
 
-  app.patch<{ Params: { workspaceId: string; growId: string; id: string }; Body: unknown }>(
+  app.patch<{ Params: MilestoneParams & { id: string }; Body: Partial<GrowMilestone> }>(
     "/workspaces/:workspaceId/grows/:growId/milestones/:id",
-    async (req, reply) => reply.send(ok({ id: req.params.id, growId: req.params.growId, label: "", day: 1, done: false })),
+    async (req, reply) => {
+      if (!(await growIn(req.params.workspaceId, req.params.growId))) {
+        return reply.status(404).send(err("not_found", "Grow not found"));
+      }
+      const b = req.body ?? {};
+      const updates: Partial<typeof growMilestones.$inferInsert> = {};
+      if (b.label !== undefined) {
+        if (!b.label.trim()) return reply.status(400).send(err("validation_failed", "A milestone needs a label"));
+        updates.label = b.label.trim();
+      }
+      if (b.day !== undefined) {
+        if (!isGrowDay(b.day)) {
+          return reply.status(400).send(err("validation_failed", "A milestone needs a grow day of 1 or later"));
+        }
+        updates.day = b.day;
+      }
+      if (b.done !== undefined) {
+        // doneAt follows done, so the two cannot disagree.
+        updates.done = b.done;
+        updates.doneAt = b.done ? new Date().toISOString() : null;
+      }
+
+      const where = and(eq(growMilestones.id, req.params.id), eq(growMilestones.growId, req.params.growId));
+      if (Object.keys(updates).length > 0) await db.update(growMilestones).set(updates).where(where);
+      const [row] = await db.select().from(growMilestones).where(where);
+      if (!row) return reply.status(404).send(err("not_found", "Milestone not found"));
+      return reply.send(ok(rowToMilestone(row)));
+    },
+  );
+
+  app.delete<{ Params: MilestoneParams & { id: string } }>(
+    "/workspaces/:workspaceId/grows/:growId/milestones/:id",
+    async (req, reply) => {
+      if (!(await growIn(req.params.workspaceId, req.params.growId))) {
+        return reply.status(404).send(err("not_found", "Grow not found"));
+      }
+      const removed = await db
+        .delete(growMilestones)
+        .where(and(eq(growMilestones.id, req.params.id), eq(growMilestones.growId, req.params.growId)))
+        .returning({ id: growMilestones.id });
+      if (removed.length === 0) return reply.status(404).send(err("not_found", "Milestone not found"));
+      return reply.send(ok({ deleted: true as const }));
+    },
   );
 }

@@ -1,39 +1,191 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import { ok } from "../reply.js";
+import { and, desc, eq } from "drizzle-orm";
+import { ok, err } from "../reply.js";
 import type { JournalEntry } from "@canopy/shared-types";
+import { db } from "../../store/index.js";
+import { grows, journalEntries } from "../../store/schema.js";
+import {
+  JOURNAL_TYPES,
+  MAX_TITLE_LENGTH,
+  envSnapshot,
+  growDayAt,
+  parseMeasurements,
+  parseNewEntry,
+  titleFrom,
+} from "../../grow/journal.js";
 
-// Phase 6: full journal implementation.
+function rowToEntry(row: typeof journalEntries.$inferSelect): JournalEntry {
+  const e: JournalEntry = {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    growId: row.growId,
+    growDay: row.growDay,
+    growWeek: row.growWeek,
+    type: row.type as JournalEntry["type"],
+    title: row.title,
+    createdAt: row.createdAt,
+  };
+  if (row.body)       e.body = row.body;
+  if (row.hypothesis) e.hypothesis = row.hypothesis;
+  if (row.result)     e.result = row.result;
+  if (row.measurementsJson) {
+    try { e.measurements = JSON.parse(row.measurementsJson) as [string, string][]; } catch { /* skip */ }
+  }
+  if (row.attachmentsJson) {
+    try { e.attachments = JSON.parse(row.attachmentsJson) as string[]; } catch { /* skip */ }
+  }
+  if (row.envTempC != null)  e.envTempC = row.envTempC;
+  if (row.envRhPct != null)  e.envRhPct = row.envRhPct;
+  if (row.envVpdKpa != null) e.envVpdKpa = row.envVpdKpa;
+  if (row.updatedAt)         e.updatedAt = row.updatedAt;
+  return e;
+}
+
+async function findGrow(workspaceId: string, growId: string) {
+  const [grow] = await db
+    .select()
+    .from(grows)
+    .where(and(eq(grows.id, growId), eq(grows.workspaceId, workspaceId)));
+  return grow;
+}
+
+type Params = { workspaceId: string; growId: string };
+
 export async function journalRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Params: { workspaceId: string; growId: string } }>(
-    "/workspaces/:workspaceId/grows/:growId/journal",
-    async (_req, reply) => reply.send(ok([])),
-  );
-
-  app.post<{ Params: { workspaceId: string; growId: string }; Body: Partial<JournalEntry> }>(
+  /** Newest first, which is how the notebook reads. */
+  app.get<{ Params: Params }>(
     "/workspaces/:workspaceId/grows/:growId/journal",
     async (req, reply) => {
-      const stub: JournalEntry = {
-        id: randomUUID(),
-        workspaceId: req.params.workspaceId,
-        growId: req.params.growId,
-        growDay: req.body.growDay ?? 1,
-        growWeek: req.body.growWeek ?? 1,
-        type: req.body.type ?? "observation",
-        title: req.body.title ?? "",
-        createdAt: new Date().toISOString(),
-      };
-      return reply.status(201).send(ok(stub));
+      const rows = await db
+        .select()
+        .from(journalEntries)
+        .where(
+          and(
+            eq(journalEntries.workspaceId, req.params.workspaceId),
+            eq(journalEntries.growId, req.params.growId),
+          ),
+        )
+        .orderBy(desc(journalEntries.createdAt));
+      return reply.send(ok(rows.map(rowToEntry)));
     },
   );
 
-  app.patch<{ Params: { workspaceId: string; growId: string; id: string }; Body: Partial<JournalEntry> }>(
-    "/workspaces/:workspaceId/grows/:growId/journal/:id",
-    async (req, reply) => reply.send(ok({ id: req.params.id, ...req.body } as JournalEntry)),
+  /**
+   * The day, week and environment are stamped here and ignored in the body.
+   *
+   * Accepting them from the caller would let two clocks disagree about which day
+   * an entry belongs to, and would let a note carry conditions nobody measured.
+   */
+  app.post<{ Params: Params; Body: Partial<JournalEntry> }>(
+    "/workspaces/:workspaceId/grows/:growId/journal",
+    async (req, reply) => {
+      const { workspaceId, growId } = req.params;
+      const grow = await findGrow(workspaceId, growId);
+      if (!grow) return reply.status(404).send(err("not_found", "Grow not found"));
+      if (!grow.startedAt) {
+        return reply
+          .status(409)
+          .send(err("conflict", "This grow has not started, so there is no grow day to file an entry under"));
+      }
+
+      const content = parseNewEntry(req.body ?? {});
+      if (typeof content === "string") {
+        return reply.status(400).send(err("validation_failed", content));
+      }
+
+      const now = new Date();
+      const id = randomUUID();
+      await db.insert(journalEntries).values({
+        id,
+        workspaceId,
+        growId,
+        ...growDayAt(grow.startedAt, now),
+        type: content.type,
+        title: content.title,
+        body: content.body,
+        hypothesis: content.hypothesis,
+        result: content.result,
+        measurementsJson: content.measurements ? JSON.stringify(content.measurements) : null,
+        ...(await envSnapshot(workspaceId, now)),
+        createdAt: now.toISOString(),
+      });
+
+      const [row] = await db.select().from(journalEntries).where(eq(journalEntries.id, id));
+      return reply.status(201).send(ok(rowToEntry(row!)));
+    },
   );
 
-  app.delete<{ Params: { workspaceId: string; growId: string; id: string } }>(
+  /**
+   * Edits the content only. An empty string clears a field, which is how a
+   * typed client says "remove this" when the field is optional-not-nullable.
+   */
+  app.patch<{ Params: Params & { id: string }; Body: Partial<JournalEntry> }>(
     "/workspaces/:workspaceId/grows/:growId/journal/:id",
-    async (_req, reply) => reply.send(ok({ deleted: true as const })),
+    async (req, reply) => {
+      const { workspaceId, growId, id } = req.params;
+      const where = and(
+        eq(journalEntries.id, id),
+        eq(journalEntries.workspaceId, workspaceId),
+        eq(journalEntries.growId, growId),
+      );
+      const [existing] = await db.select().from(journalEntries).where(where);
+      if (!existing) return reply.status(404).send(err("not_found", "Journal entry not found"));
+
+      const b = req.body ?? {};
+      const clean = (v: string) => (v.trim() ? v.trim() : null);
+      const updates: Partial<typeof journalEntries.$inferInsert> = {};
+
+      if (b.type !== undefined) {
+        if (!JOURNAL_TYPES.includes(b.type)) {
+          return reply.status(400).send(err("validation_failed", `Unknown entry type "${String(b.type)}"`));
+        }
+        updates.type = b.type;
+      }
+      if (b.body !== undefined)       updates.body = clean(b.body);
+      if (b.hypothesis !== undefined) updates.hypothesis = clean(b.hypothesis);
+      if (b.result !== undefined)     updates.result = clean(b.result);
+      if (b.measurements !== undefined) {
+        const measurements = parseMeasurements(b.measurements);
+        if (typeof measurements === "string") {
+          return reply.status(400).send(err("validation_failed", measurements));
+        }
+        updates.measurementsJson = measurements ? JSON.stringify(measurements) : null;
+      }
+      if (b.title !== undefined) {
+        // A blank title falls back to the body rather than leaving the entry
+        // unnamed in the notebook.
+        const body = updates.body !== undefined ? updates.body : existing.body;
+        const title = clean(b.title) ?? titleFrom(body ?? "");
+        if (!title) return reply.status(400).send(err("validation_failed", "An entry needs a title or a body"));
+        updates.title = title.slice(0, MAX_TITLE_LENGTH);
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updates.updatedAt = new Date().toISOString();
+        await db.update(journalEntries).set(updates).where(where);
+      }
+      const [row] = await db.select().from(journalEntries).where(where);
+      return reply.send(ok(rowToEntry(row!)));
+    },
+  );
+
+  app.delete<{ Params: Params & { id: string } }>(
+    "/workspaces/:workspaceId/grows/:growId/journal/:id",
+    async (req, reply) => {
+      const { workspaceId, growId, id } = req.params;
+      const removed = await db
+        .delete(journalEntries)
+        .where(
+          and(
+            eq(journalEntries.id, id),
+            eq(journalEntries.workspaceId, workspaceId),
+            eq(journalEntries.growId, growId),
+          ),
+        )
+        .returning({ id: journalEntries.id });
+      if (removed.length === 0) return reply.status(404).send(err("not_found", "Journal entry not found"));
+      return reply.send(ok({ deleted: true as const }));
+    },
   );
 }

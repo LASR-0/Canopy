@@ -89,6 +89,7 @@ export interface ApiRoutes {
   "GET /workspaces/:workspaceId/grows/:growId/milestones":         { res: GrowMilestone[] };
   "POST /workspaces/:workspaceId/grows/:growId/milestones":        { body: Partial<GrowMilestone>; res: GrowMilestone };
   "PATCH /workspaces/:workspaceId/grows/:growId/milestones/:id":   { body: Partial<GrowMilestone>; res: GrowMilestone };
+  "DELETE /workspaces/:workspaceId/grows/:growId/milestones/:id":  { res: { deleted: true } };
 
   // ── Automations ───────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/automations":            { res: Automation[] };
