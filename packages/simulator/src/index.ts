@@ -15,8 +15,12 @@
  *                                      20s scan window, or a scan started
  *                                      after startup finds nothing
  *   SIM_TELEMETRY_MS  default 5000
+ *   SIM_LOCK_PORT     default 47653  — loopback port used as a single-instance
+ *                                      lock; change it to run a second fleet
+ *   SIM_ALLOW_MULTIPLE  set to 1 to skip the lock entirely
  */
 import mqtt from "mqtt";
+import { createServer } from "node:net";
 import { mulberry32 } from "./rng.js";
 import { FLEET, topics, componentOf, MANUFACTURER, SW_VERSION } from "./fleet.js";
 import type { DeviceSpec, SensorSpec } from "./fleet.js";
@@ -25,6 +29,8 @@ const BROKER_URL = process.env["SIM_BROKER_URL"] ?? "mqtt://127.0.0.1:1883";
 const SEED = Number(process.env["SIM_SEED"] ?? 1);
 const ANNOUNCE_MS = Number(process.env["SIM_ANNOUNCE_MS"] ?? 5000);
 const TELEMETRY_MS = Number(process.env["SIM_TELEMETRY_MS"] ?? 5000);
+const LOCK_PORT = Number(process.env["SIM_LOCK_PORT"] ?? 47_653);
+const ALLOW_MULTIPLE = process.env["SIM_ALLOW_MULTIPLE"] === "1";
 
 const rng = mulberry32(SEED);
 
@@ -134,9 +140,66 @@ function handleCommand(client: mqtt.MqttClient, topic: string, payload: Buffer):
   client.publish(topics.state(id), st.on ? "ON" : "OFF", { qos: 0 });
 }
 
-function main(): void {
+/** Node attaches `code` to syscall failures; narrow without asserting a shape. */
+function errorCode(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code: unknown }).code)
+    : undefined;
+}
+
+/**
+ * Refuse to start when a simulator is already running.
+ *
+ * Orphaned simulators are easy to accumulate — a `tsx` restart, a terminal closed
+ * without Ctrl-C, `pnpm dev:sim` run twice — and each one publishes the whole
+ * fleet. Three of them is three times the telemetry, which reads as the app
+ * sampling far faster than it is configured to rather than as three publishers.
+ *
+ * The lock is a listener on a loopback port, the same mechanism the controller
+ * already relies on for its own second-instance guard. The OS releases it even if
+ * the process is killed outright, so there is no stale lock file to clean up.
+ *
+ * A fixed MQTT client id is *not* sufficient on its own. The broker would evict
+ * whichever instance connected first, mqtt.js would reconnect it, and the two
+ * would take turns kicking each other off indefinitely. The lock stops the second
+ * process before it ever connects; the fixed client id then only has to see off a
+ * session the broker is still holding for a process that is already gone.
+ */
+function acquireLock(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(LOCK_PORT, "127.0.0.1", () => {
+      // Held for the life of the process, but never the reason it stays alive.
+      server.unref();
+      resolve();
+    });
+  });
+}
+
+async function main(): Promise<void> {
+  if (!ALLOW_MULTIPLE) {
+    try {
+      await acquireLock();
+    } catch (err) {
+      if (errorCode(err) === "EADDRINUSE") {
+        console.error(
+          "A Canopy simulator is already running.\n" +
+            "Two of them publish the fleet twice, which looks like the tent sampling at " +
+            "double rate rather than like two publishers.\n" +
+            "Stop the other one, or set SIM_ALLOW_MULTIPLE=1 to run this alongside it.",
+        );
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
   console.log(`[sim] connecting to ${BROKER_URL}`);
-  const client = mqtt.connect(BROKER_URL, { clientId: `canopy-sim-${process.pid}`, clean: true });
+  // Fixed unless multiples are explicitly allowed: a stable id lets the broker
+  // drop a session left behind by a process that died without disconnecting.
+  const clientId = ALLOW_MULTIPLE ? `canopy-sim-${process.pid}` : "canopy-simulator";
+  const client = mqtt.connect(BROKER_URL, { clientId, clean: true });
 
   let announceTimer: ReturnType<typeof setInterval> | null = null;
   let telemetryTimer: ReturnType<typeof setInterval> | null = null;
@@ -176,4 +239,7 @@ function main(): void {
   process.on("SIGTERM", shutdown);
 }
 
-main();
+main().catch((err: unknown) => {
+  console.error("[sim] fatal:", err instanceof Error ? err.message : err);
+  process.exit(1);
+});
