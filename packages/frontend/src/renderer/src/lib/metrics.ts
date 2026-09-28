@@ -18,22 +18,87 @@ export interface MetricMeta {
   label: string;
   color: string;
   icon: IconName;
+  /**
+   * Which scale this metric shares in overlay mode.
+   *
+   * Metrics on the same axis are drawn against one set of bounds — humidity and
+   * soil moisture are both percentages, so they compare directly. Metrics on
+   * different axes get their own. This is what keeps overlay from being a
+   * dual-axis chart in the misleading sense: the grouping is by what the numbers
+   * *are*, not by what happens to be plotted together.
+   */
+  axis: string;
+  /** Which side that axis is labelled on, so several can be read at once. */
+  side: "left" | "right";
+  /** Computed by the controller rather than read from a device. */
+  derived?: boolean;
 }
 
+/**
+ * Colours are Primer steps taken from the prototype, which is the design of
+ * record. The app previously carried invented hexes that appear nowhere in it —
+ * that drift is why they failed contrast on the light theme.
+ *
+ * Seven come straight from the prototype's own Logging palette. `ph`, `ec`,
+ * `power` and `water_level` are metrics it does not chart; those were stepped to
+ * Primer values and checked with the dataviz validator for separation against the
+ * seven.
+ *
+ * The palette cannot carry every metric at once, and does not pretend to: with
+ * all ten on one plot the validator fails `vpd` against `humidity` for
+ * protanopia and `ppfd` against `soil_moisture` for normal vision. Overlay mode
+ * therefore never relies on colour alone — the legend carries each name and
+ * value, the metric panel shows a swatch per row, and lines are labelled at their
+ * end. Stack mode is the answer for many metrics at once: one lane each, one hue
+ * per lane, nothing to tell apart.
+ *
+ * `lux` and `ppfd` are the same quantity in different units, so a device reports
+ * one or the other and never both; they are stepped apart but are not expected to
+ * share a plot.
+ */
 export const METRIC_META: Record<Metric, MetricMeta> = {
-  temperature:   { label: "Temperature",   color: "#e07b39", icon: "temp"    },
-  humidity:      { label: "Humidity",      color: "#4a9eda", icon: "drop"    },
-  co2:           { label: "CO₂",           color: "#4caf7d", icon: "co2"     },
-  vpd:           { label: "VPD",           color: "#a67cd6", icon: "vpd"     },
-  soil_moisture: { label: "Soil Moisture", color: "#8d7a5f", icon: "leaf"    },
-  ph:            { label: "pH",            color: "#26b8c8", icon: "beaker"  },
-  ec:            { label: "EC",            color: "#f5a623", icon: "beaker"  },
-  lux:           { label: "Lux",           color: "#e8c53a", icon: "sun"     },
-  ppfd:          { label: "PPFD",          color: "#e8c53a", icon: "sun"     },
-  power:         { label: "Power",         color: "#e05252", icon: "power"   },
-  water_level:   { label: "Water Level",   color: "#4a9eda", icon: "ruler"   },
+  temperature:    { label: "Air temp", color: "#f78166", icon: "temp", axis: "temp", side: "left" },
+  humidity:       { label: "Humidity", color: "#2f81f7", icon: "drop", axis: "pct", side: "left" },
+  co2:            { label: "CO\u2082", color: "#3fb950", icon: "co2", axis: "co2", side: "right" },
+  vpd:            { label: "VPD", color: "#a371f7", icon: "vpd", axis: "vpd", side: "left", derived: true },
+  soil_moisture:  { label: "Soil moisture", color: "#d29922", icon: "leaf", axis: "pct", side: "left" },
+  ph:             { label: "pH", color: "#39c5cf", icon: "beaker", axis: "ph", side: "left" },
+  ec:             { label: "EC", color: "#d2a8ff", icon: "beaker", axis: "ec", side: "right" },
+  lux:            { label: "Lux", color: "#ffa657", icon: "sun", axis: "lux", side: "right" },
+  ppfd:           { label: "Light \u00b7 PPFD", color: "#e3b341", icon: "sun", axis: "ppfd", side: "right" },
+  power:          { label: "Power", color: "#f85149", icon: "power", axis: "power", side: "right" },
+  water_level:    { label: "Water level", color: "#79c0ff", icon: "ruler", axis: "pct", side: "left" },
 };
 
 export function metricLabel(metric: Metric): string {
   return METRIC_META[metric]?.label ?? metric;
+}
+
+/** Unit symbols for display. Keyed loosely: the API's unit strings are data. */
+export const UNIT_DISPLAY: Record<string, string> = {
+  C: "°C", F: "°F", percent: "%", ppm: "ppm", kPa: "kPa",
+  pH: "pH", mS_cm: "mS/cm", lux: "lux", umol_m2s: "µmol/m²s",
+  W: "W", L: "L",
+};
+
+export function unitLabel(unit: string): string {
+  return UNIT_DISPLAY[unit] ?? unit;
+}
+
+/**
+ * Significant decimals per metric.
+ *
+ * A pH to one decimal loses the distinction the grower is managing; a CO₂ ppm to
+ * two invents precision the sensor does not have.
+ */
+const METRIC_DECIMALS: Partial<Record<Metric, number>> = {
+  temperature: 1, humidity: 1, vpd: 2, ph: 2, ec: 2, soil_moisture: 1, water_level: 1,
+};
+
+export function metricDecimals(metric: Metric): number {
+  return METRIC_DECIMALS[metric] ?? 0;
+}
+
+export function formatMetricValue(value: number, metric: Metric): string {
+  return value.toFixed(metricDecimals(metric));
 }

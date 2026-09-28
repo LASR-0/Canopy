@@ -14,6 +14,15 @@
  * Both aggregate from `readings_raw` rather than chaining daily off hourly.
  * Averaging an average is only correct when every hour carries the same number
  * of samples, and a device that drops out for twenty minutes breaks that.
+ *
+ * Each bucket stores its **minimum and maximum** alongside the average. An
+ * average on its own hides the excursion that mattered — a spike that tripped a
+ * threshold at 14:03 vanishes into the mean for 14:00 — which is the opposite of
+ * what the Logging page exists to show. Because the rollups are idempotent, a
+ * re-roll repairs buckets written before these columns existed — but only back
+ * as far as the surviving raw samples, since the rewrite deletes before it
+ * inserts. See `resumeFrom`. Older buckets keep their average and report no
+ * band, which the chart renders as a line with no envelope.
  */
 import type { Database } from "better-sqlite3";
 
@@ -48,20 +57,47 @@ export function dayBucket(at: Date): string {
  * been built from a partial hour, and re-deriving it from raw is cheap. Falling
  * back to the oldest raw sample means a first run backfills everything it can
  * rather than only the last hour.
+ *
+ * Buckets missing their extremes reach further back. A bucket written before the
+ * min/max columns existed carries nulls, and only a re-roll can fill them — but
+ * the rewrite **deletes the range before inserting**, so reaching past raw
+ * retention would delete rollups it cannot rebuild. The resume point is
+ * therefore clamped to the oldest surviving raw sample: everything newer is
+ * repaired, everything older keeps its average and its null extremes, and
+ * nothing is destroyed.
+ *
+ * Returning null when no raw survives at all is the same guard. Without it the
+ * job would delete its newest bucket and aggregate nothing back into it.
  */
 function resumeFrom(
   db: Database,
   targetTable: "readings_hourly" | "readings_daily",
+  floor: (iso: string) => string,
 ): string | null {
-  const target = db
-    .prepare(`SELECT MAX(recorded_at) AS at FROM ${targetTable}`)
-    .get() as { at: string | null };
-  if (target.at) return target.at;
+  const oldestRaw = (
+    db.prepare("SELECT MIN(recorded_at) AS at FROM readings_raw").get() as { at: string | null }
+  ).at;
+  if (oldestRaw === null) return null;
 
-  const raw = db
-    .prepare("SELECT MIN(recorded_at) AS at FROM readings_raw")
-    .get() as { at: string | null };
-  return raw.at;
+  // Floored to the bucket containing that sample, not the sample itself. The
+  // DELETE that opens the rewrite is bounded by this value, so a mid-bucket
+  // boundary leaves the bucket in place and then inserts a second copy of it
+  // alongside the original.
+  const oldestRawBucket = floor(oldestRaw);
+
+  const missingExtremes = (
+    db
+      .prepare(`SELECT MIN(recorded_at) AS at FROM ${targetTable} WHERE min_value IS NULL`)
+      .get() as { at: string | null }
+  ).at;
+  if (missingExtremes !== null) {
+    return missingExtremes > oldestRawBucket ? missingExtremes : oldestRawBucket;
+  }
+
+  const newest = (
+    db.prepare(`SELECT MAX(recorded_at) AS at FROM ${targetTable}`).get() as { at: string | null }
+  ).at;
+  return newest ?? oldestRawBucket;
 }
 
 function rollup(
@@ -69,8 +105,9 @@ function rollup(
   targetTable: "readings_hourly" | "readings_daily",
   bucketExpression: string,
   upperBound: string,
+  floor: (iso: string) => string,
 ): RollupOutcome {
-  const from = resumeFrom(db, targetTable);
+  const from = resumeFrom(db, targetTable, floor);
   if (from === null || from >= upperBound) return EMPTY;
 
   // One transaction: a half-applied rollup would leave the deleted buckets
@@ -83,9 +120,10 @@ function rollup(
     const result = db
       .prepare(
         `INSERT INTO ${targetTable}
-           (workspace_id, device_id, channel, metric, unit, value, recorded_at)
+           (workspace_id, device_id, channel, metric, unit,
+            value, min_value, max_value, recorded_at)
          SELECT workspace_id, device_id, channel, metric, unit,
-                AVG(value),
+                AVG(value), MIN(value), MAX(value),
                 ${bucketExpression}
            FROM readings_raw
           WHERE recorded_at >= ? AND recorded_at < ?
@@ -111,6 +149,7 @@ export function rollupHourly(db: Database, now: Date = new Date()): RollupOutcom
     "readings_hourly",
     `strftime('%Y-%m-%dT%H:00:00.000Z', recorded_at)`,
     hourBucket(now),
+    (iso) => hourBucket(new Date(iso)),
   );
 }
 
@@ -121,5 +160,6 @@ export function rollupDaily(db: Database, now: Date = new Date()): RollupOutcome
     "readings_daily",
     `strftime('%Y-%m-%dT00:00:00.000Z', recorded_at)`,
     dayBucket(now),
+    (iso) => dayBucket(new Date(iso)),
   );
 }

@@ -108,7 +108,11 @@ export const readingsHourly = sqliteTable("readings_hourly", {
   channel:     text("channel").notNull(),
   metric:      text("metric").notNull(),
   unit:        text("unit").notNull(),
+  /** Bucket average. Named `value` so the raw and rollup tables read alike. */
   value:       real("value").notNull(),
+  /** Bucket extremes. Nullable: rows written before these columns existed. */
+  minValue:    real("min_value"),
+  maxValue:    real("max_value"),
   recordedAt:  text("recorded_at").notNull(),
 });
 
@@ -120,7 +124,11 @@ export const readingsDaily = sqliteTable("readings_daily", {
   channel:     text("channel").notNull(),
   metric:      text("metric").notNull(),
   unit:        text("unit").notNull(),
+  /** Bucket average. Named `value` so the raw and rollup tables read alike. */
   value:       real("value").notNull(),
+  /** Bucket extremes. Nullable: rows written before these columns existed. */
+  minValue:    real("min_value"),
+  maxValue:    real("max_value"),
   recordedAt:  text("recorded_at").notNull(),
 });
 

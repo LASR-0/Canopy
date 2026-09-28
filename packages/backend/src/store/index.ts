@@ -34,7 +34,49 @@ export const sqliteConnection: SqliteDatabase = sqlite;
  */
 export function initSchema(): void {
   applyDDL(sqlite);
+  applyColumnAdditions(sqlite);
   seedData(sqlite);
+}
+
+/**
+ * Columns added to tables that already exist in the wild.
+ *
+ * `applyDDL` is all `CREATE TABLE IF NOT EXISTS`, which is enough to create a
+ * database and does nothing at all to one that is already there — so a column
+ * added to a CREATE reaches new installs only, and the first write against an
+ * older database fails with "no such column".
+ *
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so each addition is guarded by
+ * `PRAGMA table_info`. Idempotent, in keeping with the rest of this file, and
+ * ordered only by the list below.
+ *
+ * This is deliberately not a migration framework. It handles the case Canopy
+ * actually has — a new nullable column on a local single-user database — and
+ * nothing that needs ordering, data transformation or a rollback. A real
+ * `user_version` ladder belongs with Phase 8, where databases stop being ours.
+ */
+export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
+  // Bucket extremes, so a rollup keeps the peak an average would hide.
+  addColumnIfMissing(db, "readings_hourly", "min_value", "REAL");
+  addColumnIfMissing(db, "readings_hourly", "max_value", "REAL");
+  addColumnIfMissing(db, "readings_daily",  "min_value", "REAL");
+  addColumnIfMissing(db, "readings_daily",  "max_value", "REAL");
+}
+
+export function addColumnIfMissing(
+  db: InstanceType<typeof Database>,
+  table: string,
+  column: string,
+  definition: string,
+): boolean {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.length === 0) return false; // table not created yet; CREATE owns it
+  if (columns.some((c) => c.name === column)) return false;
+
+  // Only ever additive, and only ever nullable — an ADD COLUMN with NOT NULL
+  // and no default is rejected outright on a non-empty table.
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  return true;
 }
 
 /**
@@ -148,7 +190,9 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       channel       TEXT NOT NULL,
       metric        TEXT NOT NULL,
       unit          TEXT NOT NULL,
-      value         REAL NOT NULL,
+      value         REAL NOT NULL,   /* bucket average */
+      min_value     REAL,
+      max_value     REAL,
       recorded_at   TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_readings_hourly_lookup
@@ -161,7 +205,9 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       channel       TEXT NOT NULL,
       metric        TEXT NOT NULL,
       unit          TEXT NOT NULL,
-      value         REAL NOT NULL,
+      value         REAL NOT NULL,   /* bucket average */
+      min_value     REAL,
+      max_value     REAL,
       recorded_at   TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_readings_daily_lookup

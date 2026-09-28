@@ -10,7 +10,7 @@
  */
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { applyDDL, seedData } from "../../src/store/index.js";
+import { applyColumnAdditions, applyDDL, seedData } from "../../src/store/index.js";
 import * as schema from "../../src/store/schema.js";
 
 export interface TestDb {
@@ -32,6 +32,9 @@ export function createTestDb({ seed = true } = {}): TestDb {
   sqlite.pragma("foreign_keys = ON");
 
   applyDDL(sqlite);
+  // Run the additions too, so a test database is shaped exactly like a live one
+  // rather than only like a freshly created one.
+  applyColumnAdditions(sqlite);
   if (seed) seedData(sqlite);
 
   const db = drizzle(sqlite, { schema });

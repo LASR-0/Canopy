@@ -18,25 +18,15 @@ import { calcGrowStage } from "@/lib/growStage";
 import { api } from "@/lib/http";
 import type { Reading, SensorThreshold, GrowCycle, AppEvent, MaintenanceTask, Device, ReadingResolution } from "@canopy/shared-types";
 import type { Metric, GrowStageName, Automation } from "@canopy/shared-types";
-import { METRIC_META } from "@/lib/metrics";
+import { METRIC_META, UNIT_DISPLAY, formatMetricValue } from "@/lib/metrics";
 
 // ── Metric display config ────────────────────────────────────────────────
 // The metric catalogue itself lives in lib/metrics.ts, shared with Automation.
 // Units and decimals stay here, with the cards that do the formatting.
 
-const UNIT_DISPLAY: Record<string, string> = {
-  C: "°C", F: "°F", percent: "%", ppm: "ppm", kPa: "kPa",
-  pH: "pH", mS_cm: "mS/cm", lux: "lux", umol_m2s: "µmol/m²s",
-  W: "W", L: "L",
-};
-
-const METRIC_DECIMALS: Partial<Record<Metric, number>> = {
-  temperature: 1, humidity: 1, vpd: 2, ph: 2, ec: 2, soil_moisture: 1, water_level: 1,
-};
-
-function fmtValue(value: number, metric: Metric): string {
-  return value.toFixed(METRIC_DECIMALS[metric] ?? 0);
-}
+// Units and decimals moved to lib/metrics.ts alongside the catalogue, now that
+// Logging formats the same values.
+const fmtValue = formatMetricValue;
 
 function relTime(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -137,6 +127,8 @@ function SensorCard({
     staleTime: 5 * 60_000,
   });
 
+  const spark = series?.devices[0]?.points.map((p) => p.value);
+
   return (
     <div className="s-card">
       <div className="s-top">
@@ -150,9 +142,10 @@ function SensorCard({
         <span className="s-val">{fmtValue(reading.value, reading.metric)}</span>
         <span className="s-unit">{UNIT_DISPLAY[reading.unit] ?? reading.unit}</span>
       </div>
-      {series && series.points.length >= 2 ? (
+      {/* One device is requested by id, so there is at most one line here. */}
+      {spark && spark.length >= 2 ? (
         <div className="s-spark">
-          <Sparkline data={series.points.map((p) => p.value)} color={sparkColor} height={30} />
+          <Sparkline data={spark} color={sparkColor} height={30} />
         </div>
       ) : (
         <div className="skel-spark" />

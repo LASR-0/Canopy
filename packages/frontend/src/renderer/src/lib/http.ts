@@ -14,6 +14,17 @@ function parseKey(key: RouteKey): { method: string; path: string } {
   return { method: key.slice(0, space), path: key.slice(space + 1) };
 }
 
+/** Append a query string, skipping keys whose value is undefined. */
+function applyQuery(url: string, query?: Record<string, string | number | undefined>): string {
+  if (!query) return url;
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const rendered = search.toString();
+  return rendered ? `${url}?${rendered}` : url;
+}
+
 /** Replace :param placeholders in the path. */
 function applyParams(path: string, params?: Record<string, string>): string {
   if (!params) return path;
@@ -47,11 +58,17 @@ export async function api<K extends RouteKey>(
   options?: {
     body?: RouteBody<K>;
     params?: Record<string, string>;
+    /**
+     * Query string values. Not part of `ApiRoutes`, which types paths and
+     * bodies: these are the optional knobs a route reads off the querystring,
+     * such as a result limit.
+     */
+    query?: Record<string, string | number | undefined>;
     signal?: AbortSignal;
   },
 ): Promise<RouteRes<K>> {
   const { method, path } = parseKey(route);
-  const url = BACKEND_URL + applyParams(path, options?.params);
+  const url = applyQuery(BACKEND_URL + applyParams(path, options?.params), options?.query);
 
   const init: RequestInit = { method };
   if (options?.body)   init.body    = JSON.stringify(options.body);
