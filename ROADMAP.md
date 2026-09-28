@@ -75,7 +75,7 @@ as blocked. All three were wrong. What follows was checked against the code.
   on the LAN can switch hardware. See "MQTT hardening".
 - **Maintenance and Automation pages** are built and wired to real endpoints.
   See Phase 7.
-- **Tests** — 242 passing across 14 files.
+- **Tests** — 295 passing across 17 files.
 
 ### Recently fixed (Phase 0)
 
@@ -126,10 +126,10 @@ numbers. What remains:
 - **No archive database.** Completed grows are never moved out of the live DB,
   so it grows without bound. The `archive_grow` job type exists and has no
   handler. See "Retention".
-- **No derived metrics.** The schema reserves `device_id = "__derived__"` for
-  VPD and DLI and nothing computes them, so the Overview never shows a VPD card.
-  VPD is a pure function of temperature and humidity, both of which now flow, so
-  this is small and worth doing early.
+- **Derived metrics: VPD done, DLI outstanding.** VPD is computed on the ingest
+  path and stored under `device_id = "__derived__"`, so the Overview's VPD card
+  fills once the canopy roles are assigned. DLI still needs PPFD integrated over
+  the photoperiod. See "Derived metrics" below.
 
 ### Stubbed routes
 
@@ -149,8 +149,7 @@ DB-backed and real: `grows`, `workspaces`, `maintenance`, `devices`, `settings`,
 
 ### Placeholder pages
 
-17–18 line "coming soon" shells: `GrowCycle`, `Journal`, `Logging`,
-`SetupView`.
+17–18 line "coming soon" shells: `GrowCycle`, `Journal`, `SetupView`.
 
 **Maintenance is built** (Phase 7). Its CSS was ported wholesale from the
 prototype and resolves entirely against the existing Primer tokens, which is
@@ -170,6 +169,88 @@ stylesheet still has to be carried across.
   the renderer never *sends* a subscribe frame, so server-side filtering today
   would be either inert or would cut the UI off from its own data. Both halves
   belong with the first multi-tent screen.
+### Reading volume and query cost — measured, not yet optimised
+
+Loading the 6H and 24H ranges is slow. Measured on the dev database rather than
+guessed at, because the obvious diagnosis was wrong.
+
+**The sample rate is not the intended one.** `SIM_TELEMETRY_MS` defaults to 5000,
+so each channel should produce 0.2 readings a second. Measured over ten minutes:
+
+```
+vpd            19.97 /s     ← twice every other channel (fixed, see below)
+canopy-temp     9.99 /s
+canopy-rh       9.99 /s
+… every other channel   9.99 /s
+```
+
+Roughly **50× the configured rate**: 807,263 raw rows over 6.34 hours, 127,233 an
+hour, a 170 MB database, and a 7-day projection of ~21 million rows. Samples
+arrive in bursts of a dozen within milliseconds carrying *different* values, so
+they are independent publishers rather than one message ingested repeatedly — and
+at least three `tsx src/index.ts` simulator processes were alive at once, orphaned
+by watch-mode restarts. **Before changing the sample rate or the storage design,
+kill the strays and confirm a single simulator gives 0.2/s.** The volume is
+probably an artefact of the dev loop, not a property of the app.
+
+**VPD was written at double rate.** `deriveFromReading` fired on the temperature
+sample *and* the humidity sample, so it stored two rows per cycle when only one
+input had moved. It now writes once per *complete* pair of inputs. Fixed.
+
+**Where the time actually goes.** A 6H raw request scans ~85,000 rows per metric,
+materialises all of them through Drizzle, and then `decimate` throws about 98 %
+away in JavaScript. Nine metrics on screen means nine of those in parallel. The
+fix is to decimate in **SQL** — a stride over `rowid`, or a bucketed
+`GROUP BY` — so the rows never cross the boundary. The cap exists; it is applied
+in the wrong place.
+
+Two things to do when this is picked up: move decimation into SQL, and give the
+chart cards a real loading state. The page currently holds the previous render at
+reduced opacity, which is right for a refetch and says nothing on a first load.
+
+### Derived metrics — VPD lands, DLI does not
+
+`device_id = "__derived__"` had been reserved since the first commit with nothing
+writing it, which is why the Overview's VPD card was empty from the moment
+telemetry started flowing. `device-manager/derived.ts` now computes VPD on the
+ingest path and stores it like any measured reading, so rollups average it,
+retention prunes it, the series route charts it and a rule can trigger on it —
+none of them needing to know it was computed.
+
+Its inputs resolve by **role**, not by metric: a tent has a reservoir temperature
+probe as well as a canopy one, and deriving VPD from the reservoir would be a
+confident, meaningless number. A workspace with no canopy roles assigned computes
+nothing, which is correct.
+
+It reports *air* VPD, assuming leaf temperature equals air temperature. Leaf VPD
+is what many growers prefer, but the offset is a property of the canopy and the
+airflow and is not derivable from two numbers — inventing a constant would produce
+a figure that looks authoritative and is wrong by an unknown amount. A leaf-offset
+setting is the honest way to add it.
+
+DLI is the prototype's other derived metric. It needs PPFD integrated across each
+photoperiod rather than a reading-to-reading function, so it is not done.
+
+### Chart palette — adopted from the prototype
+
+`METRIC_META` carried invented hexes that appear **nowhere** in the prototype,
+which uses real Primer steps. That drift is why the old set failed contrast on the
+light theme. The prototype's palette is now the app's, so Logging and Overview
+agree and both sit on the design system.
+
+Seven colours come straight from the prototype. `ph`, `ec`, `power` and
+`water_level` are metrics it does not chart; those were stepped to Primer values
+and checked with the validator for separation against the seven.
+
+The palette cannot carry every metric on one plot, and the page does not pretend
+it can. Under `--pairs all` the validator fails `vpd` against `humidity` for
+protanopia (ΔE 0.4) and `ppfd` against `soil_moisture` for normal vision (ΔE 7.2)
+— and both pairs are the prototype's own colours. Overlay therefore never relies
+on colour alone: every line is labelled at its end and named in the legend. Stack
+mode is the answer for many metrics at once — one lane each, one hue per lane,
+nothing to tell apart. `lux` and `ppfd` are the same quantity in different units,
+so a device reports one or the other and they are not expected to share a plot.
+
 ### MQTT hardening — Tier 1 done, Tier 2 in Phase 8
 
 The broker binds `0.0.0.0:1883` **unauthenticated**, while HTTP binds
@@ -491,10 +572,94 @@ In dependency order:
    `windowHours` treats equal on/off times as 24h rather than a zero-length
    window, matching the domain's note that equal times mean always on — a real
    24h seedling setting.
-3. **Logging** *(next)* — unblocked: Phase 3 supplies the readings and Phase 5
-   the rollups the longer ranges chart from.
-4. **Grow Cycle** and **Journal** — their routes are stubs; do the backend
-   persistence first.
+3. **Logging** ✅ done — ported from the prototype.
+
+   One measurement shaped the whole page: the tent samples every few seconds, so
+   raw is ~7,000 points **per metric per 2.7 hours**. A day of raw is ~25,000
+   points a metric and a week is ~200,000, which is a multi-megabyte response the
+   renderer cannot chart. The series route had no `ORDER BY`, no cap and no
+   downsampling, so this was not polish — the page could not have worked.
+
+   Four backend gaps, all invisible until a screen asked for the data:
+
+   - **No ordering.** Rollup rows are written by a DELETE-then-INSERT whose order
+     follows the `GROUP BY`, so a chart connecting them as they arrived drew a
+     scribble rather than a line. Now ordered in SQL.
+   - **Devices collapsed into one line.** The route filtered by metric and
+     flattened every matching row into one array, so two temperature sensors
+     interleaved into swings that were an artefact of the merge. `ReadingSeries`
+     now carries one entry per (device, channel), with the device name resolved
+     on read so a legend needs no second request.
+   - **Raw over any real range.** `resolutionFor` upgrades a raw request past six
+     hours to hourly or daily and reports what it actually used, and `decimate`
+     caps each line at 2,000 points. Upgrading rather than refusing: the caller
+     wants the range charted, and a coarser answer is useful where an error is
+     not.
+   - **Rollups stored only the average**, so a spike that tripped a threshold
+     vanished into its hour. Buckets now carry `min_value` and `max_value`, and
+     the chart draws the average inside a min–max band. On the real data this was
+     not marginal: an hour reading `avg 24.4` was hiding a 23.2–25.9 °C swing.
+
+   **Canopy had no migration path.** `applyDDL` is all `CREATE TABLE IF NOT
+   EXISTS`, which does nothing to a database that already exists, so a column
+   added to a CREATE reaches new installs only — the first write against an older
+   database fails with "no such column". `applyColumnAdditions` guards each
+   addition with `PRAGMA table_info`, additive and nullable only, idempotent like
+   the rest of that file. It is deliberately not a migration framework; a
+   `user_version` ladder belongs with Phase 8, where databases stop being ours.
+
+   The backfill is **bounded by raw retention**, which is the subtle part: a
+   re-roll deletes its range before rebuilding it, so resuming from the oldest
+   bucket with null extremes would delete months of rollups it could not rebuild.
+   The resume point is clamped to the *bucket containing* the oldest surviving raw
+   sample — clamping to the raw timestamp itself left the delete boundary
+   mid-bucket and inserted a duplicate alongside the original.
+
+   **This page was built twice.** The first attempt was designed from first
+   principles because `prototype/` lists three filenames and none of them says
+   Logging — but "Reference material" above says plainly that the two SetupView
+   files cover all eight pages, and `LoggingPage` is in them. Read that section
+   before building a page.
+
+   The port follows the prototype: an **Overlay / Stack** toggle, a **metric panel**
+   down the left with Raw and Derived groups, a **stat strip** of avg/min/max per
+   metric, **saved layouts** as chips, **night shading**, **target bands**,
+   **out-of-range** marks, events on the plot, and CSV/PNG export.
+
+   The chart is hand-rolled SVG, as the prototype's is and as `Sparkline` already
+   was. Recharts had been added for the first attempt and is now removed: ~880 KB
+   of bundle (2.01 MB → 1.13 MB) for something the design does in SVG, and it
+   fights 86 px lanes, a hatch pattern and per-metric target bands rather than
+   helping.
+
+   Overlay is not a dual-axis chart in the misleading sense. Each metric declares
+   an `axis`, and metrics sharing one are drawn against a single scale — humidity
+   and soil moisture are both percentages and compare directly. Where the palette
+   cannot separate every line, identity does not rest on colour: each line carries
+   a direct end-label, and the legend names every metric with its value.
+
+   Three places the port deliberately diverges from the prototype, all because the
+   prototype had mock data and this does not:
+
+   - **Night shading is read from the photoperiod automation**, not a hard-coded
+     six-hour night. A window trigger driving the `light` role already states when
+     the lights are on. With no such automation the option is disabled rather than
+     guessing.
+   - **Target bands come from `sensor_thresholds`** for the stage in force, via the
+     same `thresholdFor` the Overview colours cards with.
+   - **Points are placed by time, not by index.** The prototype spaced generated
+     samples evenly; a real device that drops out for an hour would otherwise have
+     that hour squeezed to the width of one sample, hiding the gap instead of
+     showing it.
+
+   Gridlines are solid where the prototype dashed them — a dashed grid reads as a
+   threshold or a projection when it is neither, and the target bands are what
+   should carry the dash. That is the one visual deviation.
+
+   `chart-layouts` is now wired: the route had been DB-backed since the first
+   commit with nothing reading it, and this is the screen it was written for.
+4. **Grow Cycle** and **Journal** *(next)* — their routes are stubs; do the
+   backend persistence first.
 
    **Stage-scoped automations belong here.** `Automation.stage` is stored, and
    both the scheduler and the rules engine read it back — and neither filters on
