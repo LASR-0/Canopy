@@ -890,7 +890,7 @@ body {
 .je-head { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
 .je-type { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; border-radius: 5px; padding: 2px 8px; }
 .je-title { font-size: 13.5px; font-weight: 600; color: var(--fg-default); }
-.je-text { font-size: 13px; color: var(--fg-muted); line-height: 1.55; }
+.je-text { font-size: 13px; color: var(--fg-muted); line-height: 1.55; white-space: pre-wrap; }
 .je-exp { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
 .ee-row { display: flex; gap: 9px; font-size: 12.5px; line-height: 1.5; }
 .ee-k { flex: 0 0 76px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-subtle); font-weight: 600; padding-top: 2px; }
@@ -898,6 +898,32 @@ body {
 .meas-chip { font-size: 12px; font-family: var(--mono); color: var(--fg-default); background: var(--canvas-subtle); border: 1px solid var(--border-muted); border-radius: 6px; padding: 3px 9px; }
 .meas-chip b { color: var(--fg-muted); font-weight: 600; }
 .je-photo { display: flex; align-items: center; gap: 9px; height: 64px; border: 1px dashed var(--border-default); border-radius: 7px; color: var(--fg-subtle); font-size: 12px; font-family: var(--mono); justify-content: center; background: var(--canvas-subtle); }
+/* Beyond the prototype: it had mock data and no way to add, edit or remove. */
+.j-none { font-size: 12.5px; color: var(--fg-subtle); font-style: italic; padding: 4px 0; }
+.j-mile { padding: 0; gap: 0; }
+.j-mile-toggle { display: inline-flex; align-items: center; gap: 6px; font: inherit; color: inherit; background: none; border: none; padding: 5px 12px; cursor: pointer; border-radius: 20px; }
+.j-mile-toggle:disabled { cursor: default; }
+.j-mile-del { display: grid; place-items: center; width: 20px; height: 20px; margin-right: 5px; border: none; border-radius: 50%; background: transparent; color: var(--fg-subtle); cursor: pointer; opacity: 0; }
+.j-mile:hover .j-mile-del, .j-mile-del:focus-visible { opacity: 1; }
+.j-mile-del:hover { background: var(--danger-muted); color: var(--danger-fg); }
+.j-mile-add { padding: 5px 12px; gap: 6px; cursor: pointer; border-style: dashed; font-family: var(--sans); }
+.j-mile-add:hover { color: var(--fg-default); border-color: var(--accent-fg); }
+.j-mile-form { padding: 4px 6px 4px 12px; gap: 6px; }
+.j-mile-form input { background: var(--canvas-subtle); border: 1px solid var(--border-default); border-radius: 5px; color: var(--fg-default); font-size: 12px; padding: 3px 7px; font-family: var(--sans); }
+.j-mile-form input:focus { outline: none; border-color: var(--accent-emphasis); }
+.j-mile-day { width: 58px; font-family: var(--mono) !important; }
+.j-mile-label { width: 180px; }
+.jc-input { width: 100%; background: var(--canvas-inset); border: 1px solid var(--border-default); border-radius: 6px; color: var(--fg-default); font-size: 13px; padding: 7px 10px; font-family: var(--sans); margin-bottom: 10px; }
+.jc-input:focus { outline: none; border-color: var(--accent-emphasis); box-shadow: 0 0 0 3px var(--accent-muted); }
+.jc-exp { display: flex; flex-direction: column; }
+.jc-exp label { display: flex; flex-direction: column; gap: 4px; }
+.jc-exp label span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-subtle); font-weight: 600; }
+.jc-meas { display: flex; flex-direction: column; align-items: flex-start; gap: 0; margin-bottom: 10px; }
+.jc-pair { display: grid; grid-template-columns: 140px 180px 28px; gap: 8px; align-items: start; }
+.jc-error { font-size: 12px; color: var(--danger-fg); }
+.je-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.je-pending { color: var(--fg-subtle); font-style: italic; }
+.je-edited { margin-top: 6px; font-size: 10.5px; color: var(--fg-subtle); font-family: var(--mono); }
 
 /* ── history / compare ─────────────────────────────────────── */
 .ar-list { display: flex; flex-direction: column; border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; }

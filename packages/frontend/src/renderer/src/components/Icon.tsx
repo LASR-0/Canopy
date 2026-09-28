@@ -18,6 +18,7 @@ export type IconName =
   // ── ui / actions ────────────────────────────────────────────────────────
   | "alert"
   | "arrow-down"
+  | "arrow-left"
   | "bluetooth"
   | "arrow-right"
   | "arrow-up"
@@ -36,6 +37,7 @@ export type IconName =
   | "leaf"
   | "lock"
   | "minus"
+  | "pencil"
   | "pin"
   | "plug"
   | "plus"
@@ -238,6 +240,15 @@ export function Icon({ name, size = 16, className }: IconProps) {
       return S(1.5, <>
         <rect x="3.25" y="7" width="9.5" height="6.25" rx="1.4"/>
         <path d="M5.4 7V4.9a2.6 2.6 0 0 1 5.2 0V7"/>
+      </>);
+    case "arrow-left":
+      return S(1.6, <>
+        <path d="M13 8H4M7.5 4.5 4 8l3.5 3.5"/>
+      </>);
+    case "pencil":
+      return S(1.5, <>
+        <path d="M10.8 2.7a1.4 1.4 0 0 1 2 2L5.5 12 2.5 13.5 4 10.5z"/>
+        <path d="M9.6 3.9l2.5 2.5"/>
       </>);
     case "arrow-right":
       return S(1.6, <>
