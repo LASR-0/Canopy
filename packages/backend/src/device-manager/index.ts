@@ -12,6 +12,7 @@ import { refreshDeviceTopics } from "./topics.js";
 import { derivedRoleCount } from "./derived.js";
 import { activeRuleCount, refreshRules } from "../rules/index.js";
 import { refreshThresholds } from "../rules/thresholds.js";
+import { refreshActiveGrows } from "../grow/stage.js";
 
 export { startScan } from "./scan-session.js";
 export { refreshDeviceTopics } from "./topics.js";
@@ -35,6 +36,9 @@ export async function startDeviceManager(): Promise<void> {
   // after a restart would pass unjudged.
   await refreshRules();
   await refreshThresholds();
+  // Loaded explicitly rather than relying on refreshThresholds' own call: if that
+  // side effect ever moved, every stage-scoped automation would idle silently.
+  await refreshActiveGrows();
 
   startHeartbeatMonitor();
   console.log(

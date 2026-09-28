@@ -12,15 +12,14 @@
  * wrong. Recovery is recorded too: "it came back" is as useful as "it went out",
  * and without it the feed's last word on a metric is always alarming.
  */
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "../store/index.js";
-import { sensorThresholds, grows, workspaces } from "../store/schema.js";
+import { sensorThresholds } from "../store/schema.js";
+import { currentStage, refreshActiveGrows, resetGrowStageForTesting } from "../grow/stage.js";
 import { recordEvent } from "../automation/apply.js";
 import {
-  calcGrowStage,
   evalThreshold,
   thresholdFor,
-  type GrowCycle,
   type Reading,
   type SensorThreshold,
   type ThresholdStatus,
@@ -31,7 +30,6 @@ const lastStatus = new Map<string, ThresholdStatus>();
 
 /** Cached per workspace; thresholds change rarely and readings arrive constantly. */
 let bands = new Map<string, SensorThreshold[]>();
-let stages = new Map<string, GrowCycle | null>();
 
 function key(reading: Reading): string {
   return `${reading.workspaceId}:${reading.deviceId}:${reading.channel}`;
@@ -67,22 +65,9 @@ export async function refreshThresholds(): Promise<void> {
     }
     bands = next;
 
-    const spaces = await db
-      .select({ id: workspaces.id, activeGrowId: workspaces.activeGrowId })
-      .from(workspaces);
-
-    const growIds = spaces.map((w) => w.activeGrowId).filter((id): id is string => !!id);
-    const growRows = growIds.length
-      ? await db.select().from(grows).where(inArray(grows.id, growIds))
-      : [];
-    const byId = new Map(growRows.map((g) => [g.id, g]));
-
-    const nextStages = new Map<string, GrowCycle | null>();
-    for (const space of spaces) {
-      const grow = space.activeGrowId ? byId.get(space.activeGrowId) : undefined;
-      nextStages.set(space.id, grow ? (grow as unknown as GrowCycle) : null);
-    }
-    stages = nextStages;
+    // The active grow per workspace is resolved by grow/stage.ts, which the
+    // scheduler and the rules engine read too.
+    await refreshActiveGrows();
   } catch (err) {
     console.error("[thresholds] failed to reload:", err);
   }
@@ -116,8 +101,7 @@ export async function checkThresholds(
   const workspaceBands = bands.get(reading.workspaceId) ?? [];
   if (workspaceBands.length === 0) return "ok";
 
-  const grow = stages.get(reading.workspaceId) ?? null;
-  const stage = grow ? calcGrowStage(grow, now)?.stage : undefined;
+  const stage = currentStage(reading.workspaceId, now);
 
   const status = evalThreshold(reading.value, reading.metric, workspaceBands, stage);
   const id = key(reading);
@@ -155,5 +139,5 @@ export async function checkThresholds(
 export function resetThresholdState(): void {
   lastStatus.clear();
   bands = new Map();
-  stages = new Map();
+  resetGrowStageForTesting();
 }

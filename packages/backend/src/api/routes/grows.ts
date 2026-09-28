@@ -5,6 +5,8 @@ import { ok, err } from "../reply.js";
 import type { GrowCycle, GrowTemplate } from "@canopy/shared-types";
 import { db } from "../../store/index.js";
 import { grows, growTemplates, workspaces } from "../../store/schema.js";
+import { refreshActiveGrows } from "../../grow/stage.js";
+import { refreshThresholds } from "../../rules/thresholds.js";
 
 function rowToGrow(row: typeof grows.$inferSelect): GrowCycle {
   const g: GrowCycle = {
@@ -98,6 +100,12 @@ export async function growRoutes(app: FastifyInstance): Promise<void> {
         ...(b.templateId   ? { templateId: b.templateId }   : {}),
         ...(b.startedAt    ? { startedAt: b.startedAt }     : {}),
       });
+      if ((b.status ?? "planned") === "active") {
+        await db.update(workspaces).set({ activeGrowId: id }).where(eq(workspaces.id, req.params.workspaceId));
+        await refreshActiveGrows();
+        await refreshThresholds();
+      }
+
       const [row] = await db.select().from(grows).where(eq(grows.id, id));
       return reply.status(201).send(ok(rowToGrow(row!)));
     },
@@ -119,6 +127,12 @@ export async function growRoutes(app: FastifyInstance): Promise<void> {
       if (b.plannedVegWeeks != null)       updates.plannedVegWeeks = b.plannedVegWeeks;
       if (b.plannedFlowerWeeks != null)    updates.plannedFlowerWeeks = b.plannedFlowerWeeks;
       if (b.plannedFlushWeeks != null)     updates.plannedFlushWeeks = b.plannedFlushWeeks;
+      // Filled at completion for the harvest report. Stored since the first
+      // commit with no way to write them.
+      if (b.actualSeedlingWeeks != null)   updates.actualSeedlingWeeks = b.actualSeedlingWeeks;
+      if (b.actualVegWeeks != null)        updates.actualVegWeeks = b.actualVegWeeks;
+      if (b.actualFlowerWeeks != null)     updates.actualFlowerWeeks = b.actualFlowerWeeks;
+      if (b.actualFlushWeeks != null)      updates.actualFlushWeeks = b.actualFlushWeeks;
       if (b.techniques !== undefined)      updates.techniquesJson = JSON.stringify(b.techniques);
       if (b.wetWeightG != null)            updates.wetWeightG = b.wetWeightG;
       if (b.dryWeightG != null)            updates.dryWeightG = b.dryWeightG;
@@ -138,6 +152,14 @@ export async function growRoutes(app: FastifyInstance): Promise<void> {
       } else if (b.status === "completed" || b.status === "aborted") {
         await db.update(workspaces).set({ activeGrowId: null }).where(eq(workspaces.id, workspaceId));
       }
+
+      // Which stage the tent is in decides whether stage-scoped automations run
+      // and which threshold band is in force, so starting, completing or
+      // re-planning a grow has to take effect now rather than at the next
+      // restart. Re-planning matters as much as starting: moving the veg weeks
+      // moves the stage boundaries under everything scoped to them.
+      await refreshActiveGrows();
+      await refreshThresholds();
 
       const [row] = await db.select().from(grows).where(eq(grows.id, growId));
       if (!row) return reply.status(404).send(err("not_found", "Grow not found"));
