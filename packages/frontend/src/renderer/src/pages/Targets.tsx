@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
@@ -461,7 +462,7 @@ export function Targets() {
           </div>
         }
       />
-      <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+      <PageBody>
         {!workspace ? null : rows.length === 0 ? (
           <EmptyState
             icon="target"
@@ -479,7 +480,7 @@ export function Targets() {
             currentStage={currentStage}
           />
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

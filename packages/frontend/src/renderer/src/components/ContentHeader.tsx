@@ -10,6 +10,9 @@ interface ContentHeaderProps {
 export function ContentHeader({ title, crumbs, badge, actions }: ContentHeaderProps) {
   return (
     <div className="content-header">
+      {/* Inner row shares the body's max width, so the title lines up with the
+          content under it on a wide screen instead of hugging the sidebar. */}
+      <div className="ch-inner">
       <div className="ch-titles">
         {crumbs && crumbs.length > 0 && (
           <div className="ch-crumb">
@@ -27,6 +30,7 @@ export function ContentHeader({ title, crumbs, badge, actions }: ContentHeaderPr
         </div>
       </div>
       {actions && <div className="ch-actions">{actions}</div>}
+      </div>
     </div>
   );
 }

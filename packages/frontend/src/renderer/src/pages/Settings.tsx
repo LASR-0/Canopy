@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { Icon } from "@/components/Icon";
 import { Switch } from "@/components/ui/switch";
 import { Tag } from "@/components/Tag";
@@ -300,24 +301,23 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
         <span className="ws-mgmt-name">{workspace.name}</span>
         {isActive && <span className="tag b-ok" style={{ fontSize: 10 }}>active</span>}
       </div>
-      <div className="gc-setup-body" style={{ padding: "0 16px 12px" }}>
-        <div className="gc-fields">
-          <div className="gc-field grow">
-            <label>Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} disabled={deleteState === "deleting"} />
-          </div>
-          <div className="gc-field" style={{ width: 220 }}>
-            <label>Timezone</label>
-            <input
-              value={tz}
-              placeholder="e.g. Australia/Sydney"
-              onChange={(e) => setTz(e.target.value)}
-              disabled={deleteState === "deleting"}
-            />
-          </div>
+      {/* The three buttons set the width, and both fields match it, so the
+          form reads as one block rather than two inputs of unrelated sizes. */}
+      <div className="ws-mgmt-form">
+        <div className="gc-field">
+          <label>Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={deleteState === "deleting"} />
         </div>
-      </div>
-      <div style={{ padding: "0 16px 14px", display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <div className="gc-field">
+          <label>Timezone</label>
+          <input
+            value={tz}
+            placeholder="e.g. Australia/Sydney"
+            onChange={(e) => setTz(e.target.value)}
+            disabled={deleteState === "deleting"}
+          />
+        </div>
+      <div className="ws-mgmt-actions">
 
         {/* Delete — 3-step confirmation with border trace timer */}
         <span
@@ -354,6 +354,7 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
         >
           <Icon name="check" size={13} /> Save
         </button>
+      </div>
       </div>
     </div>
   );
@@ -477,10 +478,10 @@ export function Settings() {
         }
       />
 
-      <div className="scroll">
-        <div className="canvas-pad">
+      <PageBody>
+        
 
-          {/* ── Top grid: Connection/Devices (left) · Notifications/Preferences (right) */}
+          {/* ── Top grid: Connection + devices (left) · Notifications, Preferences, Workspaces (right) */}
           <div className={settings ? "settings-layout" : undefined}>
             <div>
           {/* ── Connection ─────────────────────────────────────────── */}
@@ -597,36 +598,12 @@ export function Settings() {
                 ))}
               </div>
 
-              {/* Roles belong to the devices that are adopted, not to the scan
-                  that found them: gating this on scan state made the only way
-                  to assign a role the few seconds after a scan completed, and
-                  it vanished on the next remount. */}
-              {deviceList.length > 0 && (
-                <>
-                  <div className="sec-head" style={{ marginTop: 28 }}>
-                    <h2>Device roles</h2>
-                    <span className="count">{assignedCount}/{deviceList.length} assigned</span>
-                    <span className="rule" />
-                    {deviceList.length - assignedCount > 0 && (
-                      <Tag variant="warn"><Icon name="alert" size={11} />{deviceList.length - assignedCount} need a role</Tag>
-                    )}
-                  </div>
-                  <div className="roles-box">
-                    <div className="roles-head">
-                      <span>Device</span><span>Detected as</span><span>Grow role</span><span>Unlocks</span>
-                    </div>
-                    {deviceList.map((d) => (
-                      <RoleRow key={d.id} device={d} roles={roleList} onAssign={handleAssignRole} />
-                    ))}
-                  </div>
-                </>
-              )}
             </>
           )}
 
             </div>{/* end left column */}
 
-            {/* ── Right aside: Notifications + Preferences ──────── */}
+            {/* ── Right aside: Notifications · Preferences · Workspaces */}
             {settings && (
               <div className="settings-aside">
                 <div className="sec-head" style={{ marginTop: 0 }}>
@@ -708,19 +685,64 @@ export function Settings() {
                     </div>
                   </div>
                 </div>
+              {workspaceList.length > 0 && (
+                <div>
+                  <div className="sec-head ws-section-head">
+                    <h2>Workspaces</h2>
+                    <span className="count">{workspaceList.length}</span>
+                    <span className="rule" />
+                  </div>
+                  <div className="box">
+                    {workspaceList.map((ws, i) => (
+                      <WorkspaceRow
+                        key={ws.id}
+                        workspace={ws}
+                        isActive={ws.id === workspace?.id}
+                        isOnly={workspaceList.length === 1}
+                        isLast={i === workspaceList.length - 1}
+                        onDelete={(id) => deleteWorkspace.mutate(id)}
+                        onArchive={(id) => deleteWorkspace.mutate(id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
               </div>
             )}
           </div>{/* end settings-layout */}
 
-          {/* ── Bottom pods: Data & Storage · Workspaces ──────────── */}
-          <div className="settings-pods" style={{ marginTop: 24 }}>
+          {/* ── Full width: Device roles · Data & Storage ─────────── */}
+              {/* Roles belong to the devices that are adopted, not to the scan
+                  that found them: gating this on scan state made the only way
+                  to assign a role the few seconds after a scan completed, and
+                  it vanished on the next remount. */}
+          {hasDevices && deviceList.length > 0 && (
+                <>
+                  <div className="sec-head" style={{ marginTop: 28 }}>
+                    <h2>Device roles</h2>
+                    <span className="count">{assignedCount}/{deviceList.length} assigned</span>
+                    <span className="rule" />
+                    {deviceList.length - assignedCount > 0 && (
+                      <Tag variant="warn"><Icon name="alert" size={11} />{deviceList.length - assignedCount} need a role</Tag>
+                    )}
+                  </div>
+                  <div className="roles-box">
+                    <div className="roles-head">
+                      <span>Device</span><span>Detected as</span><span>Grow role</span><span>Unlocks</span>
+                    </div>
+                    {deviceList.map((d) => (
+                      <RoleRow key={d.id} device={d} roles={roleList} onAssign={handleAssignRole} />
+                    ))}
+                  </div>
+                </>
+              )}
             {settings && (
               <div>
-                <div className="sec-head" style={{ marginTop: 0 }}>
+                <div className="sec-head" style={{ marginTop: 28 }}>
                   <h2>Data &amp; Storage</h2><span className="rule" />
                 </div>
                 <div className="box">
-                  <div className="auto-list">
+                  <div className="auto-list storage-grid">
                     {([
                       ["rawRetentionDays",    "Raw readings kept",     3,  30,  1,  "days" ],
                       ["hourlyRetentionDays", "Hourly rollup kept",    30, 365, 5,  "days" ],
@@ -779,29 +801,7 @@ export function Settings() {
                 </div>
               </div>
             )}
-            {workspaceList.length > 0 && (
-              <div>
-                <div className="sec-head" style={{ marginTop: 0 }}>
-                  <h2>Workspaces</h2>
-                  <span className="count">{workspaceList.length}</span>
-                  <span className="rule" />
-                </div>
-                <div className="box">
-                  {workspaceList.map((ws, i) => (
-                    <WorkspaceRow
-                      key={ws.id}
-                      workspace={ws}
-                      isActive={ws.id === workspace?.id}
-                      isOnly={workspaceList.length === 1}
-                      isLast={i === workspaceList.length - 1}
-                      onDelete={(id) => deleteWorkspace.mutate(id)}
-                      onArchive={(id) => deleteWorkspace.mutate(id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+
 
           {/* ── About ──────────────────────────────────────────────── */}
           <div style={{ marginTop: 24 }}>
@@ -836,8 +836,8 @@ export function Settings() {
             </div>
           </div>
 
-        </div>
-      </div>
+        
+      </PageBody>
 
       {showProvision && (
         <ProvisionModal

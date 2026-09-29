@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from "react";
+import { useElementSize } from "@/hooks/useElementWidth";
 import { useQueries } from "@tanstack/react-query";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon } from "@/components/Icon";
 import { api } from "@/lib/http";
@@ -33,13 +35,24 @@ const RANGES: { key: RangeKey; ms: number; resolution: ReadingResolution; ticks:
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
-const W = 860;
+/**
+ * Width before the chart has been measured. After that the chart draws at its
+ * real pixel width (see useElementWidth), so text never scales with the window.
+ */
+const DEFAULT_W = 860;
 const PAD_L = 46;
 const PAD_R = 52;
-const PLOT_W = W - PAD_L - PAD_R;
 const STACK_LANE_H = 86;
 const STACK_GAP = 16;
-const OVERLAY_LANE_H = 300;
+/**
+ * Overlay height when there is nothing to size it by. In practice the overlay
+ * fills the height of the metric panel beside it (see `.chart-canvas.fill`),
+ * so the two columns end level; this is the floor.
+ */
+const OVERLAY_MIN_LANE_H = 280;
+/** Space in the SVG above the lane (event markers) and below it (time ticks). */
+const OVERLAY_TOP = 6;
+const OVERLAY_BOTTOM = 24;
 
 /** Pad bounds by 12 % so a line never runs along the edge of its lane. */
 function niceBounds(min: number, max: number): [number, number] {
@@ -59,7 +72,7 @@ interface Point { t: number; v: number; min?: number; max?: number }
  * compressed to the width of one sample — the gap would vanish instead of showing.
  */
 function pathFor(
-  points: Point[], from: number, to: number, y0: number, h: number, lo: number, hi: number,
+  points: Point[], from: number, to: number, y0: number, h: number, lo: number, hi: number, PLOT_W: number,
 ): string {
   const span = to - from || 1;
   const range = hi - lo || 1;
@@ -74,7 +87,7 @@ function pathFor(
 
 /** The envelope between each bucket's min and max, as a closed path. */
 function bandPath(
-  points: Point[], from: number, to: number, y0: number, h: number, lo: number, hi: number,
+  points: Point[], from: number, to: number, y0: number, h: number, lo: number, hi: number, PLOT_W: number,
 ): string {
   const banded = points.filter((p) => p.min != null && p.max != null);
   if (banded.length < 2) return "";
@@ -131,7 +144,7 @@ function toPoints(series: ReadingSeries | undefined): Point[] {
  * what the tent actually does; the prototype's mock hard-coded a six-hour night,
  * which here would draw a confident lie. No such automation means no shading.
  */
-function nightSpans(on: string, off: string, from: number, to: number): { x: number; w: number }[] {
+function nightSpans(on: string, off: string, from: number, to: number): { start: number; end: number }[] {
   const minutes = (hhmm: string) => {
     const [h = "0", m = "0"] = hhmm.split(":");
     return Number(h) * 60 + Number(m);
@@ -140,9 +153,8 @@ function nightSpans(on: string, off: string, from: number, to: number): { x: num
   const offMin = minutes(off);
   if (onMin === offMin) return []; // equal times mean always on
 
-  const spans: { x: number; w: number }[] = [];
+  const spans: { start: number; end: number }[] = [];
   const DAY = 86_400_000;
-  const span = to - from || 1;
 
   const first = new Date(from);
   first.setHours(0, 0, 0, 0);
@@ -157,15 +169,13 @@ function nightSpans(on: string, off: string, from: number, to: number): { x: num
     const end = Math.min(darkEnd, to);
     if (end <= start) continue;
 
-    spans.push({
-      x: PAD_L + ((start - from) / span) * PLOT_W,
-      w: ((end - start) / span) * PLOT_W,
-    });
+    // Times, not pixels: the chart places them at whatever width it is drawn.
+    spans.push({ start, end });
   }
   return spans;
 }
 
-function tickLabels(range: RangeKey, from: number, to: number): { x: number; label: string }[] {
+function tickLabels(range: RangeKey, from: number, to: number, PLOT_W: number): { x: number; label: string }[] {
   const count = RANGES.find((r) => r.key === range)!.ticks;
   const span = to - from || 1;
   const format: Intl.DateTimeFormatOptions =
@@ -347,7 +357,7 @@ function ChartPanel({
   to: number;
   latest: Map<Metric, number>;
   opts: { night: boolean; targets: boolean; oor: boolean };
-  night: { x: number; w: number }[];
+  night: { start: number; end: number }[];
   targets: Map<Metric, [number, number]>;
   events: AppEvent[];
   eventGroups: Set<EventGroup>;
@@ -356,17 +366,25 @@ function ChartPanel({
   svgRef: React.RefObject<SVGSVGElement | null>;
 }) {
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const canvas = useElementSize(canvasRef, { width: DEFAULT_W, height: OVERLAY_MIN_LANE_H + OVERLAY_TOP + OVERLAY_BOTTOM });
+  const W = canvas.width;
+  const PLOT_W = W - PAD_L - PAD_R;
 
   const lanes = mode === "stack" ? metrics.map((m) => [m]) : [metrics];
-  const laneH = mode === "stack" ? STACK_LANE_H : OVERLAY_LANE_H;
+  // Overlay fills whatever height the row gives it; stack lanes keep their
+  // fixed height, so the chart grows with the number of metrics instead.
+  const laneH = mode === "stack"
+    ? STACK_LANE_H
+    : Math.max(OVERLAY_MIN_LANE_H, canvas.height - OVERLAY_TOP - OVERLAY_BOTTOM);
   const laneGap = mode === "stack" ? STACK_GAP : 0;
   const totalH = lanes.length * laneH + Math.max(0, lanes.length - 1) * laneGap;
-  const ticks = tickLabels(range, from, to);
+  const ticks = tickLabels(range, from, to, PLOT_W);
   const span = to - from || 1;
 
   const clusters = useMemo(
     () => clusterEvents(events.filter((e) => eventGroups.has(EVENT_GROUP[e.type] ?? "grow")), from, to, PAD_L, PLOT_W),
-    [events, eventGroups, from, to],
+    [events, eventGroups, from, to, PLOT_W],
   );
 
   /**
@@ -476,12 +494,13 @@ function ChartPanel({
         </div>
       </div>
 
-      <div className="chart-canvas">
+      <div className={`chart-canvas${mode === "overlay" ? " fill" : ""}`} ref={canvasRef}>
         <svg
           ref={svgRef}
           className="chart-svg"
-          viewBox={`0 0 ${W} ${totalH + 24}`}
-          preserveAspectRatio="none"
+          // Overlay draws in exactly the measured box (lane + the 6 px above it +
+          // the tick row below), so the browser never rescales it.
+          viewBox={`0 0 ${W} ${mode === "overlay" ? laneH + OVERLAY_TOP + OVERLAY_BOTTOM : totalH + 24}`}
           onPointerMove={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             setHoverX(((e.clientX - rect.left) / rect.width) * W);
@@ -510,7 +529,8 @@ function ChartPanel({
             return (
               <g key={laneIndex}>
                 {opts.night && night.map((band, i) => (
-                  <rect key={i} className="night-hatch" x={band.x} y={y0} width={band.w} height={laneH} />
+                  <rect key={i} className="night-hatch" x={PAD_L + ((band.start - from) / span) * PLOT_W} y={y0}
+                    width={((band.end - band.start) / span) * PLOT_W} height={laneH} />
                 ))}
 
                 {/* Solid hairlines. The prototype dashed these; a dashed grid
@@ -571,14 +591,14 @@ function ChartPanel({
                           min–max envelope; overlaying several would be mud. */}
                       {mode === "stack" && (
                         <path
-                          d={bandPath(points, from, to, y0, laneH, lo, hi)}
+                          d={bandPath(points, from, to, y0, laneH, lo, hi, PLOT_W)}
                           fill={meta.color}
                           opacity="0.12"
                           stroke="none"
                         />
                       )}
                       <path
-                        d={pathFor(points, from, to, y0, laneH, lo, hi)}
+                        d={pathFor(points, from, to, y0, laneH, lo, hi, PLOT_W)}
                         fill="none"
                         stroke={meta.color}
                         strokeWidth="2"
@@ -774,8 +794,8 @@ async function exportPng(svg: SVGSVGElement | null, name: string): Promise<void>
 
   const scale = 2;
   const canvas = document.createElement("canvas");
-  canvas.width = (svg.viewBox.baseVal.width || W) * scale;
-  canvas.height = (svg.viewBox.baseVal.height || OVERLAY_LANE_H) * scale;
+  canvas.width = (svg.viewBox.baseVal.width || DEFAULT_W) * scale;
+  canvas.height = (svg.viewBox.baseVal.height || OVERLAY_MIN_LANE_H) * scale;
   const context = canvas.getContext("2d");
   if (!context) return;
   context.fillStyle = surface;
@@ -962,7 +982,7 @@ export function Logging() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+      <PageBody>
         {!workspace ? null : available.length === 0 ? (
           <EmptyState
             icon="logging"
@@ -1056,28 +1076,28 @@ export function Logging() {
                       <div className="sc-top">
                         <span className="sc-sw" style={{ background: meta.color }} />
                         <span className="sc-name">{meta.label}</span>
+                        {/* The unit sits by the name, not after the average, where a
+                            five-digit lux reading pushed it onto a second line. */}
+                        {unit && <span className="sc-unit">{unit}</span>}
                         {meta.derived && <span className="sc-deriv">deriv</span>}
                       </div>
                       <div className="sc-stats">
-                        <div className="sc-stat">
-                          <span className="sc-k">avg</span>
-                          <span className="sc-v avg">
-                            {summary ? formatMetricValue(summary.avg, metric) : "—"}
-                            <small> {unit}</small>
-                          </span>
-                        </div>
-                        <div className="sc-stat">
-                          <span className="sc-k">min</span>
-                          <span className="sc-v" style={{ color: "var(--accent-fg)" }}>
-                            {summary ? formatMetricValue(summary.min, metric) : "—"}
-                          </span>
-                        </div>
-                        <div className="sc-stat">
-                          <span className="sc-k">max</span>
-                          <span className="sc-v" style={{ color: "var(--danger-fg)" }}>
-                            {summary ? formatMetricValue(summary.max, metric) : "—"}
-                          </span>
-                        </div>
+                        {([
+                          ["avg", summary?.avg, "var(--fg-default)"],
+                          ["min", summary?.min, "var(--accent-fg)"],
+                          ["max", summary?.max, "var(--danger-fg)"],
+                        ] as const).map(([key, value, color]) => {
+                          const text = value != null ? formatMetricValue(value, metric) : "—";
+                          return (
+                            <div className="sc-stat" key={key}>
+                              <span className="sc-k">{key}</span>
+                              {/* Truncates only as a last resort; the full value is on hover. */}
+                              <span className="sc-v" style={{ color }} title={value != null ? `${text} ${unit}` : undefined}>
+                                {text}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -1085,7 +1105,7 @@ export function Logging() {
               </div>
             )}
 
-            <div className="log-layout">
+            <div className={`log-layout${mode === "overlay" ? " overlay" : ""}`}>
               <div className="metric-panel">
                 <div className="mp-head">
                   <Icon name="logging" size={13} />
@@ -1163,7 +1183,7 @@ export function Logging() {
             </div>
           </>
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

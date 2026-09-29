@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { Icon } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
-import { calcGrowStage } from "@/lib/growStage";
+import { STAGE_DEFS, calcGrowStage } from "@/lib/growStage";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useAutomations } from "@/hooks/useAutomations";
 import { useCreateGrow, useGrowTemplates, useGrows, usePatchGrow } from "@/hooks/useGrows";
@@ -17,12 +18,10 @@ import type { GrowCycle, GrowStageName } from "@canopy/shared-types";
  * `harvest` is in `GrowStageName` but is not here: it is an end state, not a span
  * with a length, so it has no weeks to plan.
  */
-const STAGES: { stage: GrowStageName; label: string; color: string; weeksKey: WeeksKey }[] = [
-  { stage: "seedling",   label: "Seedling", color: "#3fb950", weeksKey: "plannedSeedlingWeeks" },
-  { stage: "vegetative", label: "Veg",      color: "#2f81f7", weeksKey: "plannedVegWeeks" },
-  { stage: "flowering",  label: "Flower",   color: "#a371f7", weeksKey: "plannedFlowerWeeks" },
-  { stage: "flush",      label: "Flush",    color: "#d29922", weeksKey: "plannedFlushWeeks" },
-];
+const WEEKS_KEYS: WeeksKey[] = ["plannedSeedlingWeeks", "plannedVegWeeks", "plannedFlowerWeeks", "plannedFlushWeeks"];
+
+const STAGES: { stage: GrowStageName; label: string; color: string; weeksKey: WeeksKey }[] =
+  STAGE_DEFS.map((d, i) => ({ stage: d.stage, label: d.label, color: d.color, weeksKey: WEEKS_KEYS[i]! }));
 
 type WeeksKey =
   | "plannedSeedlingWeeks"
@@ -348,7 +347,7 @@ export function GrowCycle() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+      <PageBody>
         {!workspace ? null : (
           <>
             {aborting && grow && (
@@ -619,7 +618,7 @@ export function GrowCycle() {
             </div>
           </>
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

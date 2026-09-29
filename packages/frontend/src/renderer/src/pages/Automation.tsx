@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon, type IconName } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
@@ -696,7 +697,7 @@ export function Automation() {
         actions={actions}
       />
 
-      <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+      <PageBody>
         {isLoading || !workspace ? null : (
           <>
             {editing === "new" && (
@@ -770,7 +771,7 @@ export function Automation() {
             ))}
           </>
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

@@ -365,12 +365,23 @@ body {
 
 /* ── main ──────────────────────────────────────────────────── */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--canvas-default); }
+/*
+ * Page frame. The window is at least 1100 × 700 (set on the BrowserWindow), so
+ * every page is laid out for a content area of about 850 px and up. On wide
+ * screens content stops at --content-max and centres — the header row too, so
+ * the title stays over the content it names. 1920 rather than 1600: at 1600 a
+ * 2560 screen left the Logging chart short and wide, with a band of empty
+ * space either side.
+ */
+:root { --content-max: 1920px; --page-pad-x: 28px; }
 .content-header {
   flex: 0 0 auto;
-  padding: 20px 28px 16px;
+  padding: 20px var(--page-pad-x) 16px;
   border-bottom: 1px solid var(--border-default);
-  display: flex; align-items: flex-end; gap: 16px;
 }
+.ch-inner { display: flex; align-items: flex-end; gap: 16px; max-width: var(--content-max); margin: 0 auto; }
+.page-body { flex: 1; min-height: 0; overflow-y: auto; }
+.page-inner { max-width: var(--content-max); margin: 0 auto; padding: 20px var(--page-pad-x) 48px; }
 .ch-titles { flex: 1; min-width: 0; }
 .ch-crumb { font-size: 12px; color: var(--fg-muted); display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .ch-crumb .sep { color: var(--fg-subtle); }
@@ -416,8 +427,6 @@ body {
 .segmented button.on { color: var(--fg-default); background: var(--canvas-subtle); font-weight: 600; }
 
 /* ── scroll + canvas ───────────────────────────────────────── */
-.scroll { overflow-y: auto; flex: 1; }
-.canvas-pad { padding: 24px 28px 48px; }
 
 /* ── section heading ───────────────────────────────────────── */
 .sec-head { display: flex; align-items: center; gap: 10px; margin: 26px 0 12px; }
@@ -596,8 +605,8 @@ body {
 .callout-stats .sep { color: var(--fg-subtle); }
 
 /* ── device cards ──────────────────────────────────────────── */
-.dev-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 1100px) { .dev-list { grid-template-columns: 1fr; } }
+/* Sized to its column, not the viewport: as many cards across as fit. */
+.dev-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .dev-card { border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); padding: 13px 14px; display: flex; flex-direction: column; gap: 11px; }
 .dev-card:hover { border-color: var(--fg-subtle); }
 .dev-card.off { opacity: 0.72; }
@@ -606,8 +615,9 @@ body {
 .online-dot.off { background: var(--fg-subtle); box-shadow: none; }
 .dev-id { flex: 1; min-width: 0; }
 .dev-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; color: var(--fg-default); }
-.dev-host { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); display: flex; gap: 6px; margin-top: 1px; }
-.dev-host .sep { color: var(--border-default); }
+/* One line, cut with an ellipsis: a long MQTT topic prefix ran into the badges. */
+.dev-host { font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-host .sep { color: var(--border-default); margin: 0 6px; }
 .signal { display: flex; align-items: flex-end; gap: 2px; height: 14px; flex: 0 0 auto; }
 .signal i { width: 3px; border-radius: 1px; display: block; }
 .icon-ghost { background: transparent; border: none; color: var(--fg-subtle); cursor: pointer; padding: 2px; border-radius: 4px; display: grid; place-items: center; }
@@ -1407,27 +1417,31 @@ body {
 .workspace .chev-open { transform: rotate(180deg); }
 
 /* ── Settings page layout ──────────────────────────────────── */
+/* Two columns at every supported width (the window is at least 1100 wide):
+   Connection and the device list on the left, Notifications, Preferences and
+   Workspaces down the side. Device roles and Data & Storage run full width
+   underneath — both are tables that need the room. */
 .settings-layout {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 20px;
   align-items: start;
 }
 .settings-layout > * { min-width: 0; }
 .settings-aside { display: flex; flex-direction: column; }
-.settings-pods {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 20px;
-}
-.settings-pods > * { min-width: 0; }
-@media (min-width: 1200px) {
-  .settings-layout { grid-template-columns: 1fr 300px; }
-  .settings-pods { grid-template-columns: 1fr 1fr; }
-}
+/* Retention rows flow into columns at full width rather than stretching a
+   slider across the screen. */
+.storage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); column-gap: 24px; }
 
 /* ── workspace management row (Settings page) ──────────────── */
-.ws-mgmt-row { padding: 14px 16px 0; }
+.ws-mgmt-row { padding: 14px 16px; }
+/* Two classes, to outrank .sec-head:first-child — the heading opens its own wrapper. */
+.sec-head.ws-section-head { margin-top: 28px; }
+/* Width comes from the action buttons alone: the inputs are width 0 with a
+   100 % minimum, so they fill the column without widening it. */
+.ws-mgmt-form { display: inline-flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.ws-mgmt-form .gc-field input { width: 0; min-width: 100%; box-sizing: border-box; }
+.ws-mgmt-actions { display: flex; gap: 8px; margin-top: 2px; }
 .ws-mgmt-header {
   display: flex;
   align-items: center;
@@ -1544,18 +1558,18 @@ body {
   text-transform: uppercase; letter-spacing: .05em;
 }
 .gb-day { font-size: 12px; color: var(--fg-muted); font-family: var(--mono); }
-.gb-right { flex: 1; display: flex; justify-content: flex-end; min-width: 200px; }
-.gb-stages { display: flex; gap: 3px; align-items: stretch; }
-.gb-stage-seg {
-  flex: 1; min-width: 52px; padding: 5px 8px 4px;
-  border-radius: 5px; background: var(--canvas-default); border: 1px solid var(--border-muted);
+.gb-right { flex: 1; display: flex; justify-content: flex-end; min-width: 260px; }
+/* A miniature of the Grow Cycle timeline: widths follow the planned weeks. */
+.gb-track { position: relative; display: flex; gap: 2px; width: 100%; max-width: 460px; height: 24px; }
+.gb-seg {
+  min-width: 0; flex-basis: 0; display: flex; align-items: center; padding: 0 7px; border-radius: 4px;
+  background: color-mix(in srgb, var(--stage) 14%, var(--canvas-default));
+  font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-muted);
 }
-.gb-stage-seg.done   { background: var(--success-muted); border-color: var(--success-emphasis); opacity: .7; }
-.gb-stage-seg.active { background: var(--accent-muted);  border-color: var(--accent-emphasis); }
-.gb-stage-name { font-size: 10px; color: var(--fg-subtle); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
-.gb-stage-seg.active .gb-stage-name { color: var(--accent-fg); }
-.gb-stage-bar  { height: 3px; background: var(--border-muted); border-radius: 2px; margin-top: 5px; }
-.gb-stage-fill { height: 100%; background: var(--accent-fg); border-radius: 2px; min-width: 2px; }
+.gb-seg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-seg.done { background: color-mix(in srgb, var(--stage) 34%, var(--canvas-default)); color: var(--fg-default); }
+.gb-seg.active { background: var(--stage); color: #fff; }
+.gb-today { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--fg-default); box-shadow: 0 0 0 2px var(--canvas-subtle); }
 
 /* Device strip */
 .device-strip { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -2022,11 +2036,13 @@ body {
    rollup bands, so a 24-hour view reports the day's real peak. */
 .stat-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
-.stat-card {
+/* Numbers size to the card, not the window: a card is a container, and its
+   values scale with its width between a floor and the design size. */
+.stat-card { container-type: inline-size;
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--canvas-default);
@@ -2052,8 +2068,10 @@ body {
   padding: 0 4px;
 }
 .sc-deriv { font-size: 8.5px; line-height: 13px; }
-.sc-stats { display: flex; gap: 12px; }
-.sc-stat { display: flex; flex-direction: column; }
+.sc-unit { font-size: 10.5px; color: var(--fg-subtle); font-family: var(--mono); flex: 0 0 auto; }
+.sc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.sc-stat { display: flex; flex-direction: column; min-width: 0; }
+.stat-card .sc-v { font-size: clamp(12px, 8.5cqi, 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-k {
   font-size: 9.5px;
   text-transform: uppercase;
@@ -2065,12 +2083,10 @@ body {
 .sc-v.avg { color: var(--fg-default); }
 .sc-v small { font-size: 10px; color: var(--fg-muted); font-weight: 400; }
 
-/* Metric panel beside the chart, not a filter row above it. */
-.log-layout { display: grid; grid-template-columns: 264px 1fr; gap: 18px; align-items: start; }
-@media (max-width: 1100px) {
-  .log-layout { grid-template-columns: 1fr; }
-  .metric-panel { position: static !important; }
-}
+/* Metric panel beside the chart, not a filter row above it — at every
+   supported width. It narrows at the 1100 px minimum rather than dropping
+   under the chart, which pushed the chart off the first screen. */
+.log-layout { display: grid; grid-template-columns: clamp(216px, 22%, 264px) minmax(0, 1fr); gap: 18px; align-items: start; }
 
 .metric-panel {
   border: 1px solid var(--border-default);
@@ -2176,6 +2192,19 @@ body {
 
 .chart-canvas { padding: 8px 6px 4px; position: relative; }
 .chart-svg { width: 100%; display: block; overflow: visible; }
+/*
+ * Overlay: the chart ends level with the metric panel beside it. The row is as
+ * tall as the panel, the chart box stretches to it, and the canvas takes what
+ * is left under the header. The SVG is taken out of flow so its own height
+ * cannot feed back into the size it is drawn from; ChartPanel measures the
+ * canvas and draws the lane to fill it. Stack mode keeps its natural height —
+ * one fixed lane per metric.
+ */
+.log-layout.overlay { align-items: stretch; }
+.log-layout.overlay .chart-wrap { display: flex; flex-direction: column; }
+.log-layout.overlay .chart-box { flex: 1; display: flex; flex-direction: column; }
+.chart-canvas.fill { flex: 1; min-height: 310px; }
+.chart-canvas.fill .chart-svg { position: absolute; top: 8px; left: 6px; width: calc(100% - 12px); height: calc(100% - 12px); }
 
 /* Solid, one step off the surface. The prototype dashed these; a dashed grid
    reads as a threshold when it is only a grid — the target bands carry the dash. */

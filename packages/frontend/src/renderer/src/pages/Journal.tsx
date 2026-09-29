@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon, type IconName } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
-import { calcGrowStage, growTotalPlannedDays } from "@/lib/growStage";
+import { STAGE_DEFS, calcGrowStage, growTotalPlannedDays } from "@/lib/growStage";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useRoles } from "@/hooks/useDevices";
 import { useGrows } from "@/hooks/useGrows";
@@ -681,8 +682,8 @@ function GrowNotebook({ workspaceId, grow, editable }: {
 
 // ── History ───────────────────────────────────────────────────────────────────
 
-const STAGE_COLORS = ["#3fb950", "#2f81f7", "#a371f7", "#d29922"];
-const STAGE_NAMES = ["Seedling", "Veg", "Flower", "Flush"];
+const STAGE_COLORS = STAGE_DEFS.map((d) => d.color);
+const STAGE_NAMES = STAGE_DEFS.map((d) => d.label);
 
 /** What the stages ran to — actual weeks where recorded, the plan otherwise. */
 function stageWeeks(g: GrowCycle): number[] {
@@ -916,7 +917,7 @@ export function Journal() {
       />
 
       {/* Keyed so switching tab or grow starts at the top, not at the old offset. */}
-      <div key={viewing?.id ?? tab} className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+      <PageBody key={viewing?.id ?? tab}>
         {!workspace ? null : shown ? (
           <GrowNotebook
             key={shown.id}
@@ -938,7 +939,7 @@ export function Journal() {
             onOpen={(g) => setViewing(g)}
           />
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

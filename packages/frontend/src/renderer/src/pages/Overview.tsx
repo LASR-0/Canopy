@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Sparkline } from "@/components/Sparkline";
 import { Icon, type IconName } from "@/components/Icon";
@@ -14,7 +15,7 @@ import { useDevices, useScan } from "@/hooks/useDevices";
 import { useAutomations } from "@/hooks/useAutomations";
 import { useControllerStatus } from "@/hooks/useBackend";
 import { statusOf } from "@/lib/thresholds";
-import { calcGrowStage } from "@/lib/growStage";
+import { STAGE_DEFS, calcGrowStage, growTotalPlannedDays } from "@/lib/growStage";
 import { api } from "@/lib/http";
 import type { Reading, SensorThreshold, GrowCycle, AppEvent, MaintenanceTask, Device, ReadingResolution } from "@canopy/shared-types";
 import type { Metric, GrowStageName, Automation, ThresholdAlertSetting } from "@canopy/shared-types";
@@ -61,6 +62,14 @@ function GrowBanner({ grow }: { grow: GrowCycle }) {
   const info = calcGrowStage(grow);
   if (!info) return null;
   const currentIdx = STAGE_ORDER.indexOf(info.stage as typeof STAGE_ORDER[number]);
+  const segments = STAGE_DEFS
+    .map((d, i) => ({
+      ...d,
+      weeks: d.weeks(grow),
+      state: i < currentIdx ? "done" : i === currentIdx ? "active" : "upcoming",
+    }))
+    .filter((d) => d.weeks > 0);
+  const totalDays = growTotalPlannedDays(grow);
 
   return (
     <div className="grow-banner">
@@ -72,21 +81,25 @@ function GrowBanner({ grow }: { grow: GrowCycle }) {
         <span className="gb-stage-badge">{STAGE_LABELS[info.stage]}</span>
         <span className="gb-day">Day {info.totalDay}</span>
       </div>
+      {/* The Grow Cycle timeline in miniature: segments sized by planned weeks,
+          so where "today" sits reads as how far through the grow it is. The
+          fixed-width chips this replaces clipped "Flowering", and a 0 %-full
+          progress bar on day 1 left a stray dot under the current stage. */}
       <div className="gb-right">
-        <div className="gb-stages">
-          {STAGE_ORDER.map((s, i) => (
+        <div className="gb-track" role="img" aria-label={`Day ${info.totalDay} of ${totalDays}, in ${STAGE_LABELS[info.stage]}`}>
+          {segments.map((seg) => (
             <div
-              key={s}
-              className={`gb-stage-seg${i < currentIdx ? " done" : i === currentIdx ? " active" : ""}`}
+              key={seg.stage}
+              className={`gb-seg ${seg.state}`}
+              style={{ flexGrow: seg.weeks, "--stage": seg.color } as React.CSSProperties}
+              title={`${seg.label} · ${seg.weeks} week${seg.weeks === 1 ? "" : "s"}`}
             >
-              <div className="gb-stage-name">{STAGE_LABELS[s]}</div>
-              {i === currentIdx && (
-                <div className="gb-stage-bar">
-                  <div className="gb-stage-fill" style={{ width: `${Math.round(info.pctInStage * 100)}%` }} />
-                </div>
-              )}
+              <span>{seg.label}</span>
             </div>
           ))}
+          {totalDays > 0 && (
+            <span className="gb-today" style={{ left: `${Math.min(100, ((info.totalDay - 0.5) / totalDays) * 100)}%` }} />
+          )}
         </div>
       </div>
     </div>
@@ -491,14 +504,14 @@ export function Overview() {
     return (
       <>
         <ContentHeader title="Overview" />
-        <div className="scroll">
+        <PageBody>
           <EmptyState
             icon="overview"
             title="No workspace selected"
             description="Create a workspace in Settings to get started."
             hint="Settings → Workspaces"
           />
-        </div>
+        </PageBody>
       </>
     );
   }
@@ -511,8 +524,8 @@ export function Overview() {
         badge={statusBadge}
         actions={headerActions}
       />
-      <div className="scroll">
-        <div className="canvas-pad">
+      <PageBody>
+        
           {grow && <GrowBanner grow={grow} />}
 
           <div className="ov-layout">
@@ -626,8 +639,8 @@ export function Overview() {
               <ActivityFeed events={events} />
             </div>
           </div>
-        </div>
-      </div>
+        
+      </PageBody>
 
     </>
   );

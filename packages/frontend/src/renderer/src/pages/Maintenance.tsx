@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon, type IconName } from "@/components/Icon";
 import { Toggle } from "@/components/Toggle";
@@ -808,7 +809,7 @@ export function Maintenance() {
         actions={actions}
       />
 
-      <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+      <PageBody>
         {isLoading || !workspace ? null : tab === "today" ? (
           <TodayView workspaceId={workspace.id} tasks={tasks} devices={devices} />
         ) : tab === "week" ? (
@@ -816,7 +817,7 @@ export function Maintenance() {
         ) : (
           <HistoryView completions={completions} tasks={tasks} />
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

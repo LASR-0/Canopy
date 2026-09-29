@@ -52,8 +52,12 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
     height: 832,
-    minWidth: 960,
-    minHeight: 600,
+    // The smallest window every page is laid out for. 1100 leaves the content
+    // area about 850 px beside the sidebar, which the two-column pages (Setup
+    // View's plan and panels, Target ranges' stage matrix) need; 700 tall fits
+    // a 1366 × 768 laptop screen with its taskbar.
+    minWidth: 1100,
+    minHeight: 700,
     show: false,
     backgroundColor: "#0d1117",
     // Native traffic lights on macOS; frameless elsewhere (renderer draws controls).

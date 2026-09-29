@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent, type ReactNode } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
+import { PageBody } from "@/components/PageBody";
 import { Icon, type IconName } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
 import {
@@ -10,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDevices, useRoles, useAssignRole } from "@/hooks/useDevices";
+import { useElementWidth } from "@/hooks/useElementWidth";
 import {
   useAddPlant,
   useLayout,
@@ -189,8 +191,16 @@ function DimBar({ dims, busy, error, onCommit }: {
 
 // ── Plan canvas ───────────────────────────────────────────────────────────────
 
-const VW = 560;
-const VH = 460;
+/**
+ * The plan draws at its real pixel width, measured, so pin labels stay at their
+ * CSS size whatever the window: a fixed viewBox scaled them with it, huge on a
+ * wide screen and unreadable on a narrow one. The height follows the width, held
+ * between a floor that keeps a small window usable and a ceiling that keeps a
+ * wide one from pushing the plan off the screen.
+ */
+const DEFAULT_VW = 560;
+const MIN_VH = 380;
+const MAX_VH = 760;
 const PAD = 34;
 
 /** Grid spacing that keeps the plan legible from a 30 cm cube to a 6 m room. */
@@ -224,6 +234,9 @@ function PlanCanvas({ dims, pins, plants, sel, onSelect, onMove, onDropDevice, o
   onDropPlant: (litres: number, xCm: number, yCm: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const VW = useElementWidth(stageRef, DEFAULT_VW);
+  const VH = Math.min(MAX_VH, Math.max(MIN_VH, Math.round(VW * 0.8)));
   const [drag, setDrag] = useState<Drag | null>(null);
   const [dropping, setDropping] = useState(false);
 
@@ -292,7 +305,7 @@ function PlanCanvas({ dims, pins, plants, sel, onSelect, onMove, onDropDevice, o
       onDrop={onDrop}
     >
       <div className="drop-hint"><span><Icon name="target" size={15} /> Drop to place on plan</span></div>
-      <div className="plan-stage">
+      <div className="plan-stage" ref={stageRef}>
         <svg
           ref={svgRef}
           className="plan-svg"
@@ -657,7 +670,7 @@ export function SetupView() {
             </button>
           }
         />
-        <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+        <PageBody>
           <div className="set-empty">
             <div className="se-ico"><Icon name="cube" size={28} /></div>
             <h2>No grow space defined yet</h2>
@@ -674,7 +687,7 @@ export function SetupView() {
               </button>
             </div>
           </div>
-        </div>
+        </PageBody>
       </>
     );
   }
@@ -704,7 +717,7 @@ export function SetupView() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto" style={{ padding: "18px 22px" }}>
+      <PageBody>
         {!workspace || !dims ? null : (
           <>
             <DimBar
@@ -892,7 +905,7 @@ export function SetupView() {
             )}
           </>
         )}
-      </div>
+      </PageBody>
     </>
   );
 }
