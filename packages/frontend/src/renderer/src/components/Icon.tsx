@@ -28,15 +28,19 @@ export type IconName =
   | "check"
   | "chevron"
   | "clock"
+  | "cube"
   | "dots"
   | "external"
   | "eye"
   | "fan"
   | "gear"
   | "info"
+  | "layers"
   | "leaf"
   | "lock"
+  | "map"
   | "minus"
+  | "move"
   | "pencil"
   | "pin"
   | "plug"
@@ -241,6 +245,20 @@ export function Icon({ name, size = 16, className }: IconProps) {
         <rect x="3.25" y="7" width="9.5" height="6.25" rx="1.4"/>
         <path d="M5.4 7V4.9a2.6 2.6 0 0 1 5.2 0V7"/>
       </>);
+    case "cube":
+      return S(1.4, <>
+        <path d="M8 1.7 14 5v6l-6 3.3L2 11V5z"/>
+        <path d="M2 5l6 3.3L14 5M8 8.3V14.3"/>
+      </>);
+    case "layers":
+      return S(1.4, <>
+        <path d="M8 2 2 5l6 3 6-3z"/>
+        <path d="M2 8l6 3 6-3M2 11l6 3 6-3"/>
+      </>);
+    case "map":
+      return S(1.4, <path d="M2 4.2 6 2.5v9.3L2 13.5zM6 2.5l4 1.7v9.3L6 11.8zM10 4.2l4-1.7v9.3l-4 1.7z"/>);
+    case "move":
+      return S(1.4, <path d="M8 2v12M2 8h12M8 2 6 4M8 2l2 2M8 14l-2-2M8 14l2-2M2 8l2-2M2 8l2 2M14 8l-2-2M14 8l-2 2"/>);
     case "arrow-left":
       return S(1.6, <>
         <path d="M13 8H4M7.5 4.5 4 8l3.5 3.5"/>

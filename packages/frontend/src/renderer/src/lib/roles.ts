@@ -10,7 +10,7 @@
  * the UI needs on top of it, so a role added to the type and missed here fails
  * the exhaustiveness check in `ROLE_META`.
  */
-import type { Metric, RoleKind } from "@canopy/shared-types";
+import type { Device, Metric, RoleKind } from "@canopy/shared-types";
 import type { AutomationSubsystem } from "@canopy/shared-types";
 
 export interface RoleMeta {
@@ -73,4 +73,28 @@ export function roleName(role: string): string {
  */
 export function subsystemForRole(role: RoleKind | undefined): AutomationSubsystem {
   return (role && ROLE_META[role]?.subsystem) ?? "lighting";
+}
+
+/** Whether a device drives equipment, as opposed to only sensing. */
+export function isControlDevice(device: Device): boolean {
+  return device.capabilities.some((c) => c.kind === "actuator");
+}
+
+/**
+ * The roles a device can take: control roles for equipment, sensing roles for
+ * sensors. Shared so every screen that assigns a role offers the same list.
+ */
+export function rolesFor(device: Device): RoleKind[] {
+  return isControlDevice(device) ? CONTROL_ROLES : SENSE_ROLES;
+}
+
+/**
+ * The channel a role assignment binds to.
+ *
+ * The first capability, which is what Settings has always sent. A single place
+ * for it, so a second screen assigning roles cannot bind a different channel
+ * and quietly split the device's readings from its role.
+ */
+export function roleChannel(device: Device): string {
+  return device.capabilities[0]?.channel ?? "default";
 }

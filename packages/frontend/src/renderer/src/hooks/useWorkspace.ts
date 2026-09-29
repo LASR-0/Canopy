@@ -36,7 +36,11 @@ export function usePatchWorkspace(workspaceId: string) {
   return useMutation({
     mutationFn: (body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions">>) =>
       api("PATCH /workspaces/:workspaceId", { params: { workspaceId }, body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["workspaces"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["workspaces"] });
+      // A resize moves everything in the tent proportionally on the server.
+      void qc.invalidateQueries({ queryKey: ["layout", workspaceId] });
+    },
   });
 }
 

@@ -22,7 +22,7 @@ import {
   useDeleteWorkspace,
 } from "@/hooks/useWorkspace";
 import { useDevices, useRoles, useAssignRole, useScan } from "@/hooks/useDevices";
-import { ROLE_IDS, ROLE_META } from "@/lib/roles";
+import { ROLE_META, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
 import { useHealthStatus } from "@/hooks/useBackend";
 import { api } from "@/lib/http";
 import { wsManager } from "@/lib/ws";
@@ -168,7 +168,7 @@ function RoleRow({ device, roles, onAssign }: {
   roles: RoleAssignment[];
   onAssign: (deviceId: string, channel: string, role: RoleAssignment["role"] | "") => void;
 }) {
-  const isControl = device.capabilities.some((c) => c.kind === "actuator");
+  const isControl = isControlDevice(device);
   const assigned = roles.find((r) => r.deviceId === device.id);
   const roleInfo = assigned ? ROLE_META[assigned.role] : undefined;
   const [localRole, setLocalRole] = useState(assigned?.role ?? "");
@@ -177,9 +177,8 @@ function RoleRow({ device, roles, onAssign }: {
     ...device.capabilities.filter((c) => c.kind === "actuator").map((c) => ("label" in c ? c.label ?? c.actuator : c.actuator)),
   ].join(" · ") || "—";
 
-  const channel = device.capabilities[0]?.channel ?? "default";
-  const wanted = isControl ? "control" : "sense";
-  const compatibleRoles = ROLE_IDS.filter((id) => ROLE_META[id].kind === wanted);
+  const channel = roleChannel(device);
+  const compatibleRoles = rolesFor(device);
 
   // Keep local state in sync once the server confirms (or rolls back on error)
   useEffect(() => {
