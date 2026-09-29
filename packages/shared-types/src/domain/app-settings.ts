@@ -30,6 +30,12 @@ export interface AppSettings {
   rawRetentionDays: number;
   /** Days to keep hourly rollups before rolling up to daily. Default 90. */
   hourlyRetentionDays: number;
+  /**
+   * Days to keep timeline events: alerts, automation firings, device up/down.
+   * Default 90. Events have no rollup — past this they are gone, which is why
+   * the window is generous.
+   */
+  eventRetentionDays: number;
   /** Days after grow completion before auto-archiving to archive DB. Default 30. */
   archiveAfterDays: number;
 

@@ -35,6 +35,42 @@ import {
 interface ChannelState {
   recorded: ThresholdStatus;
   pending?: { status: ThresholdStatus; since: number };
+  /** When the reading first cleared its recorded state by the deadband. */
+  recovering?: { since: number };
+}
+
+/**
+ * Hysteresis: how far past an edge a reading must come back, as a fraction of
+ * the band's width, before it counts as having recovered.
+ *
+ * Without it a reading sitting on an edge crossed it on every flicker of sensor
+ * noise, and each crossing was recorded: 13,387 alerts in a day, from soil
+ * moisture wandering 44.7–46.7 % across a 45 % edge and a light's power draw
+ * wandering 303–310 W across a 305 W warning shoulder.
+ */
+export const RECOVERY_DEADBAND = 0.05;
+
+/**
+ * And how long it must stay recovered. The deadband alone cannot know a
+ * sensor's noise — the light's 7 W swing is 14 % of its band — so a recovery
+ * also has to *hold*. A reading that keeps dipping back never completes one,
+ * and the excursion is reported once, not once per dip.
+ */
+export const RECOVERY_DWELL_MS = 60_000;
+
+/**
+ * The status a reading earns once the deadband is taken off each edge — what it
+ * would have to be to count as genuinely better, not just across the line.
+ */
+function clearedStatus(value: number, band: SensorThreshold, warnMarginPct: number): ThresholdStatus {
+  const width = band.maxValue - band.minValue;
+  const deadband = width * RECOVERY_DEADBAND;
+  const warnBand = width * (warnMarginPct / 100);
+  const lo = band.minValue + deadband;
+  const hi = band.maxValue - deadband;
+  if (value < lo || value > hi) return "err";
+  if (warnBand > 0 && (value < lo + warnBand || value > hi - warnBand)) return "warn";
+  return "ok";
 }
 
 const channels = new Map<string, ChannelState>();
@@ -129,8 +165,11 @@ function describe(
  * - **The warning margin** is passed to `evalThreshold`, the same function
  *   the card colours with, so the feed and the card still agree.
  * - **The delay** holds back a *worse* status until it has lasted that long. A
- *   reading that recovers inside the delay is never reported. Getting better is
- *   recorded at once: a grower waiting on a fix wants to know it worked.
+ *   reading that recovers inside the delay is never reported.
+ *
+ * Getting better is held to a different rule, **hysteresis**: the reading must
+ * clear the edge by `RECOVERY_DEADBAND` and stay clear for `RECOVERY_DWELL_MS`.
+ * That is what stops a reading sitting on an edge from reporting every flicker.
  *
  * Returns the status so the caller can log it; the event write is the point.
  */
@@ -159,9 +198,12 @@ export async function checkThresholds(
   const recorded = state?.recorded ?? "ok";
 
   if (status === recorded) {
-    // Back where it was before the delay ran out: nothing to report.
-    if (state) delete state.pending;
-    else channels.set(id, { recorded });
+    // Back where it was before the delay ran out, or a recovery that did not
+    // hold: nothing to report.
+    if (state) {
+      delete state.pending;
+      delete state.recovering;
+    } else channels.set(id, { recorded });
     return status;
   }
 
@@ -172,6 +214,25 @@ export async function checkThresholds(
 
   const nowMs = now.getTime();
   const worse = SEVERITY[status] > SEVERITY[recorded];
+  const band = thresholdFor(reading.metric, workspaceBands, stage);
+
+  let report = status;
+  if (!worse && band) {
+    // Better, but only by as much as the deadband allows, and only once that
+    // has held for the dwell.
+    const cleared = clearedStatus(reading.value, band, behaviour.warnMarginPct);
+    if (SEVERITY[cleared] >= SEVERITY[recorded]) {
+      channels.set(id, { recorded });
+      return status;
+    }
+    const since = state?.recovering ? state.recovering.since : nowMs;
+    if (nowMs - since < RECOVERY_DWELL_MS) {
+      channels.set(id, { recorded, recovering: { since } });
+      return status;
+    }
+    report = cleared;
+  }
+
   if (worse && behaviour.delaySec > 0) {
     // The clock runs from the first worse reading, so warn-then-err within the
     // delay is timed from when the reading first left its recorded state.
@@ -181,9 +242,7 @@ export async function checkThresholds(
     if (nowMs - since < behaviour.delaySec * 1000) return status;
   }
 
-  channels.set(id, { recorded: status });
-
-  const band = thresholdFor(reading.metric, workspaceBands, stage);
+  channels.set(id, { recorded: report });
 
   try {
     await recordEvent({
@@ -191,9 +250,9 @@ export async function checkThresholds(
       type: "threshold_alert",
       sourceId: reading.deviceId,
       sourceLabel: reading.channel,
-      description: describe(reading, status, band),
+      description: describe(reading, report, band),
       at: now,
-      ...(status === "ok" ? {} : { severity: status === "err" ? ("err" as const) : ("warn" as const) }),
+      ...(report === "ok" ? {} : { severity: report === "err" ? ("err" as const) : ("warn" as const) }),
     });
     // Not pushed over the websocket: the protocol has no event message, and
     // inventing one with no consumer would be worse than the feed picking it

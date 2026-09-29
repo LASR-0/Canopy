@@ -15,7 +15,7 @@ import { db, sqliteConnection } from "../store/index.js";
 import { jobs, appSettings } from "../store/schema.js";
 import { canIngest } from "../controller/state.js";
 import { rollupDaily, rollupHourly } from "./jobs/rollup.js";
-import { pruneHourly, pruneRaw } from "./jobs/prune.js";
+import { pruneEvents, pruneHourly, pruneRaw } from "./jobs/prune.js";
 import { runBackup } from "./jobs/backup.js";
 import type { JobType } from "@canopy/shared-types";
 
@@ -40,6 +40,7 @@ type Cadence = (now: Date, settings: Settings) => Date;
 interface Settings {
   rawRetentionDays: number;
   hourlyRetentionDays: number;
+  eventRetentionDays: number;
   backupEnabled: boolean;
   backupIntervalDays: number;
   backupPath: string | null;
@@ -48,6 +49,7 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   rawRetentionDays: 7,
   hourlyRetentionDays: 90,
+  eventRetentionDays: 90,
   backupEnabled: false,
   backupIntervalDays: 7,
   backupPath: null,
@@ -77,6 +79,7 @@ async function loadSettings(): Promise<Settings> {
   return {
     rawRetentionDays: row.rawRetentionDays,
     hourlyRetentionDays: row.hourlyRetentionDays,
+    eventRetentionDays: row.eventRetentionDays,
     backupEnabled: row.backupEnabled,
     backupIntervalDays: row.backupIntervalDays,
     backupPath: row.backupPath ?? null,
@@ -97,6 +100,7 @@ function handlers(settings: Settings): Partial<Record<JobType, JobHandler>> {
     rollup_daily: (now) => rollupDaily(sqliteConnection, now),
     prune_raw: (now) => pruneRaw(sqliteConnection, settings.rawRetentionDays, now),
     prune_hourly: (now) => pruneHourly(sqliteConnection, settings.hourlyRetentionDays, now),
+    prune_events: (now) => pruneEvents(sqliteConnection, settings.eventRetentionDays, now),
     vacuum: (now) =>
       runBackup(
         sqliteConnection,
@@ -111,6 +115,7 @@ const CADENCE: Record<JobType, Cadence> = {
   rollup_daily: (now) => nextMidnight(now),
   prune_raw: (now) => nextMidnight(now),
   prune_hourly: (now) => inDays(7, now),
+  prune_events: (now) => nextMidnight(now),
   vacuum: (now, settings) => inDays(settings.backupIntervalDays, now),
   // No handler yet; checked rarely so an unimplemented job is not a hot loop.
   archive_grow: (now) => inDays(1, now),

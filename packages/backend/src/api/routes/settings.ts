@@ -23,6 +23,7 @@ function rowToSettings(row: typeof appSettings.$inferSelect): AppSettings {
     notifyAutomationOverride: row.notifyAutomationOverride,
     rawRetentionDays: row.rawRetentionDays,
     hourlyRetentionDays: row.hourlyRetentionDays,
+    eventRetentionDays: row.eventRetentionDays,
     archiveAfterDays: row.archiveAfterDays,
     backupEnabled: row.backupEnabled,
     backupIntervalDays: row.backupIntervalDays,
@@ -57,6 +58,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     if (b.notifyAutomationOverride !== undefined)   updates.notifyAutomationOverride = b.notifyAutomationOverride;
     if (b.rawRetentionDays !== undefined)           updates.rawRetentionDays = b.rawRetentionDays;
     if (b.hourlyRetentionDays !== undefined)     updates.hourlyRetentionDays = b.hourlyRetentionDays;
+    if (b.eventRetentionDays !== undefined)      updates.eventRetentionDays = b.eventRetentionDays;
     if (b.archiveAfterDays !== undefined)        updates.archiveAfterDays = b.archiveAfterDays;
     if (b.backupEnabled !== undefined)           updates.backupEnabled = b.backupEnabled;
     if (b.backupIntervalDays !== undefined)      updates.backupIntervalDays = b.backupIntervalDays;

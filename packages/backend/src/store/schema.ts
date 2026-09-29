@@ -35,6 +35,7 @@ export const appSettings = sqliteTable("app_settings", {
   notifyAutomationOverride:   integer("notify_automation_override", { mode: "boolean" }).notNull().default(false),
   rawRetentionDays:           integer("raw_retention_days").notNull().default(7),
   hourlyRetentionDays:        integer("hourly_retention_days").notNull().default(90),
+  eventRetentionDays:         integer("event_retention_days").notNull().default(90),
   archiveAfterDays:           integer("archive_after_days").notNull().default(30),
   backupEnabled:              integer("backup_enabled", { mode: "boolean" }).notNull().default(false),
   backupIntervalDays:         integer("backup_interval_days").notNull().default(7),
@@ -362,7 +363,7 @@ export const chartLayouts = sqliteTable("chart_layouts", {
 export const jobs = sqliteTable("jobs", {
   id:         text("id").primaryKey(),
   /**
-   * rollup_hourly | rollup_daily | prune_raw | prune_hourly |
+   * rollup_hourly | rollup_daily | prune_raw | prune_hourly | prune_events |
    * archive_grow | backup | maintenance_check | vacuum
    */
   type:       text("type").notNull(),

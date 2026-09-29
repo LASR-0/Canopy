@@ -61,6 +61,8 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   addColumnIfMissing(db, "readings_hourly", "max_value", "REAL");
   addColumnIfMissing(db, "readings_daily",  "min_value", "REAL");
   addColumnIfMissing(db, "readings_daily",  "max_value", "REAL");
+  // Event retention. Events had none, and a flapping alert wrote 13k rows a day.
+  addColumnIfMissing(db, "app_settings", "event_retention_days", "INTEGER NOT NULL DEFAULT 90");
 }
 
 export function addColumnIfMissing(
@@ -119,6 +121,7 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       notify_automation_override INTEGER NOT NULL DEFAULT 0,
       raw_retention_days        INTEGER NOT NULL DEFAULT 7,
       hourly_retention_days     INTEGER NOT NULL DEFAULT 90,
+      event_retention_days      INTEGER NOT NULL DEFAULT 90,
       archive_after_days        INTEGER NOT NULL DEFAULT 30,
       backup_enabled            INTEGER NOT NULL DEFAULT 0,
       backup_interval_days      INTEGER NOT NULL DEFAULT 7,
@@ -475,6 +478,7 @@ export function seedData(database: InstanceType<typeof Database>): void {
   seedJob.run("job_rollup_daily",        "rollup_daily",        nextMid);
   seedJob.run("job_prune_raw",           "prune_raw",           in24h);
   seedJob.run("job_prune_hourly",        "prune_hourly",        in7d);
+  seedJob.run("job_prune_events",        "prune_events",        in1h);
   seedJob.run("job_maintenance_check",   "maintenance_check",   nextMid);
   seedJob.run("job_vacuum",              "vacuum",              in7d);
 }

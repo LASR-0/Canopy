@@ -67,6 +67,23 @@ export function pruneRaw(
   return prune(db, "readings_raw", "readings_hourly", retentionDays, now);
 }
 
+/**
+ * Drop timeline events past the retention window.
+ *
+ * No ordering guard, unlike the readings: an event has no aggregate downstream
+ * of it, so nothing is lost that a rollup would have kept. That is also why the
+ * default window is long.
+ */
+export function pruneEvents(
+  db: Database,
+  retentionDays: number,
+  now: Date = new Date(),
+): PruneOutcome {
+  const cutoff = isoDaysAgo(retentionDays, now);
+  const result = db.prepare(`DELETE FROM events WHERE occurred_at < ?`).run(cutoff);
+  return { deleted: result.changes, cutoff };
+}
+
 /** Drop hourly buckets past the retention window, but never past the daily rollup. */
 export function pruneHourly(
   db: Database,
