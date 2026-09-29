@@ -6,6 +6,7 @@ export * from "./reading.js";
 export * from "./workspace.js";
 export * from "./grow.js";
 export * from "./vpd.js";
+export * from "./layout.js";
 export * from "./automation.js";
 export * from "./journal.js";
 export * from "./maintenance.js";

@@ -21,6 +21,9 @@ import type {
   ControllerStatus,
   ControllerCommand,
   ActuatorCommand,
+  DevicePlacement,
+  Plant,
+  WorkspaceLayout,
   Id,
 } from "../domain/index.js";
 
@@ -31,6 +34,22 @@ export interface CreateWorkspaceBody {
 
 export interface StartScanBody {
   includeSubnetSweep?: boolean;
+}
+
+/** Where to put a device. Omitted fields keep their current value, or a default when new. */
+export interface PlaceDeviceBody {
+  xCm?: number;
+  yCm?: number;
+  zCm?: number;
+  rotationDeg?: number;
+}
+
+/** A plant's editable fields. An empty `label` clears it. */
+export interface PlantBody {
+  xCm?: number;
+  yCm?: number;
+  potLitres?: number;
+  label?: string;
 }
 
 export interface AssignRoleBody {
@@ -60,6 +79,14 @@ export interface ApiRoutes {
   "POST /workspaces":               { body: CreateWorkspaceBody; res: Workspace };
   "PATCH /workspaces/:workspaceId": { body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions">>; res: Workspace };
   "DELETE /workspaces/:workspaceId": { res: { deleted: true } };
+
+  // ── Layout (Setup View) ───────────────────────────────────────────────────
+  "GET /workspaces/:workspaceId/layout":                          { res: WorkspaceLayout };
+  "PUT /workspaces/:workspaceId/placements/:deviceId":            { body: PlaceDeviceBody; res: DevicePlacement };
+  "DELETE /workspaces/:workspaceId/placements/:deviceId":         { res: { deleted: true } };
+  "POST /workspaces/:workspaceId/plants":                         { body: PlantBody; res: Plant };
+  "PATCH /workspaces/:workspaceId/plants/:plantId":               { body: PlantBody; res: Plant };
+  "DELETE /workspaces/:workspaceId/plants/:plantId":              { res: { deleted: true } };
 
   // ── Settings ──────────────────────────────────────────────────────────────
   "GET /settings":                  { res: AppSettings };
