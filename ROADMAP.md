@@ -847,7 +847,138 @@ In dependency order:
    Automation", "Open Journal") can use it too.
 
 Phase 7 is complete, apart from the small follow-ups noted under items 4, 5
-and 6.
+and 6. Those, and a walk through the running app, feed Phase 7.5.
+
+### Phase 7.5 — Polish & additions *(next)*
+
+Everything needed before Canopy becomes a service. Most of it is polish or
+builds on pages that already work. Numbered 7.5 rather than renumbering, so
+the many "Phase 8" references in this document stay true. Listed 2026-09-29
+from a walk through the running app, and grouped by what each item touches.
+The order inside a group is the suggested build order.
+
+#### A. Bug — threshold alerts flap at the band edges ✅ done
+
+The "random dotted lines" on the Logging chart are **event markers**: every
+row in `events` is drawn as a dashed vertical line where it happened. The
+controller was not restarting. The live database held **13,387
+`threshold_alert` rows in about 21 hours**, against 15 automation firings.
+
+The cause was **no hysteresis**. A reading sitting on a band edge crossed it
+with sensor noise, and every crossing was recorded. Soil moisture at
+44.7 / 45.0 / 46.4 / 46.7 % against 45–60 % went err → warn → ok → warn every
+few seconds. Light power at 303–310 W against 300–350 W did the same across
+its 5 W warning shoulder. Phase 7's delay setting holds back escalations
+only, so it could not stop an ok ⇄ warn flap.
+
+- **Hysteresis in `checkThresholds`, on the way back only.** A recovery counts
+  when the reading clears the edge by `RECOVERY_DEADBAND` (5 % of the band
+  width) *and* stays clear for `RECOVERY_DWELL_MS` (60 s). Both are needed:
+  the deadband cannot know a sensor's noise (the light's 7 W swing is 14 % of
+  its band), and the dwell alone would still flap every few minutes on a
+  reading hovering just inside the edge. Escalations are unchanged. A test
+  replays the live soil sequence and gets one alert where there were a dozen.
+  This reverses Phase 7's "recoveries are recorded at once": they are now
+  recorded once they hold, which is what made them trustworthy.
+- **The chart no longer draws a line per event.** Markers closer than a few
+  pixels merge into one with a count, and the hover tooltip lists what it
+  holds. Event types are toggles in the chart's options bar (Automations /
+  Alerts / Devices / Grow). **Alerts are off by default**, because the
+  out-of-range marks already show when a reading left its band.
+- **The chart fetches its own window.** It used the newest-200 feed, so a
+  week-long range showed markers for the last few hours only. `GET /events`
+  now takes `from`, `to` and `types`, which the Logs tab (D.1) will need too.
+- **Events have a retention policy**: `event_retention_days` (default 90,
+  7–365), a daily `prune_events` job, and a slider in Settings → Data &
+  Storage. There is no rollup to protect, so it is a plain cutoff. The 13,387
+  flapping rows were deleted from the dev database, after a backup.
+
+#### B. Layout & sizing
+
+1. **A minimum window size**, enforced in the Electron `BrowserWindow`, plus a
+   maximum content width for very wide screens. Every page is then fixed to
+   work at the minimum, which ends the "responsive quirks" one page at a
+   time.
+2. **Settings re-layout.** Workspaces moves to a side column under
+   Preferences. Discovered devices fill the space beside it. Data & Storage
+   and Device roles stretch to full width.
+3. **Overview grow-status bar**: the stage indicator looks wrong. Needs a
+   look at the running app.
+4. **Logging stat cards** (avg / min / max): a wider fixed width, or
+   responsive, with truncation as the last resort for extreme values.
+
+#### C. Consistency
+
+1. **One delete-button style everywhere**, modelled on the workspace delete in
+   Settings, including its red hover.
+2. **Tooltips**: a Canopy tooltip component to replace the browser's native
+   `title` popups (about 66 of them across the app).
+3. **A better time input** for Automation schedules, replacing the native
+   `<input type="time">`.
+4. **Sidebar icons**: Settings takes the sliders icon Setup View uses now,
+   Maintenance becomes a wrench, and Setup View becomes a cube or 3D-object
+   icon.
+5. **Theme toggle**: the gear in the sidebar footer, which duplicates the
+   Settings nav item, becomes a light / dark toggle with a sun icon.
+6. **Titlebar controls**, decided 2026-09-29. All of them are dead today.
+   - **Refresh** re-fetches the current page's data.
+   - **Bell** opens a dropdown of recent notifications: alerts, device
+     up/down, failsafe trips.
+   - **Search** gets wired up. Its scope is devices, automations, pages and
+     journal entries; settle it when built, alongside F (keyboard use), since
+     a search box is half a command palette.
+   - **The profile avatar ("L") goes.** Profiles are not planned for this
+     version.
+7. **Automation page**: collapsible sections per category, as in the
+   prototype.
+
+#### D. Logging becomes the record
+
+1. **Tabs on the Logging page**: *Graph* (today's page), *Logs* (a table of
+   alerts, warnings, out-of-range periods and device events, filterable by
+   type, metric and time), and *Activity* (the full automation and sensor
+   activity). The first, pre-prototype Logging page had a table toggle of
+   this kind, and it was a good idea.
+2. **Overview previews**: activity and logs at the bottom of the Overview,
+   each with a "show all" link into the matching Logging tab. The existing
+   "show all" links on the automation and sensor activity point there too,
+   via `useNavigate()`.
+3. **Chart templates**: saved presets for which metrics, which options and
+   how the chart is laid out. `chart_layouts` already stores some of this.
+4. **Export**: CSV of the raw data, and a **report generator**: a UI to pick
+   a window, metrics and resolution, then export that selection as CSV or
+   PNG.
+
+#### E. Journal
+
+1. **Photos on every entry type**, not only "Photo". This needs what Phase 7
+   deferred: attachment storage in the data directory, a way to serve the
+   files to the renderer, and cleanup when an entry is deleted.
+2. **PDF export** of a grow's journal as it appears in the UI. Electron's
+   `webContents.printToPDF` renders the page itself, so the PDF matches the
+   screen without a second layout.
+
+#### F. Database import / export
+
+Export the whole database to a file and import one back, from Settings →
+Data & Storage. This is a backup, a move to a new machine, and a way to share a
+tent's history. Questions to settle when it is built:
+
+- **Consistency:** the controller writes constantly, so the export must be
+  a consistent snapshot. SQLite's online backup API gives one; a file copy
+  does not.
+- **Import replaces or merges:** replacing is simple and honest, while
+  merging two tents' histories is a project of its own.
+- **Import must not brick the controller:** validate the file and its schema
+  first, and apply the column-additions path to an older export.
+- **Attachments:** once journal photos exist (E.1), an export is the database
+  *plus* the attachment files, not the database alone.
+
+#### G. Keyboard-only use *(low priority)*
+
+Navigate, open menus and trigger actions without a mouse. Do this last,
+because it touches every page, and it is easier once B and C have settled
+the layout and controls.
 
 ### Phase 8 — Service install & packaging
 
