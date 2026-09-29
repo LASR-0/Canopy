@@ -893,19 +893,56 @@ only, so it could not stop an ok ⇄ warn flap.
   Storage. There is no rollup to protect, so it is a plain cutoff. The 13,387
   flapping rows were deleted from the dev database, after a backup.
 
-#### B. Layout & sizing
+#### B. Layout & sizing ✅ built — awaiting a hands-on check
 
-1. **A minimum window size**, enforced in the Electron `BrowserWindow`, plus a
-   maximum content width for very wide screens. Every page is then fixed to
-   work at the minimum, which ends the "responsive quirks" one page at a
-   time.
-2. **Settings re-layout.** Workspaces moves to a side column under
-   Preferences. Discovered devices fill the space beside it. Data & Storage
-   and Device roles stretch to full width.
-3. **Overview grow-status bar**: the stage indicator looks wrong. Needs a
-   look at the running app.
-4. **Logging stat cards** (avg / min / max): a wider fixed width, or
-   responsive, with truncation as the last resort for extreme values.
+1. **Minimum window 1100 × 700** (was 960 × 600), set on the `BrowserWindow`.
+   At 960 the content area beside the sidebar was about 710 px, which the
+   Overview's stage chips, the Setup View plan and the Target ranges matrix
+   (which overflowed) did not fit. 700 tall still fits a 1366 × 768 laptop
+   with its taskbar. **Content stops at 1600 px** (`--content-max`) and
+   centres on wider screens, with the header row aligned to it.
+   `PageBody` replaces the two scroll-container patterns the pages had grown,
+   so padding and max width are set in one place.
+2. **The two SVG views draw at their real pixel size.** The Logging chart and
+   the Setup View plan each drew into a fixed viewBox scaled to fit, so their
+   text scaled with the window: huge at 2560, unreadable at 960. The chart
+   also used `preserveAspectRatio="none"`, which squashed text and made
+   labels collide. Both now measure themselves (`useElementWidth`, a
+   ResizeObserver) and draw in that width, so text stays at its CSS size and
+   only the plot grows. The plan's height follows its width, between 380 and
+   760 px.
+3. **Settings re-layout** as asked: Notifications, Preferences and
+   Workspaces down a 320 px side column. Connection and Discovered devices
+   fill the main column, and the device cards now fit as many across as the
+   column allows, not a fixed two. Device roles and Data & Storage run full
+   width underneath, with the retention rows flowing into columns. The side
+   column no longer collapses below a 1200 px viewport, which was above the
+   new minimum.
+4. **Overview stage indicator** replaced. Each fixed-width chip clipped
+   "Flowering", and the current stage's progress bar, 0 % full on day 1,
+   left a stray dot under "Seedling". It is now the Grow Cycle timeline in
+   miniature: segments sized by planned weeks, the current stage filled, and a
+   "today" line. Stage colours moved to `STAGE_DEFS` in `lib/growStage.ts`,
+   shared with Grow Cycle and Journal.
+5. **Logging stat cards**: the unit moved beside the metric name, where it
+   no longer wraps. Values size to the card (a container query) and truncate
+   with the full value on hover only as a last resort. Minimum card width is
+   now 200 px.
+6. **Refined after a hands-on look:**
+   - **The Overlay chart ends level with the metric panel.** The row is as
+     tall as the panel, the chart box stretches to it, and the lane is drawn
+     to fill the measured space. The SVG is taken out of flow, so its height
+     cannot feed back into the size it is drawn from. Stack mode keeps its
+     natural height, one fixed lane per metric.
+   - **`--content-max` is 1920 px**, up from 1600. At 1600 a 2560 screen left
+     the chart short and wide, with wide empty margins either side.
+   - **The Settings workspace form is one width.** The three buttons set it,
+     and Name and Timezone match exactly (`width: 0; min-width: 100%`), with
+     space above the section.
+7. **Also fixed**: the Logging metric panel dropped under the chart below
+   1100 px, which is now the minimum, so it stays beside the chart and
+   narrows. Long MQTT topics in Settings' device cards run into the badges
+   no longer.
 
 #### C. Consistency
 
