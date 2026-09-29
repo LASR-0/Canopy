@@ -11,6 +11,7 @@ import { readingsRoutes }     from "./routes/readings.js";
 import { growRoutes }         from "./routes/grows.js";
 import { automationRoutes }   from "./routes/automations.js";
 import { journalRoutes }      from "./routes/journal.js";
+import { layoutRoutes }       from "./routes/layout.js";
 import { maintenanceRoutes }  from "./routes/maintenance.js";
 import { eventRoutes }        from "./routes/events.js";
 import { chartLayoutRoutes }  from "./routes/chart-layouts.js";
@@ -38,6 +39,7 @@ export async function buildServer() {
   await app.register(growRoutes);
   await app.register(automationRoutes);
   await app.register(journalRoutes);
+  await app.register(layoutRoutes);
   await app.register(maintenanceRoutes);
   await app.register(eventRoutes);
   await app.register(chartLayoutRoutes);

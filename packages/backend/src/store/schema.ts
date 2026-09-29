@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
 
 // ── workspaces ───────────────────────────────────────────────────────────────
 export const workspaces = sqliteTable("workspaces", {
@@ -73,6 +73,28 @@ export const roleAssignments = sqliteTable("role_assignments", {
   deviceId:    text("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
   role:        text("role").notNull(),
   channel:     text("channel").notNull(),
+});
+
+// ── device_placements ─────────────────────────────────────────────────────────
+// Where a device is mounted in the tent. See DevicePlacement for the coordinates.
+export const devicePlacements = sqliteTable("device_placements", {
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  deviceId:    text("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+  xCm:         real("x_cm").notNull(),
+  yCm:         real("y_cm").notNull(),
+  zCm:         real("z_cm").notNull(),
+  rotationDeg: real("rotation_deg").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.deviceId] })]);
+
+// ── plants ────────────────────────────────────────────────────────────────────
+export const plants = sqliteTable("plants", {
+  id:          text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  label:       text("label"),
+  xCm:         real("x_cm").notNull(),
+  yCm:         real("y_cm").notNull(),
+  potLitres:   real("pot_litres").notNull(),
+  createdAt:   text("created_at").notNull(),
 });
 
 // ── sensor_thresholds ─────────────────────────────────────────────────────────

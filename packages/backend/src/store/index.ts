@@ -156,6 +156,31 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       UNIQUE (workspace_id, device_id)
     );
 
+    /* ── device_placements ────────────────────────────────────────────── */
+    -- Where a device is mounted in the tent. cm from the back-left corner;
+    -- REAL so a resize and its reverse land back where they started.
+    CREATE TABLE IF NOT EXISTS device_placements (
+      workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      device_id     TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+      x_cm          REAL NOT NULL,
+      y_cm          REAL NOT NULL,
+      z_cm          REAL NOT NULL,
+      rotation_deg  REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY (workspace_id, device_id)
+    );
+
+    /* ── plants ───────────────────────────────────────────────────────── */
+    CREATE TABLE IF NOT EXISTS plants (
+      id            TEXT PRIMARY KEY,
+      workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      label         TEXT,
+      x_cm          REAL NOT NULL,
+      y_cm          REAL NOT NULL,
+      pot_litres    REAL NOT NULL,
+      created_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_plants_workspace ON plants (workspace_id);
+
     /* ── sensor_thresholds ────────────────────────────────────────────── */
     CREATE TABLE IF NOT EXISTS sensor_thresholds (
       id            TEXT PRIMARY KEY,
