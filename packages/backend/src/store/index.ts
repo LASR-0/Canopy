@@ -193,6 +193,17 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       UNIQUE (workspace_id, stage, metric)
     );
 
+    /* ── threshold_alert_settings ─────────────────────────────────────── */
+    -- How a metric's alerts behave. No row = DEFAULT_ALERT_SETTING.
+    CREATE TABLE IF NOT EXISTS threshold_alert_settings (
+      workspace_id     TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      metric           TEXT NOT NULL,
+      enabled          INTEGER NOT NULL DEFAULT 1,
+      warn_margin_pct  REAL NOT NULL DEFAULT 10,
+      delay_sec        INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (workspace_id, metric)
+    );
+
     /* ── readings ─────────────────────────────────────────────────────── */
     /* device_id = "__derived__" for VPD / DLI computed metrics           */
     CREATE TABLE IF NOT EXISTS readings_raw (

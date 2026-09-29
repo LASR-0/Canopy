@@ -109,6 +109,16 @@ export const sensorThresholds = sqliteTable("sensor_thresholds", {
   unit:        text("unit").notNull(),
 });
 
+// ── threshold_alert_settings ──────────────────────────────────────────────────
+// How a metric's alerts behave. A metric with no row uses DEFAULT_ALERT_SETTING.
+export const thresholdAlertSettings = sqliteTable("threshold_alert_settings", {
+  workspaceId:   text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  metric:        text("metric").notNull(),
+  enabled:       integer("enabled", { mode: "boolean" }).notNull().default(true),
+  warnMarginPct: real("warn_margin_pct").notNull().default(10),
+  delaySec:      integer("delay_sec").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.metric] })]);
+
 // ── readings_raw ──────────────────────────────────────────────────────────────
 // "__derived__" is used as device_id for VPD/DLI computed readings.
 export const readingsRaw = sqliteTable("readings_raw", {

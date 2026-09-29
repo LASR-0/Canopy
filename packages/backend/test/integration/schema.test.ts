@@ -14,7 +14,7 @@ describe("createTestDb", () => {
 
   afterEach(() => testDb?.close());
 
-  it("creates all 21 tables", () => {
+  it("creates all 22 tables", () => {
     testDb = createTestDb();
     const tables = testDb.sqlite
       .prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
@@ -28,6 +28,7 @@ describe("createTestDb", () => {
     expect(names).toContain("device_placements");
     expect(names).toContain("plants");
     expect(names).toContain("sensor_thresholds");
+    expect(names).toContain("threshold_alert_settings");
     expect(names).toContain("readings_raw");
     expect(names).toContain("readings_hourly");
     expect(names).toContain("readings_daily");

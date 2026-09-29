@@ -14,22 +14,36 @@
  */
 import { eq, and } from "drizzle-orm";
 import { db } from "../store/index.js";
-import { sensorThresholds } from "../store/schema.js";
+import { sensorThresholds, thresholdAlertSettings } from "../store/schema.js";
 import { currentStage, refreshActiveGrows, resetGrowStageForTesting } from "../grow/stage.js";
 import { recordEvent } from "../automation/apply.js";
 import {
+  alertSettingFor,
   evalThreshold,
   thresholdFor,
+  type Metric,
   type Reading,
   type SensorThreshold,
+  type ThresholdAlertSetting,
   type ThresholdStatus,
 } from "@canopy/shared-types";
 
-/** Last known status per `workspace:device:channel`, so only changes are recorded. */
-const lastStatus = new Map<string, ThresholdStatus>();
+/**
+ * Per channel: the status last *recorded*, and a worse status waiting out the
+ * metric's delay before it is.
+ */
+interface ChannelState {
+  recorded: ThresholdStatus;
+  pending?: { status: ThresholdStatus; since: number };
+}
+
+const channels = new Map<string, ChannelState>();
 
 /** Cached per workspace; thresholds change rarely and readings arrive constantly. */
 let bands = new Map<string, SensorThreshold[]>();
+let alertSettings = new Map<string, ThresholdAlertSetting[]>();
+
+const SEVERITY: Record<ThresholdStatus, number> = { ok: 0, warn: 1, err: 2 };
 
 function key(reading: Reading): string {
   return `${reading.workspaceId}:${reading.deviceId}:${reading.channel}`;
@@ -65,6 +79,21 @@ export async function refreshThresholds(): Promise<void> {
     }
     bands = next;
 
+    const settingRows = await db.select().from(thresholdAlertSettings);
+    const nextSettings = new Map<string, ThresholdAlertSetting[]>();
+    for (const row of settingRows) {
+      const list = nextSettings.get(row.workspaceId) ?? [];
+      list.push({
+        workspaceId: row.workspaceId,
+        metric: row.metric as Metric,
+        enabled: row.enabled,
+        warnMarginPct: row.warnMarginPct,
+        delaySec: row.delaySec,
+      });
+      nextSettings.set(row.workspaceId, list);
+    }
+    alertSettings = nextSettings;
+
     // The active grow per workspace is resolved by grow/stage.ts, which the
     // scheduler and the rules engine read too.
     await refreshActiveGrows();
@@ -92,6 +121,17 @@ function describe(
 /**
  * Check one reading against its band, recording only status changes.
  *
+ * Three per-metric settings shape what is recorded (see ThresholdAlertSetting):
+ *
+ * - **Disabled** metrics record nothing, but their status is still tracked, so
+ *   turning alerts back on does not immediately report a state that has held
+ *   for hours.
+ * - **The warning margin** is passed to `evalThreshold`, the same function
+ *   the card colours with, so the feed and the card still agree.
+ * - **The delay** holds back a *worse* status until it has lasted that long. A
+ *   reading that recovers inside the delay is never reported. Getting better is
+ *   recorded at once: a grower waiting on a fix wants to know it worked.
+ *
  * Returns the status so the caller can log it; the event write is the point.
  */
 export async function checkThresholds(
@@ -102,16 +142,46 @@ export async function checkThresholds(
   if (workspaceBands.length === 0) return "ok";
 
   const stage = currentStage(reading.workspaceId, now);
+  const behaviour = alertSettingFor(reading.metric, alertSettings.get(reading.workspaceId) ?? []);
 
-  const status = evalThreshold(reading.value, reading.metric, workspaceBands, stage);
+  const status = evalThreshold(reading.value, reading.metric, workspaceBands, stage, behaviour.warnMarginPct);
   const id = key(reading);
-  const previous = lastStatus.get(id);
+  const state = channels.get(id);
 
-  if (previous === status) return status;
-  lastStatus.set(id, status);
+  // The first reading of a healthy channel is not news. An unhealthy first
+  // reading is treated as a crossing out of "ok".
+  if (!state) {
+    if (status === "ok") {
+      channels.set(id, { recorded: "ok" });
+      return status;
+    }
+  }
+  const recorded = state?.recorded ?? "ok";
 
-  // The first reading of a healthy channel is not news.
-  if (previous === undefined && status === "ok") return status;
+  if (status === recorded) {
+    // Back where it was before the delay ran out: nothing to report.
+    if (state) delete state.pending;
+    else channels.set(id, { recorded });
+    return status;
+  }
+
+  if (!behaviour.enabled) {
+    channels.set(id, { recorded: status });
+    return status;
+  }
+
+  const nowMs = now.getTime();
+  const worse = SEVERITY[status] > SEVERITY[recorded];
+  if (worse && behaviour.delaySec > 0) {
+    // The clock runs from the first worse reading, so warn-then-err within the
+    // delay is timed from when the reading first left its recorded state.
+    const since = state?.pending ? state.pending.since : nowMs;
+    const next: ChannelState = { recorded, pending: { status, since } };
+    channels.set(id, next);
+    if (nowMs - since < behaviour.delaySec * 1000) return status;
+  }
+
+  channels.set(id, { recorded: status });
 
   const band = thresholdFor(reading.metric, workspaceBands, stage);
 
@@ -137,7 +207,8 @@ export async function checkThresholds(
 
 /** Forget cached bands and per-channel status. Tests only. */
 export function resetThresholdState(): void {
-  lastStatus.clear();
+  channels.clear();
   bands = new Map();
+  alertSettings = new Map();
   resetGrowStageForTesting();
 }

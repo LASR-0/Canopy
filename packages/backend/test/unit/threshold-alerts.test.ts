@@ -6,11 +6,23 @@
  * a grower scans first when something looks wrong.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { evalThreshold, thresholdFor, type SensorThreshold } from "@canopy/shared-types";
+import {
+  alertSettingFor,
+  alertSettingProblem,
+  bandProblem,
+  evalThreshold,
+  thresholdFor,
+  type SensorThreshold,
+} from "@canopy/shared-types";
 
 const { mockRecordEvent, rows } = vi.hoisted(() => ({
   mockRecordEvent: vi.fn(async () => undefined),
-  rows: { thresholds: [] as unknown[], workspaces: [] as unknown[], grows: [] as unknown[] },
+  rows: {
+    thresholds: [] as unknown[],
+    alertSettings: [] as unknown[],
+    workspaces: [] as unknown[],
+    grows: [] as unknown[],
+  },
 }));
 
 vi.mock("../../src/store/index.js", () => ({
@@ -27,8 +39,10 @@ vi.mock("../../src/store/index.js", () => ({
 }));
 vi.mock("../../src/automation/apply.js", () => ({ recordEvent: mockRecordEvent }));
 
-function tableFor(_table: unknown): unknown[] {
-  return rows.thresholds;
+const schema = await import("../../src/store/schema.js");
+
+function tableFor(table: unknown): unknown[] {
+  return table === schema.thresholdAlertSettings ? rows.alertSettings : rows.thresholds;
 }
 
 const { checkThresholds, refreshThresholds, resetThresholdState } = await import(
@@ -62,6 +76,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   resetThresholdState();
   rows.thresholds = [{ ...BAND, stage: null }];
+  rows.alertSettings = [];
   rows.workspaces = [{ id: "ws-1", activeGrowId: null }];
   rows.grows = [];
   await refreshThresholds();
@@ -173,5 +188,119 @@ describe("checkThresholds", () => {
     await checkThresholds(reading(999), T0);
 
     expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("alert settings", () => {
+  async function withSetting(setting: { enabled?: boolean; warnMarginPct?: number; delaySec?: number }) {
+    rows.alertSettings = [
+      { workspaceId: "ws-1", metric: "temperature", enabled: true, warnMarginPct: 10, delaySec: 0, ...setting },
+    ];
+    await refreshThresholds();
+  }
+  const at = (seconds: number) => new Date(T0.getTime() + seconds * 1000);
+
+  it("widens the warning shoulder with the margin, as the card does", async () => {
+    // 30 % of a 10-wide band is 3, so 25.5 is drifting rather than fine.
+    expect(evalThreshold(25.5, "temperature", [BAND])).toBe("ok");
+    expect(evalThreshold(25.5, "temperature", [BAND], undefined, 30)).toBe("warn");
+
+    await withSetting({ warnMarginPct: 30 });
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(25.5), T0);
+    expect(mockRecordEvent).toHaveBeenCalledWith(expect.objectContaining({ severity: "warn" }));
+  });
+
+  it("never warns with a margin of 0, only breaches", () => {
+    expect(evalThreshold(18.01, "temperature", [BAND], undefined, 0)).toBe("ok");
+    expect(evalThreshold(17.99, "temperature", [BAND], undefined, 0)).toBe("err");
+  });
+
+  it("records nothing for a metric with alerts turned off", async () => {
+    await withSetting({ enabled: false });
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(31), T0);
+    await checkThresholds(reading(23), T0);
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not report a breach that held while alerts were off once they are back on", async () => {
+    await withSetting({ enabled: false });
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(31), T0);
+
+    await withSetting({ enabled: true });
+    await checkThresholds(reading(31), at(60));
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+
+  it("holds a breach back until it has lasted the delay", async () => {
+    await withSetting({ delaySec: 120 });
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(31), at(0));
+    await checkThresholds(reading(31), at(119));
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+
+    await checkThresholds(reading(31), at(120));
+    expect(mockRecordEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("never reports a breach that recovers inside the delay", async () => {
+    await withSetting({ delaySec: 120 });
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(31), at(0));
+    await checkThresholds(reading(23), at(60)); // door closed again
+    await checkThresholds(reading(31), at(90)); // a new excursion restarts the clock
+    await checkThresholds(reading(31), at(200));
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+
+    await checkThresholds(reading(31), at(210));
+    expect(mockRecordEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("times warn-then-err from the first worse reading", async () => {
+    await withSetting({ delaySec: 120 });
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(27.5), at(0)); // warn
+    await checkThresholds(reading(31), at(100)); // err, still inside the delay
+    await checkThresholds(reading(31), at(120));
+    expect(mockRecordEvent).toHaveBeenCalledTimes(1);
+    expect(mockRecordEvent).toHaveBeenCalledWith(expect.objectContaining({ severity: "err" }));
+  });
+
+  it("records a recovery at once, delay or not", async () => {
+    await withSetting({ delaySec: 120 });
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(31), at(0));
+    await checkThresholds(reading(31), at(120));
+    mockRecordEvent.mockClear();
+
+    await checkThresholds(reading(23), at(121));
+    expect(mockRecordEvent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("validation", () => {
+  it("rejects an inverted or empty band", () => {
+    expect(bandProblem(18, 28)).toBeNull();
+    expect(bandProblem(28, 18)).toMatch(/below/);
+    expect(bandProblem(20, 20)).toMatch(/below/);
+    expect(bandProblem(Number.NaN, 20)).toMatch(/numbers/);
+  });
+
+  it("keeps the margin under the point where the shoulders meet", () => {
+    expect(alertSettingProblem({ warnMarginPct: 40 })).toBeNull();
+    expect(alertSettingProblem({ warnMarginPct: 41 })).toMatch(/0 and 40/);
+    expect(alertSettingProblem({ warnMarginPct: -1 })).toMatch(/0 and 40/);
+  });
+
+  it("wants the delay in whole seconds, up to an hour", () => {
+    expect(alertSettingProblem({ delaySec: 3600 })).toBeNull();
+    expect(alertSettingProblem({ delaySec: 3601 })).toMatch(/3600/);
+    expect(alertSettingProblem({ delaySec: 1.5 })).toMatch(/whole/);
+  });
+
+  it("falls back to the default behaviour for a metric with no setting", () => {
+    expect(alertSettingFor("co2", [])).toEqual({ enabled: true, warnMarginPct: 10, delaySec: 0 });
   });
 });
