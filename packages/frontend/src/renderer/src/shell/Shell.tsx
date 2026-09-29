@@ -11,11 +11,14 @@ import { Journal }     from "@/pages/Journal";
 import { Maintenance } from "@/pages/Maintenance";
 import { Logging }     from "@/pages/Logging";
 import { Settings }    from "@/pages/Settings";
+import { Targets }     from "@/pages/Targets";
+import { NavigationContext } from "./navigation";
 
 const PAGES: Record<PageId, React.ComponentType> = {
   overview:     Overview,
   setup:        SetupView,
   automation:   Automation,
+  targets:      Targets,
   "grow-cycle": GrowCycle,
   journal:      Journal,
   maintenance:  Maintenance,
@@ -34,7 +37,9 @@ export function Shell() {
         <div className="body">
           <Sidebar active={page} onNavigate={setPage} />
           <div className="main">
-            <Page />
+            <NavigationContext.Provider value={setPage}>
+              <Page />
+            </NavigationContext.Provider>
           </div>
         </div>
       </div>

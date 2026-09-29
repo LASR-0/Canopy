@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/http";
-import type { SensorThreshold } from "@canopy/shared-types";
+import type { AlertBehaviour, Metric, SensorThreshold } from "@canopy/shared-types";
 
 export function useThresholds(workspaceId: string | undefined) {
   return useQuery({
@@ -36,5 +36,50 @@ export function useSaveThreshold(workspaceId: string) {
       // until the bands are re-read.
       void qc.invalidateQueries({ queryKey: ["readings", workspaceId] });
     },
+  });
+}
+
+/** Remove a band — for a stage override, "clear override"; the default applies again. */
+export function useDeleteThreshold(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api("DELETE /workspaces/:workspaceId/thresholds/:id", { params: { workspaceId, id } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["thresholds", workspaceId] });
+      void qc.invalidateQueries({ queryKey: ["readings", workspaceId] });
+    },
+  });
+}
+
+/** Per-metric alert behaviour. Only metrics that differ from the default have a row. */
+export function useThresholdAlerts(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: ["threshold-alerts", workspaceId],
+    queryFn: ({ signal }) =>
+      api("GET /workspaces/:workspaceId/threshold-alerts", {
+        params: { workspaceId: workspaceId! },
+        signal,
+      }),
+    enabled: !!workspaceId,
+  });
+}
+
+export function useSaveAlertSetting(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ metric, ...body }: Partial<AlertBehaviour> & { metric: Metric }) =>
+      api("PUT /workspaces/:workspaceId/threshold-alerts/:metric", { params: { workspaceId, metric }, body }),
+    // The warning margin changes what the Overview's cards call "drifting".
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["threshold-alerts", workspaceId] }),
+  });
+}
+
+export function useResetAlertSetting(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (metric: Metric) =>
+      api("DELETE /workspaces/:workspaceId/threshold-alerts/:metric", { params: { workspaceId, metric } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["threshold-alerts", workspaceId] }),
   });
 }

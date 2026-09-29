@@ -7,19 +7,19 @@ import { Icon, type IconName } from "@/components/Icon";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useLiveReadings } from "@/hooks/useLiveReadings";
-import { useThresholds } from "@/hooks/useThresholds";
+import { useThresholdAlerts, useThresholds } from "@/hooks/useThresholds";
 import { useEvents } from "@/hooks/useEvents";
 import { useMaintenanceToday, useCompleteTask } from "@/hooks/useMaintenance";
 import { useDevices, useScan } from "@/hooks/useDevices";
 import { useAutomations } from "@/hooks/useAutomations";
 import { useControllerStatus } from "@/hooks/useBackend";
-import { evalThreshold } from "@/lib/thresholds";
+import { statusOf } from "@/lib/thresholds";
 import { calcGrowStage } from "@/lib/growStage";
 import { api } from "@/lib/http";
 import type { Reading, SensorThreshold, GrowCycle, AppEvent, MaintenanceTask, Device, ReadingResolution } from "@canopy/shared-types";
-import type { Metric, GrowStageName, Automation } from "@canopy/shared-types";
+import type { Metric, GrowStageName, Automation, ThresholdAlertSetting } from "@canopy/shared-types";
 import { METRIC_META, UNIT_DISPLAY, formatMetricValue } from "@/lib/metrics";
-import { ThresholdsModal } from "@/components/ThresholdsModal";
+import { useNavigate } from "@/shell/navigation";
 
 // ── Metric display config ────────────────────────────────────────────────
 // The metric catalogue itself lives in lib/metrics.ts, shared with Automation.
@@ -96,16 +96,18 @@ function GrowBanner({ grow }: { grow: GrowCycle }) {
 function SensorCard({
   reading,
   thresholds,
+  alertSettings,
   stage,
   range,
 }: {
   reading: Reading;
   thresholds: SensorThreshold[];
+  alertSettings: ThresholdAlertSetting[];
   stage?: GrowStageName;
   range: RangeKey;
 }) {
   const meta   = METRIC_META[reading.metric];
-  const status = evalThreshold(reading.value, reading.metric, thresholds, stage);
+  const status = statusOf(reading, thresholds, stage, alertSettings);
   const sparkColor =
     status === "err"  ? "var(--danger-fg)"    :
     status === "warn" ? "var(--attention-fg)" :
@@ -246,20 +248,21 @@ function uptimeText(seconds: number): string {
  * scheduled fire time the controller computed, and the controller's own uptime.
  */
 function SummaryStrip({
-  readings, thresholds, stage, automations, uptimeSec, brokerOnline,
+  readings, thresholds, alertSettings, stage, automations, uptimeSec, brokerOnline,
 }: {
   readings: Reading[];
   thresholds: SensorThreshold[];
+  alertSettings: ThresholdAlertSetting[];
   stage?: GrowStageName;
   automations: Automation[];
   uptimeSec?: number;
   brokerOnline?: boolean;
 }) {
   const offTarget = readings.filter(
-    (r) => evalThreshold(r.value, r.metric, thresholds, stage) !== "ok",
+    (r) => statusOf(r, thresholds, stage, alertSettings) !== "ok",
   ).length;
   const breached = readings.filter(
-    (r) => evalThreshold(r.value, r.metric, thresholds, stage) === "err",
+    (r) => statusOf(r, thresholds, stage, alertSettings) === "err",
   ).length;
 
   const enabled = automations.filter((a) => a.enabled);
@@ -426,10 +429,11 @@ export function Overview() {
   const workspace = useActiveWorkspace();
   const readings  = useLiveReadings(workspace?.id);
   const [range, setRange] = useState<RangeKey>("24H");
-  const [editingThresholds, setEditingThresholds] = useState(false);
+  const navigate = useNavigate();
 
   const { data: grow }              = useActiveGrow();
   const { data: thresholds = [] }   = useThresholds(workspace?.id);
+  const { data: alertSettings = [] } = useThresholdAlerts(workspace?.id);
   const { data: events = [] }       = useEvents(workspace?.id);
   const maintenanceToday            = useMaintenanceToday(workspace?.id);
   const { data: devices = [] }      = useDevices(workspace?.id);
@@ -520,6 +524,7 @@ export function Overview() {
               <SummaryStrip
                 readings={readingList}
                 thresholds={thresholds}
+                alertSettings={alertSettings}
                 {...(currentStage ? { stage: currentStage } : {})}
                 automations={automations}
                 {...(controller ? { uptimeSec: controller.uptimeSec, brokerOnline: controller.brokerOnline } : {})}
@@ -563,7 +568,7 @@ export function Overview() {
                 {/* The prototype's own entry point for target ranges. Not a
                     detail screen: nothing is judged until a band is set, so
                     without it every card reads "ok" whatever the reading. */}
-                <span className="link" onClick={() => setEditingThresholds(true)}>
+                <span className="link" onClick={() => navigate("targets")}>
                   Configure thresholds
                 </span>
               </div>
@@ -575,6 +580,7 @@ export function Overview() {
                       key={`${r.deviceId}:${r.channel}`}
                       reading={r}
                       thresholds={thresholds}
+                      alertSettings={alertSettings}
                       range={range}
                       {...(currentStage ? { stage: currentStage } : {})}
                     />
@@ -623,18 +629,6 @@ export function Overview() {
         </div>
       </div>
 
-      {workspace && (
-        <ThresholdsModal
-          open={editingThresholds}
-          onClose={() => setEditingThresholds(false)}
-          workspaceId={workspace.id}
-          // Only metrics the tent reports: a band for an unmeasured one does
-          // nothing, and the unit comes from the sensor's own reading.
-          metrics={readingList.map((r) => r.metric)}
-          thresholds={thresholds}
-          unitFor={(metric) => readingList.find((r) => r.metric === metric)?.unit}
-        />
-      )}
     </>
   );
 }

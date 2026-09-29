@@ -7,6 +7,7 @@ export type PageId =
   | "overview"
   | "setup"
   | "automation"
+  | "targets"
   | "grow-cycle"
   | "journal"
   | "maintenance"
@@ -25,6 +26,7 @@ const NAV: NavItem[] = [
   { id: "overview",    label: "Overview",    icon: "overview",     group: "Monitor" },
   { id: "setup",       label: "Setup View",  icon: "setup",        group: "Monitor" },
   { id: "automation",  label: "Automation",  icon: "automation",   group: "Manage",  count: 6 },
+  { id: "targets",     label: "Target ranges", icon: "target",     group: "Manage" },
   { id: "grow-cycle",  label: "Grow Cycle",  icon: "cycle",        group: "Manage" },
   { id: "journal",     label: "Journal",     icon: "journal",      group: "Manage",  count: 28 },
   { id: "maintenance", label: "Maintenance", icon: "maintenance",  group: "Service", count: 2 },
