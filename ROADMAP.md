@@ -735,8 +735,38 @@ In dependency order:
 
    **The sidebar counts are hard-coded** (`Journal 28`, `Automation 6`, …),
    left from the prototype. Harmless but wrong; wire them or drop them.
-6. **Setup View** — last, being the least operationally urgent, but it is
-   *designed* and no longer blocked.
+6. **Setup View — the 2D floor plan** *(next)*. Port the prototype's Layout
+   mode against real data. The 3D view is split out to Phase 9. Scope decided
+   2026-09-29:
+
+   - **One tent per workspace.** The workspace is the tent, and that is the
+     reason workspaces exist: each tent gets its own metrics. There is no
+     multi-enclosure or room model. The enclosure is the existing
+     `width_cm` / `depth_cm` / `height_cm` columns on `workspaces`, which have
+     been stored with nothing writing them.
+   - **Size cap for v1: 600 × 600 cm footprint, 300 cm tall.** The prototype
+     clamps every dimension to 30–600, so its height limit needs lowering. Also
+     decide what happens to placements when the tent shrinks under them:
+     clamp them to the new walls, or flag them as outside. Don't drop them
+     silently.
+   - **Devices are placed on the plan**, as the prototype does it: drag in
+     from the side list, drag to move, and set X / Y / Z in cm from the
+     front-left corner, with Z as mounting height. This needs a placements
+     table (none exists), one row per device per workspace.
+   - **Plants are a separate component on the plan.** Add as many as you
+     like and put them anywhere. The prototype has no plants, so this part is
+     new design, built from the pin pattern that already exists. Plants belong
+     to the workspace, not to a grow. Each one stores a position plus an
+     optional label and pot size.
+   - **Store what the 3D view will need, now.** Phase 9 is meant to be
+     rendering only. A facing (rotation) on each placement is cheap to add
+     and awkward to retrofit, because fans and lights point somewhere, and the
+     plan can show it as a small direction tick. The same applies to pot
+     size, which sets what a plant occupies in 3D.
+
+   The prototype's pin editor also changes the device's **role**. Roles
+   already have one owner, the Settings page via `lib/roles.ts`, so the plan
+   must write through that same route rather than keep its own copy.
 
 7. **Target ranges — revisit the UI.** The design is liked; the *modal* is the
    problem. Whether it becomes its own page or a tab is undecided, and that is
@@ -818,6 +848,40 @@ Three things to settle when it is built, none of which have an obvious default:
   defensible for v1 — but decide it rather than drift into it.
 - **The bind address.** If devices live on one interface or VLAN, narrowing off
   `0.0.0.0` is free defence in depth.
+
+### Phase 9 — Setup View 3D render *(last)*
+
+Deliberately the final phase. It starts only after everything else is
+polished and the functionality is where we want it. It is the most ambitious
+piece and the least operationally useful: nothing is controlled from it.
+
+This view **renders the floor plan and never edits it.** All placement stays
+in the Phase 7 plan, so this phase adds no data, only a way of looking at it.
+Decided 2026-09-29:
+
+- **Low-poly, grayscale, isometric.** An orthographic camera at a fixed
+  isometric elevation. No colour, except possibly as state later.
+- **Rotation is yaw only.** It works like a CAD view cube, but only left and
+  right: no tilt, no change of elevation, and the projection never leaves
+  isometric.
+- **The tent structure is generated from its dimensions** (frame poles,
+  panels, door), so it is accurate for any size up to the cap without
+  rescaling a model.
+- **Equipment, sensors, pots and plants come from CC0 low-poly packs** that
+  match the style, chosen per device by family and role. They may be
+  replaced later with our own or generated assets. Keep the choice behind
+  one lookup so swapping a pack touches one file. They ship with the app,
+  because it has to work offline.
+
+Settle two things before building:
+
+- **WebGL on both hosts.** WSLg and Hyprland may fall back to software
+  rendering. Spend a day on a spike that renders a generated tent on each
+  machine before committing to a renderer.
+- **Bundle.** Three.js (probably via react-three-fiber) is a large
+  dependency. Unlike Recharts in Logging, it earns its weight, because SVG
+  can't do this. Load it lazily when the view is opened, so it stays out of
+  the main bundle.
 
 ---
 
@@ -1018,8 +1082,9 @@ Journal) · Service (Maintenance, Logging) · Config (Settings).
 
 - **Overview** — sensor cards, sparklines, activity feed; empty and configured
   states derived from data.
-- **Setup View** — visual tent layout (device, sensor, pot placement) to compare
-  layouts across grows.
+- **Setup View** — a to-scale floor plan of the workspace's one tent: devices
+  with mounting heights, and freely placed plants. A grayscale isometric 3D
+  render of the same plan follows in Phase 9.
 - **Automation** — capability-driven, organised by subsystem. Two kinds:
   **schedule** (time → scheduler) and **rule** (condition → rules engine).
   Scopable to a grow stage or mode.
