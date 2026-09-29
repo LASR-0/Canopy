@@ -73,9 +73,9 @@ as blocked. All three were wrong. What follows was checked against the code.
   threshold alerts and device up/down recorded to the timeline. See Phase 6.
 - **Broker publish ACL** — command topics are closed to MQTT clients, so nothing
   on the LAN can switch hardware. See "MQTT hardening".
-- **Maintenance, Automation, Logging, Grow Cycle and Journal pages** are built
-  and wired to real endpoints. See Phase 7.
-- **Tests** — 327 passing across 19 files.
+- **All eight pages are built** and wired to real endpoints; the Setup View
+  3D render is the one piece left, as Phase 9. See Phase 7.
+- **Tests** — 347 passing across 20 files.
 
 ### Recently fixed (Phase 0)
 
@@ -145,15 +145,17 @@ correct: events are recorded by the subsystem that caused them, not posted.
 `controller` is fully real: `brokerOnline` and `deviceCount` since Phase 3, and
 `POST /controller/command` honours pause/resume/stop since Phase 4.
 
-DB-backed and real: `grows`, `milestones`, `journal`, `workspaces`,
+DB-backed and real: `grows`, `milestones`, `journal`, `layout` (placements
+and plants), `workspaces`,
 `maintenance`, `devices`, `settings`, `chart-layouts`, `thresholds`, `readings`
 (read and write paths).
 
 ### Placeholder pages
 
-One "coming soon" shell left: `SetupView`.
+None. Setup View was the last; its 3D mode is a deliberate placeholder until
+Phase 9.
 
-**Maintenance, Automation, Logging, Grow Cycle and Journal are built** (Phase 7). Their CSS was
+**Maintenance, Automation, Logging, Grow Cycle, Journal and Setup View are built** (Phase 7). Their CSS was
 ported wholesale from the prototype and resolves entirely against the existing
 Primer tokens, which is the pattern to repeat for the remaining pages: the design
 debt is zero, but the stylesheet still has to be carried across.
@@ -735,38 +737,61 @@ In dependency order:
 
    **The sidebar counts are hard-coded** (`Journal 28`, `Automation 6`, …),
    left from the prototype. Harmless but wrong; wire them or drop them.
-6. **Setup View — the 2D floor plan** *(next)*. Port the prototype's Layout
-   mode against real data. The 3D view is split out to Phase 9. Scope decided
-   2026-09-29:
+6. **Setup View — the 2D floor plan** ✅ done. The prototype's Layout mode,
+   ported against real data, plus plants. The 3D view is split out to Phase 9.
+   Decided 2026-09-29, and built that way:
 
    - **One tent per workspace.** The workspace is the tent, and that is the
      reason workspaces exist: each tent gets its own metrics. There is no
-     multi-enclosure or room model. The enclosure is the existing
-     `width_cm` / `depth_cm` / `height_cm` columns on `workspaces`, which have
-     been stored with nothing writing them.
-   - **Size cap for v1: 600 × 600 cm footprint, 300 cm tall.** The prototype
-     clamps every dimension to 30–600, so its height limit needs lowering. Also
-     decide what happens to placements when the tent shrinks under them:
-     clamp them to the new walls, or flag them as outside. Don't drop them
-     silently.
+     multi-enclosure or room model. The enclosure is the `width_cm` /
+     `depth_cm` / `height_cm` columns on `workspaces`, stored since the first
+     commit with nothing writing them. The workspace PATCH now validates them.
+   - **Size cap: 600 × 600 cm footprint, 300 cm tall, 30 cm minimum**
+     (`ENCLOSURE_LIMITS` in shared-types). Out-of-range sizes are **rejected
+     with a message, not clamped**: storing 600 when someone typed 800 would
+     leave them believing the tent is 8 m wide.
+   - **A resize rescales everything proportionally.** Each placement and plant
+     keeps the same fraction of each dimension, in the same transaction as the
+     resize, so a half-applied resize is impossible. Positions are stored as
+     `REAL`, so resizing and resizing back returns everything to exactly where
+     it was. The dimension fields commit on blur or Enter, never per
+     keystroke: typing "150" over "120" passes through "1" and "15", and each
+     would rescale the whole tent.
    - **Devices are placed on the plan**, as the prototype does it: drag in
-     from the side list, drag to move, and set X / Y / Z in cm from the
-     front-left corner, with Z as mounting height. This needs a placements
-     table (none exists), one row per device per workspace.
-   - **Plants are a separate component on the plan.** Add as many as you
-     like and put them anywhere. The prototype has no plants, so this part is
-     new design, built from the pin pattern that already exists. Plants belong
-     to the workspace, not to a grow. Each one stores a position plus an
-     optional label and pot size.
-   - **Store what the 3D view will need, now.** Phase 9 is meant to be
-     rendering only. A facing (rotation) on each placement is cheap to add
-     and awkward to retrofit, because fans and lights point somewhere, and the
-     plan can show it as a small direction tick. The same applies to pot
-     size, which sets what a plant occupies in 3D.
+     from the side list, or press +, drag to move, and set X / Y / Z in the
+     editor. `device_placements` has one row per device per workspace.
+     Positions are **clamped** to the walls rather than rejected, because a
+     pin dragged hard against the edge lands a fraction outside it. A
+     forgotten device's placement is hidden, not deleted, so re-adopting the
+     device puts it back where it was mounted.
+   - **Coordinates run from the back-left corner**, with y increasing toward
+     the door. The prototype's comment said "front-left" while its plan drew
+     y = 0 against the back wall. The drawing is what a grower sees, so the
+     drawing wins.
+   - **Plants are their own component.** Add as many as you like from the
+     Plants panel, by + or by dragging onto the plan. Each has an optional
+     label and a **pot size in litres**, picked from `POT_SIZES` (1–50 L,
+     13 sizes). Each size records the pot's rim diameter and height, taken
+     from a typical tapered round nursery pot and each within 10 % of its
+     nominal volume. The plan draws the pot at its real diameter. Plants
+     belong to the workspace, not to a grow.
+   - **Facing is stored for every placement** (`rotation_deg`, 0 = toward the
+     door, clockwise seen from above), so Phase 9 needs no migration. The
+     plan offers it only for equipment, as eight compass points, and draws it
+     as a tick on the pin.
 
-   The prototype's pin editor also changes the device's **role**. Roles
-   already have one owner, the Settings page via `lib/roles.ts`, so the plan
-   must write through that same route rather than keep its own copy.
+   **Roles have one owner.** The pin editor's role select calls the same
+   route as Settings. `rolesFor` and `roleChannel` moved into `lib/roles.ts`
+   and Settings now uses them too, so the two screens cannot offer different
+   roles or bind different channels.
+
+   Not done:
+
+   - **New items land mid-floor**, on top of each other when several are
+     added with +. Dragging from the list places them where they are dropped.
+   - **The plan does not show live readings.** A current value on each
+     sensor pin is an obvious next step, and useful long before the 3D view
+     exists.
 
 7. **Target ranges — revisit the UI.** The design is liked; the *modal* is the
    problem. Whether it becomes its own page or a tab is undecided, and that is
