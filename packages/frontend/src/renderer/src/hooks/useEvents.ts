@@ -22,3 +22,24 @@ export function useEvents(workspaceId: string | undefined, limit = 30) {
     refetchInterval: 30_000,
   });
 }
+
+/**
+ * Events inside a time window, for a chart.
+ *
+ * The chart used the newest-200 feed, so any range longer than the last few
+ * hours of activity showed markers for only its right-hand end. Keyed by the
+ * range name rather than the exact bounds, which move every render.
+ */
+export function useEventsInWindow(workspaceId: string | undefined, rangeKey: string, from: number, to: number) {
+  return useQuery({
+    queryKey: ["events", workspaceId, "window", rangeKey],
+    queryFn: ({ signal }) =>
+      api("GET /workspaces/:workspaceId/events", {
+        params: { workspaceId: workspaceId! },
+        query: { from: new Date(from).toISOString(), to: new Date(to).toISOString(), limit: 1000 },
+        signal,
+      }),
+    enabled: !!workspaceId,
+    refetchInterval: 30_000,
+  });
+}

@@ -724,6 +724,7 @@ export function Settings() {
                     {([
                       ["rawRetentionDays",    "Raw readings kept",     3,  30,  1,  "days" ],
                       ["hourlyRetentionDays", "Hourly rollup kept",    30, 365, 5,  "days" ],
+                      ["eventRetentionDays",  "Events & alerts kept",  7,  365, 1,  "days" ],
                       ["archiveAfterDays",    "Auto-archive after",    7,  90,  1,  "days" ],
                       ["backupIntervalDays",  "Backup every",          1,  30,  1,  "days" ],
                     ] as [keyof typeof settings, string, number, number, number, string][]).map(([key, label, min, max, step, unit]) => (

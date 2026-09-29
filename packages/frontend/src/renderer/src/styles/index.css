@@ -1132,6 +1132,19 @@ body {
 .tr-reset-btn { border: none; background: none; color: var(--accent-fg); font-size: 12px; cursor: pointer; font-family: var(--sans); padding: 0; }
 .tr-reset-btn:hover { text-decoration: underline; }
 
+/* ── logging: event markers ─────────────────────────────────── */
+.copt-sep { width: 1px; align-self: stretch; background: var(--border-default); margin: 2px 4px; }
+.copt-tick { display: inline-block; width: 2px; height: 10px; border-left: 2px dotted currentColor; opacity: .7; }
+.ev-count { fill: var(--canvas-default); font-size: 8px; font-weight: 700; font-family: var(--mono); pointer-events: none; }
+.lg-tip-events { border-bottom: 1px solid var(--border-muted); margin: 4px 0 6px; padding-bottom: 6px; display: flex; flex-direction: column; gap: 3px; max-width: 280px; }
+.lg-tip-event { font-size: 11px; color: var(--fg-muted); line-height: 1.35; }
+.lg-tip-event span { font-family: var(--mono); color: var(--fg-subtle); margin-right: 6px; }
+.lg-tip-event b { color: var(--fg-default); font-weight: 600; }
+.lg-tip:has(.lg-tip-events) { min-width: 240px; }
+.lg-tip-event.err { color: var(--danger-fg); }
+.lg-tip-event.warn { color: var(--attention-fg); }
+.lg-tip-event.more { font-style: italic; color: var(--fg-subtle); }
+
 /* ── range input (dark mode custom track) ──────────────────── */
 /* Light mode keeps native rendering. Dark mode uses appearance:none
    so we can split the track into filled/unfilled without losing the

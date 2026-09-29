@@ -14,7 +14,7 @@ import {
   useCreateChartLayout,
   useDeleteChartLayout,
 } from "@/hooks/useChartLayouts";
-import { useEvents } from "@/hooks/useEvents";
+import { useEventsInWindow } from "@/hooks/useEvents";
 import { useLiveReadings } from "@/hooks/useLiveReadings";
 import { useThresholds } from "@/hooks/useThresholds";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
@@ -253,9 +253,91 @@ function MetricRow({ metric, on, series, latest, onToggle }: {
 
 // ── Chart ─────────────────────────────────────────────────────────────────────
 
+// ── Event markers ─────────────────────────────────────────────────────────────
+
+/**
+ * Which toggle an event type falls under.
+ *
+ * Alerts are their own group, and off by default: the out-of-range marks
+ * already show when a reading left its band, and drawing every alert as a line
+ * as well is what buried the chart under dashes.
+ */
+type EventGroup = "automations" | "alerts" | "devices" | "grow";
+
+const EVENT_GROUP: Record<AppEvent["type"], EventGroup> = {
+  automation_fired: "automations",
+  failsafe_trip: "automations",
+  threshold_alert: "alerts",
+  device_online: "devices",
+  device_offline: "devices",
+  stage_changed: "grow",
+  mode_changed: "grow",
+  milestone_reached: "grow",
+  maintenance_done: "grow",
+};
+
+const EVENT_GROUPS: { key: EventGroup; label: string }[] = [
+  { key: "automations", label: "Automations" },
+  { key: "alerts", label: "Alerts" },
+  { key: "devices", label: "Devices" },
+  { key: "grow", label: "Grow" },
+];
+
+/** Markers closer than this (in viewBox units) merge into one. Wider than a count marker (12), so two never overlap. */
+const CLUSTER_GAP = 14;
+
+interface EventCluster {
+  x: number;
+  events: AppEvent[];
+  severity: "err" | "warn" | undefined;
+}
+
+/**
+ * Merge markers that would sit on top of each other.
+ *
+ * At a week's range an hour is a few units wide, so a dozen events in an hour
+ * would otherwise draw a dozen overlapping dashes. One marker with a count
+ * says the same thing, and the tooltip lists what it holds.
+ */
+export function clusterEvents(
+  events: AppEvent[],
+  from: number,
+  to: number,
+  plotX: number,
+  plotW: number,
+  gap = CLUSTER_GAP,
+): EventCluster[] {
+  const span = to - from || 1;
+  const placed = events
+    .map((event) => ({ event, x: plotX + ((Date.parse(event.occurredAt) - from) / span) * plotW }))
+    .filter(({ x }) => x >= plotX && x <= plotX + plotW)
+    .sort((a, b) => a.x - b.x);
+
+  const clusters: EventCluster[] = [];
+  let group: { x: number; event: AppEvent }[] = [];
+  const flush = () => {
+    if (group.length === 0) return;
+    const severity = group.some((g) => g.event.severity === "err")
+      ? "err"
+      : group.some((g) => g.event.severity === "warn") ? "warn" : undefined;
+    clusters.push({
+      x: group.reduce((sum, g) => sum + g.x, 0) / group.length,
+      events: group.map((g) => g.event).reverse(),
+      severity,
+    });
+    group = [];
+  };
+  for (const item of placed) {
+    if (group.length && item.x - group[0]!.x > gap) flush();
+    group.push(item);
+  }
+  flush();
+  return clusters;
+}
+
 function ChartPanel({
   metrics, seriesFor, mode, range, from, to, latest,
-  opts, night, targets, events, onToggleOpt, svgRef,
+  opts, night, targets, events, eventGroups, onToggleEventGroup, onToggleOpt, svgRef,
 }: {
   metrics: Metric[];
   seriesFor: (m: Metric) => ReadingSeries | undefined;
@@ -268,6 +350,8 @@ function ChartPanel({
   night: { x: number; w: number }[];
   targets: Map<Metric, [number, number]>;
   events: AppEvent[];
+  eventGroups: Set<EventGroup>;
+  onToggleEventGroup: (group: EventGroup) => void;
   onToggleOpt: (key: "night" | "targets" | "oor") => void;
   svgRef: React.RefObject<SVGSVGElement | null>;
 }) {
@@ -279,6 +363,11 @@ function ChartPanel({
   const totalH = lanes.length * laneH + Math.max(0, lanes.length - 1) * laneGap;
   const ticks = tickLabels(range, from, to);
   const span = to - from || 1;
+
+  const clusters = useMemo(
+    () => clusterEvents(events.filter((e) => eventGroups.has(EVENT_GROUP[e.type] ?? "grow")), from, to, PAD_L, PLOT_W),
+    [events, eventGroups, from, to],
+  );
 
   /**
    * Bounds per axis, so metrics sharing a scale are drawn against one.
@@ -310,6 +399,9 @@ function ChartPanel({
   };
 
   const inPlot = hoverX != null && hoverX >= PAD_L && hoverX <= PAD_L + PLOT_W;
+  const hoverCluster = inPlot
+    ? clusters.find((c) => Math.abs(c.x - hoverX!) <= CLUSTER_GAP / 2 + 2)
+    : undefined;
   const hoverTime = inPlot ? from + ((hoverX! - PAD_L) / PLOT_W) * span : null;
 
   /** The reading nearest the crosshair, per metric. */
@@ -369,6 +461,18 @@ function ChartPanel({
           >
             Out-of-range
           </button>
+          <span className="copt-sep" aria-hidden />
+          {EVENT_GROUPS.map(({ key, label }) => (
+            <button
+              key={key}
+              className={`copt${eventGroups.has(key) ? " on" : ""}`}
+              onClick={() => onToggleEventGroup(key)}
+              aria-pressed={eventGroups.has(key)}
+              title={`${eventGroups.has(key) ? "Hide" : "Show"} ${label.toLowerCase()} on the timeline`}
+            >
+              <span className="copt-tick" /> {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -535,17 +639,23 @@ function ChartPanel({
             );
           })}
 
-          {/* Events, placed by when they happened. */}
-          {events.map((event) => {
-            const t = Date.parse(event.occurredAt);
-            if (t < from || t > to) return null;
-            const x = PAD_L + ((t - from) / span) * PLOT_W;
-            const color = event.severity === "err" ? "var(--danger-fg)" : "var(--fg-muted)";
+          {/* Events, placed by when they happened; close ones merged. */}
+          {clusters.map((cluster) => {
+            const color =
+              cluster.severity === "err" ? "var(--danger-fg)"
+              : cluster.severity === "warn" ? "var(--attention-fg)"
+              : "var(--fg-muted)";
+            const many = cluster.events.length > 1;
             return (
-              <g key={event.id}>
-                <line x1={x} y1={6} x2={x} y2={totalH} stroke={color} strokeWidth="1"
+              <g key={cluster.events[0]!.id}>
+                <line x1={cluster.x} y1={6} x2={cluster.x} y2={totalH} stroke={color} strokeWidth="1"
                   strokeDasharray="2 3" opacity="0.5" />
-                <circle cx={x} cy={6} r="3" fill={color} />
+                <circle cx={cluster.x} cy={6} r={many ? 6 : 3} fill={color} />
+                {many && (
+                  <text className="ev-count" x={cluster.x} y={9} textAnchor="middle">
+                    {cluster.events.length > 99 ? "99+" : cluster.events.length}
+                  </text>
+                )}
               </g>
             );
           })}
@@ -573,6 +683,22 @@ function ChartPanel({
             }}
           >
             <div className="lg-tip-when">{new Date(hoverTime).toLocaleString()}</div>
+            {hoverCluster && (
+              <div className="lg-tip-events">
+                {hoverCluster.events.slice(0, 5).map((e) => (
+                  <div key={e.id} className={`lg-tip-event${e.severity ? ` ${e.severity}` : ""}`}>
+                    <span>{new Date(e.occurredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    {/* An automation's description is only what it did ("on (06:00–18:00)"),
+                        so it needs its name; device events and alerts carry their own. */}
+                    {EVENT_GROUP[e.type] === "automations" && e.sourceLabel ? <b>{e.sourceLabel} · </b> : null}
+                    {e.description}
+                  </div>
+                ))}
+                {hoverCluster.events.length > 5 && (
+                  <div className="lg-tip-event more">+{hoverCluster.events.length - 5} more</div>
+                )}
+              </div>
+            )}
             {readout.map(({ metric, point }) =>
               point == null ? null : (
                 <div className="lg-tip-row" key={metric}>
@@ -669,6 +795,9 @@ export function Logging() {
   const [mode, setMode] = useState<"overlay" | "stack">("overlay");
   const [hidden, setHidden] = useState<Set<Metric>>(new Set());
   const [opts, setOpts] = useState({ night: true, targets: true, oor: true });
+  const [eventGroups, setEventGroups] = useState<Set<EventGroup>>(
+    () => new Set<EventGroup>(["automations", "devices", "grow"]),
+  );
   const [saving, setSaving] = useState(false);
   const [layoutName, setLayoutName] = useState("");
   const [activeLayout, setActiveLayout] = useState<string | null>(null);
@@ -677,7 +806,6 @@ export function Logging() {
 
   const readings = useLiveReadings(workspace?.id);
   const { data: thresholds = [] } = useThresholds(workspace?.id);
-  const { data: events = [] } = useEvents(workspace?.id, 200);
   const { data: automations = [] } = useAutomations(workspace?.id);
   const { data: layouts = [] } = useChartLayouts(workspace?.id);
   const { data: grow } = useActiveGrow();
@@ -705,6 +833,8 @@ export function Logging() {
     const to = Date.now();
     return { from: to - config.ms, to, resolution: config.resolution };
   }, [range]);
+
+  const { data: events = [] } = useEventsInWindow(workspace?.id, range, window_.from, window_.to);
 
   const results = useQueries({
     queries: visible.map((metric) => ({
@@ -1017,6 +1147,15 @@ export function Logging() {
                   night={night}
                   targets={targets}
                   events={events}
+                  eventGroups={eventGroups}
+                  onToggleEventGroup={(group) =>
+                    setEventGroups((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(group)) next.delete(group);
+                      else next.add(group);
+                      return next;
+                    })
+                  }
                   onToggleOpt={(key) => setOpts((p) => ({ ...p, [key]: !p[key] }))}
                   svgRef={svgRef}
                 />
