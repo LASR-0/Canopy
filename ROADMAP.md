@@ -75,7 +75,7 @@ as blocked. All three were wrong. What follows was checked against the code.
   on the LAN can switch hardware. See "MQTT hardening".
 - **All eight pages are built** and wired to real endpoints; the Setup View
   3D render is the one piece left, as Phase 9. See Phase 7.
-- **Tests** — 347 passing across 20 files.
+- **Tests** — 359 passing across 20 files.
 
 ### Recently fixed (Phase 0)
 
@@ -160,8 +160,8 @@ ported wholesale from the prototype and resolves entirely against the existing
 Primer tokens, which is the pattern to repeat for the remaining pages: the design
 debt is zero, but the stylesheet still has to be carried across.
 
-**The target-ranges editor is a modal and should not stay one** — see Phase 7
-item 7. It works, so nothing is blocked on it; the shape is the open question.
+**Target ranges is its own page now** (Phase 7 item 7), not a modal on the
+Overview. It is the one page with no prototype design behind it.
 
 ### Not started
 
@@ -527,7 +527,7 @@ renderer never sends a `subscribe` frame, so filtering would either be inert or
 would silently cut the UI off from its own data. It belongs with the first
 multi-tent screen. See "Not started".
 
-### Phase 7 — Pages *(in progress)*
+### Phase 7 — Pages ✅ done
 
 In dependency order:
 
@@ -793,37 +793,61 @@ In dependency order:
      sensor pin is an obvious next step, and useful long before the 3D view
      exists.
 
-7. **Target ranges — revisit the UI.** The design is liked; the *modal* is the
-   problem. Whether it becomes its own page or a tab is undecided, and that is
-   the decision to make when this is picked up rather than now.
+7. **Target ranges** ✅ done — its own page in the sidebar (Manage), with a
+   **Ranges · Alerts** toggle in the style of Setup View's Layout · 3D. The
+   Overview's "Configure thresholds" link now opens it, and the modal is gone.
+   Decided 2026-09-29.
 
-   Not blocked by anything and not dependent on the pages above it, so it can be
-   pulled forward whenever it starts to bite. It is listed last only because the
-   editor works: bands can be set, and the Overview's status colours, Logging's
-   target bands and threshold alerts all came alive once they were.
+   **Ranges** is the matrix a modal could not show: one row per metric, with
+   **All stages** and the four stage columns side by side. Each cell edits in
+   place, in a small editor that floats over its neighbours. The current
+   stage's column is marked "now", and the one band judging readings right now
+   has a green edge wherever it comes from: the stage override if one exists,
+   otherwise the default. A stage cell with no override reads "↳ default". An
+   override is cleared with ×, and the stage falls back to the default.
+   Metrics come from what the sensors report, plus any metric with a stored
+   band but no sensor, so a range left behind by a removed sensor can still be
+   seen and cleared. Two sensors on one metric share one row.
 
-   Four things observed while building it, which any of the three shapes has to
-   answer:
+   **Alerts** is new: per metric, whether crossings reach the activity feed,
+   how wide the "drifting" shoulder is, and how long a worse reading must last
+   before it is reported. Stored in `threshold_alert_settings`, one row per
+   metric. Only metrics that differ from the default have a row, and the
+   default (on, 10 %, immediately) is exactly how alerts behaved before.
 
-   - **One entry point, easily missed.** A small link in the Overview's readings
-     header is the prototype's own answer and is the whole of it today. More
-     entry points were always intended; a page or a tab gives it an obvious home
-     rather than more links to a dialog.
-   - **A modal caps the height it can use.** Eleven metrics with a minimum and a
-     maximum each already scrolls inside the dialog, before any stage scoping.
-   - **Stage scoping multiplies the rows by five** and a modal shows one scope at
-     a time, so the default and the override it is overridden by can never be
-     seen together. That comparison is the main thing a grower wants here, and it
-     is what a full page could show side by side.
-   - **A band cannot be removed.** The route is `GET` plus an upsert `PUT`; there
-     is no `DELETE`, so a stage override can be moved but never cleared. Whatever
-     shape the UI takes needs a "clear override" action, and that needs the route
-     first. Small, and worth doing with this rather than before it.
+   - **The margin is passed into `evalThreshold`**, which both the Overview
+     cards (via `statusOf`) and the controller use, so a card and the feed
+     still agree about what "drifting" means. It is capped at 40 %: at 50 % the
+     two shoulders meet and no reading could ever be "ok". At 0 there are no
+     warnings, only breaches.
+   - **The delay holds back only a *worse* status.** A reading that recovers
+     inside it is never reported, and warn-then-err is timed from the first
+     worse reading. Recoveries are recorded at once, because a grower waiting
+     on a fix wants to know it worked.
+   - **Off silences the feed only.** The card still colours and Logging still
+     draws the band, because the range is still the range. The status keeps
+     being tracked while alerts are off, so turning them back on does not
+     report a breach that has held for hours.
 
-All eight pages have a high-fidelity prototype to build from — see "Reference
-material". The one exception is the target-ranges editor, which the prototype
-links to and never designs: item 7 is the only place in this phase with real
-design work left.
+   Two backend gaps found by building it:
+
+   - **Default bands could be duplicated.** The table's
+     `UNIQUE (workspace_id, stage, metric)` does not cover the default band,
+     whose `stage` is NULL, because SQLite treats NULLs as distinct. The modal
+     avoided this only by reusing ids. The PUT now upserts by metric and scope,
+     and uses the path id only for a new band.
+   - **There was no `DELETE`**, so an override could be moved but never
+     cleared. Added. The PUT also validates now: an inverted band or an
+     unknown stage is a 400 rather than a row that alerts on every reading.
+
+   **Pages can link to each other now.** `shell/navigation.tsx` exposes the
+   Shell's page state as `useNavigate()`, because the Overview's link had no
+   way to reach another page. It is a context rather than a router: there are
+   nine pages and no URLs. The prototype's other cross-page links ("Open
+   Automation", "Open Journal") can use it too.
+
+Phase 7 is complete, apart from the small follow-ups noted under items 4, 5
+and 6.
 
 ### Phase 8 — Service install & packaging
 
