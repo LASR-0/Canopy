@@ -12,6 +12,8 @@ import type {
   MaintenanceCompletion,
   MaintenanceDayNote,
   SensorThreshold,
+  ThresholdAlertSetting,
+  AlertBehaviour,
   AppEvent,
   AppSettings,
   ChartLayout,
@@ -102,6 +104,10 @@ export interface ApiRoutes {
   // ── Sensor thresholds ─────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/thresholds":           { res: SensorThreshold[] };
   "PUT /workspaces/:workspaceId/thresholds/:id":       { body: Partial<SensorThreshold>; res: SensorThreshold };
+  "DELETE /workspaces/:workspaceId/thresholds/:id":    { res: { deleted: true } };
+  "GET /workspaces/:workspaceId/threshold-alerts":             { res: ThresholdAlertSetting[] };
+  "PUT /workspaces/:workspaceId/threshold-alerts/:metric":     { body: Partial<AlertBehaviour>; res: ThresholdAlertSetting };
+  "DELETE /workspaces/:workspaceId/threshold-alerts/:metric":  { res: { deleted: true } };
 
   // ── Readings ──────────────────────────────────────────────────────────────
   "POST /readings/series":                              { body: ReadingSeriesQuery; res: ReadingSeries };
