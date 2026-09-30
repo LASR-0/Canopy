@@ -954,8 +954,9 @@ only, so it could not stop an ok ⇄ warn flap.
    and a second click deletes. Moving focus away, or five seconds, disarms it.
    Deleting an automation, a maintenance task or a device used to take one
    click. `countdown` adds the workspace delete's three-second traced ring,
-   which a third click cancels. It is used for the workspace delete and
-   Settings' "Forget all", which had no confirmation at all. Without a label
+   which a third click cancels. It is used for Settings' "Forget all",
+   which had no confirmation at all, and (since G) for deleting a workspace
+   for good from Recently deleted. Without a label
    the button is a trash icon that widens to "Delete?" when armed. It replaced
    the icon buttons on device cards, automations, maintenance tasks and journal
    entries (the Journal's own Delete entry / Keep pair went with it). The
@@ -1254,32 +1255,50 @@ straight away, with no restart. Both live in Settings → Data & Storage.
 6. **Still to check by hand**: Electron's save dialog for the export
    download, which the headless checks cannot reach.
 
-#### G. Workspaces: archive and recently deleted
+#### G. Workspaces: archive and recently deleted ✅ built — awaiting a hands-on check
 
-Today a workspace's **Delete and Archive buttons do the same thing**: both
-call `DELETE /workspaces/:id`, which sets `archived`, and nothing in the app
-shows an archived workspace or brings one back. The two should be different
-things:
+Before this, a workspace's **Delete and Archive buttons did the same thing**
+(set `archived`), nothing showed an archived workspace or brought one back,
+and **archiving stopped nothing**: the scheduler, rules, alerts, ingest and
+heartbeat never looked at the flag, so an archived tent's lights kept
+switching.
 
-1. **Archive** puts a workspace away indefinitely, and it can always be
-   restored. The controller stops acting for it: its automations do not run
-   and its alerts are not raised. Its history is kept whole.
-2. **Delete** moves a workspace to **Recently deleted**, where it can be
-   restored for **7 days**. After that it is removed permanently, with
-   everything under it (readings, events, journal entries and their photos).
-   The 7 days are fixed, not a setting. A daily job does the purge, next to
-   `prune_events`.
-3. **Settings → Workspaces** gets two collapsed lists under the live ones:
-   *Archived (n)*, each with Restore, and *Recently deleted (n)*, each with
-   Restore, the days left, and a "Delete now" that uses the countdown delete
-   button.
-4. **Schema**: the `archived` flag becomes two timestamps, `archived_at` and
-   `deleted_at`. They are timestamps so that the purge knows when the 7 days
-   began, and so that each list can say when a workspace went there.
-5. **To settle when built**: what happens to devices assigned to an archived
-   or deleted workspace (released for another workspace, or held until a
-   restore), and whether restoring a workspace whose devices have moved on
-   restores it without them.
+1. **Archive** puts a workspace away indefinitely, restorable at any time,
+   with its history kept whole.
+2. **Delete** moves it to **Recently deleted**, restorable for **7 days**
+   (`WORKSPACE_RESTORE_DAYS`, fixed). A daily `purge_workspaces` job then
+   removes it with everything under it. Readings have no foreign key and can
+   run to millions, so they go in batches of 5,000 that yield; the rest
+   cascades, and photo files are removed by hand. Deleting a live workspace
+   no longer uses the countdown, since it can be undone. The countdown moved
+   to **Delete now** in Recently deleted, which cannot.
+3. **Put away, the controller does nothing for it.** Its devices leave the
+   ingest topic index, so no readings are recorded, and with no readings no
+   thresholds are judged, no rules fire and no VPD is derived. The scheduler
+   skips its automations, the heartbeat raises no offline alerts for it, and
+   no maintenance falls due. These are the choke points, so the rules and
+   threshold caches need no filter of their own.
+4. **Devices are held, idle, until a restore** (decided 2026-09-30). Their
+   hardware is free meanwhile: another workspace can scan and find it.
+   Restoring re-checks the claims (`device-manager/claims.ts`, shared with
+   import), and a device whose hardware another live workspace now holds
+   comes back **detached**, history intact. Settings says so after a
+   restore.
+5. **One live workspace always remains**, since the app needs one to open.
+   Putting away the active workspace moves the app to another. Both are
+   enforced on the controller as well as in the UI.
+6. **Settings → Workspaces** has two collapsed lists under the live ones:
+   *Archived* (each with its date and Restore) and *Recently deleted* (each
+   with the days left, Restore, and Delete now).
+7. **Schema**: `archived_at` and `deleted_at` timestamps. The old `archived`
+   flag is left unused. Databases that had it set are migrated as archived,
+   since both buttons set it. Import leaves out a file's recently deleted
+   workspaces and keeps its archived ones archived.
+8. Routes: `GET /workspaces` (live), `GET /workspaces/stored`,
+   `POST /workspaces/:id/archive`, `POST /workspaces/:id/restore`,
+   `DELETE /workspaces/:id` (to Recently deleted),
+   `DELETE /workspaces/:id/permanent`. Each reloads the controller's
+   workspace caches (`controller/reload.ts`, shared with import).
 
 #### H. Grow stages in Automation and Maintenance
 
