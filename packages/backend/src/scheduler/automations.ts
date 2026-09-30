@@ -22,6 +22,7 @@ import { db } from "../store/index.js";
 import { automations, workspaces } from "../store/schema.js";
 import { canActuate } from "../controller/state.js";
 import { appliesInCurrentStage } from "../grow/stage.js";
+import { parseStages } from "../grow/stage-scope.js";
 import { applyActions, recordFiring } from "../automation/apply.js";
 import { cronFiredBetween, isWithinWindow } from "./schedule.js";
 import type {
@@ -80,7 +81,7 @@ function parseAutomation(row: typeof automations.$inferSelect): Automation | nul
       trigger: JSON.parse(row.triggerJson) as AutomationTrigger,
       actions: JSON.parse(row.actionsJson) as AutomationAction[],
       sortOrder: row.sortOrder,
-      ...(row.stage ? { stage: row.stage as NonNullable<Automation["stage"]> } : {}),
+      ...(parseStages(row.stagesJson) ? { stages: parseStages(row.stagesJson)! } : {}),
       ...(row.overrideUntil ? { overrideUntil: row.overrideUntil } : {}),
     };
   } catch {
@@ -141,7 +142,7 @@ export async function evaluateAutomations(now: Date = new Date()): Promise<Autom
     // Stage scope. An automation limited to a stage only runs while the grow is
     // in it, and idles when no grow is running at all — there is no stage then,
     // so "flowering only" has no answer. See grow/stage.ts.
-    if (!appliesInCurrentStage(automation.workspaceId, automation.stage, now)) {
+    if (!appliesInCurrentStage(automation.workspaceId, automation.stages, now)) {
       outcome.skipped++;
       continue;
     }

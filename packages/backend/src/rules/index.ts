@@ -25,6 +25,7 @@ import { automations } from "../store/schema.js";
 import { canActuate } from "../controller/state.js";
 import { applyActions, recordFiring } from "../automation/apply.js";
 import { appliesInCurrentStage } from "../grow/stage.js";
+import { parseStages } from "../grow/stage-scope.js";
 import type {
   GrowStageName,
   Automation,
@@ -42,8 +43,8 @@ interface CompiledRule {
   trigger: RuleTrigger;
   actions: AutomationAction[];
   overrideUntil?: string;
-  /** Set when the rule only applies during one grow stage. */
-  stage?: GrowStageName;
+  /** Set when the rule only applies in some grow stages. */
+  stages?: GrowStageName[];
 }
 
 /**
@@ -117,7 +118,7 @@ function compile(row: typeof automations.$inferSelect): CompiledRule | null {
       trigger: trigger as RuleTrigger,
       actions: JSON.parse(row.actionsJson) as AutomationAction[],
       ...(row.overrideUntil ? { overrideUntil: row.overrideUntil } : {}),
-      ...(row.stage ? { stage: row.stage as GrowStageName } : {}),
+      ...(parseStages(row.stagesJson) ? { stages: parseStages(row.stagesJson)! } : {}),
     };
   } catch {
     console.error(`[rules] automation ${row.id} has unreadable trigger or actions`);
@@ -180,7 +181,7 @@ export async function onReading(reading: Reading, now: Date = new Date()): Promi
     if (rule.overrideUntil && rule.overrideUntil > now.toISOString()) continue;
     // Stage scope: a rule limited to a stage idles outside it, and idles
     // entirely when no grow is running. See grow/stage.ts.
-    if (!appliesInCurrentStage(rule.workspaceId, rule.stage, now)) continue;
+    if (!appliesInCurrentStage(rule.workspaceId, rule.stages, now)) continue;
 
     const { next, fire } = evaluateRule(rule.trigger, reading.value, state.get(rule.id), nowMs);
     state.set(rule.id, next);

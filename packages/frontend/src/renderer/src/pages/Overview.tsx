@@ -600,7 +600,7 @@ export function Overview() {
                 </div>
               )}
 
-              <div className="sec-head" style={{ marginTop: readingList.length === 0 ? 24 : 0 }}>
+              <div className="sec-head" style={{ marginTop: 24 }}>
                 <h2>Current readings</h2>
                 <span className="count">
                   {readingList.length > 0 ? readingList.length : "awaiting probes"}

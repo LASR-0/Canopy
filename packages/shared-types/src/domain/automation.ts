@@ -1,7 +1,7 @@
 import type { Id } from "./common.js";
 import type { Metric } from "./capability.js";
 import type { ActuatorCommand, RoleKind } from "./index-internal.js";
-import type { GrowStageName } from "./grow.js";
+import type { PlannedStage } from "./grow.js";
 
 export type AutomationKind = "schedule" | "rule" | "failsafe";
 
@@ -84,8 +84,11 @@ export interface Automation {
   requiresRole?: RoleKind;
   trigger: AutomationTrigger;
   actions: AutomationAction[];
-  /** Optional grow stage scope — only active during this stage. */
-  stage?: GrowStageName;
+  /**
+   * The grow stages this runs in. Absent (or empty) means every stage. A scoped
+   * automation idles outside its stages, and idles entirely while no grow runs.
+   */
+  stages?: PlannedStage[];
   /** ISO timestamp — manual override active until this time. */
   overrideUntil?: string;
   /** Description of the active override e.g. "held off", "held at 80%". */
@@ -111,8 +114,7 @@ export interface Automation {
  * unreachable from a typed client.
  */
 export type AutomationPatch =
-  Partial<Omit<Automation, "overrideUntil" | "overrideState" | "stage">> & {
+  Partial<Omit<Automation, "overrideUntil" | "overrideState">> & {
     overrideUntil?: string | null;
     overrideState?: string | null;
-    stage?: GrowStageName | null;
   };

@@ -9,6 +9,7 @@ import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useAutomations } from "@/hooks/useAutomations";
 import { useCreateGrow, useGrowTemplates, useGrows, usePatchGrow } from "@/hooks/useGrows";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
+import { useNavigate } from "@/shell/navigation";
 import type { GrowCycle, GrowStageName } from "@canopy/shared-types";
 
 // ── Stage definitions ─────────────────────────────────────────────────────────
@@ -196,6 +197,7 @@ function AbortPanel({ busy, onCancel, onConfirm }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function GrowCycle() {
+  const navigate = useNavigate();
   const workspace = useActiveWorkspace();
   const workspaceId = workspace?.id ?? "";
 
@@ -257,7 +259,7 @@ export function GrowCycle() {
    * looks like broken automation.
    */
   const idledByNoGrow = useMemo(
-    () => (active ? [] : automations.filter((a) => a.enabled && a.stage)),
+    () => (active ? [] : automations.filter((a) => a.enabled && a.stages?.length)),
     [automations, active],
   );
 
@@ -587,11 +589,19 @@ export function GrowCycle() {
                   <div className="gc-row-main">
                     <div className="gc-stage-name">
                       {r.label}
-                      <Tip content="Automations scoped to this stage">
-                        <span className="gc-mode-chip">
-                          {r.stage}
-                        </span>
-                      </Tip>
+                      {(() => {
+                        const scoped = automations.filter((a) => (a.stages as string[] | undefined)?.includes(r.stage)).length;
+                        return (
+                          <Tip content={`Open Automation at ${r.label}: what runs in this stage`}>
+                            <button
+                              className="gc-mode-chip"
+                              onClick={() => navigate("automation", { tab: r.stage })}
+                            >
+                              {scoped === 0 ? "automations" : `${scoped} automation${scoped === 1 ? "" : "s"}`}
+                            </button>
+                          </Tip>
+                        );
+                      })()}
                     </div>
                     <div className="gc-range">
                       {r.weeks > 0

@@ -45,6 +45,13 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
     db.prepare(`UPDATE workspaces SET archived_at = ? WHERE archived = 1`).run(new Date().toISOString());
   }
   addColumnIfMissing(db, "workspaces", "deleted_at", "TEXT");
+  // Automations run in any set of stages (7.5 H); a single stage carries over.
+  if (addColumnIfMissing(db, "automations", "stages_json", "TEXT")) {
+    db.exec(`UPDATE automations SET stages_json = json_array(stage) WHERE stage IS NOT NULL`);
+  }
+  // Maintenance: a stage scope, and the stage a "when a stage starts" task waits for.
+  addColumnIfMissing(db, "maintenance_tasks", "stages_json", "TEXT");
+  addColumnIfMissing(db, "maintenance_tasks", "start_stage", "TEXT");
 }
 
 export function addColumnIfMissing(
@@ -383,7 +390,8 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       requires_role   TEXT,
       trigger_json    TEXT NOT NULL,
       actions_json    TEXT NOT NULL DEFAULT '[]',
-      stage           TEXT,
+      stage           TEXT,                   /* unused since 7.5 H; see stages_json */
+      stages_json     TEXT,
       override_until  TEXT,
       override_state  TEXT,
       sort_order      INTEGER NOT NULL DEFAULT 0
@@ -404,7 +412,9 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       next_due_at             TEXT,
       last_done_at            TEXT,
       created_at              TEXT NOT NULL,
-      due_notified_at         TEXT
+      due_notified_at         TEXT,
+      stages_json             TEXT,
+      start_stage             TEXT
     );
 
     /* ── maintenance_completions ──────────────────────────────────────── */

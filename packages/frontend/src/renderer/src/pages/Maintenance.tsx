@@ -6,6 +6,9 @@ import { Icon, type IconName } from "@/components/Icon";
 import { DeleteButton } from "@/components/DeleteButton";
 import { Toggle } from "@/components/Toggle";
 import { Tip } from "@/components/Tip";
+import { StageScope, StageTags, stageLabel } from "@/components/StagePicker";
+import { useActiveGrow } from "@/hooks/useActiveGrow";
+import { STAGE_DEFS, calcGrowStage } from "@/lib/growStage";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
 import { useDevices } from "@/hooks/useDevices";
 import {
@@ -20,6 +23,7 @@ import {
   useSkipTask,
   useUpdateTask,
 } from "@/hooks/useMaintenance";
+import { stageScopeApplies, type GrowStageName, type PlannedStage } from "@canopy/shared-types";
 import type {
   Device,
   MaintenanceCadence,
@@ -39,7 +43,7 @@ const TABS: { id: TabId; label: string }[] = [
 const CADENCE: Record<MaintenanceCadence, { label: string; cls: string }> = {
   daily:   { label: "Daily",      cls: "cad-daily" },
   weekly:  { label: "Weekly",     cls: "cad-weekly" },
-  stage:   { label: "By stage",   cls: "cad-stage" },
+  stage:   { label: "Stage start", cls: "cad-stage" },
   runtime: { label: "By runtime", cls: "cad-runtime" },
   custom:  { label: "Custom",     cls: "cad-custom" },
 };
@@ -67,7 +71,7 @@ const REPEAT_PRESETS: {
   { id: "daily",   label: "Daily",   cadence: "daily" },
   { id: "weekly",  label: "Weekly",  cadence: "weekly", intervalDays: 7 },
   { id: "monthly", label: "Monthly", cadence: "weekly", intervalDays: 30 },
-  { id: "stage",   label: "By stage", cadence: "stage" },
+  { id: "stage",   label: "When a stage starts", cadence: "stage" },
 ];
 
 /** A rough icon per task, picked from the name. Cosmetic only. */
@@ -88,7 +92,7 @@ function describeCadence(task: MaintenanceTask): string {
     case "daily":   return "every day";
     case "weekly":  return `every ${task.intervalDays ?? 7} days`;
     case "custom":  return `every ${task.intervalDays ?? 1} days`;
-    case "stage":   return "once per grow stage";
+    case "stage":   return task.startStage ? `when ${stageLabel(task.startStage)} starts` : "when a stage starts (none chosen)";
     case "runtime": return `every ${task.runtimeHoursInterval ?? 100} runtime hours`;
   }
 }
@@ -183,7 +187,7 @@ interface TaskRowProps {
   onSkip: (task: MaintenanceTask) => void;
   onToggleBell: (task: MaintenanceTask) => void;
   onEdit: (id: string) => void;
-  onSetCadence: (task: MaintenanceTask, cadence: MaintenanceCadence, interval?: number) => void;
+  onSetCadence: (task: MaintenanceTask, patch: Partial<MaintenanceTask>) => void;
   onDelete: (task: MaintenanceTask) => void;
 }
 
@@ -215,6 +219,7 @@ function TaskRow({
         <div className="t-info">
           <div className="t-name">
             {task.name}
+            <StageTags stages={task.stages} />
             {overdue && <span className="tag b-err" style={{ fontSize: 10 }}>overdue</span>}
           </div>
           <div className="t-sub">
@@ -263,7 +268,7 @@ function TaskRow({
       {editing && (
         <CadenceEditor
           task={task}
-          onSave={(cadence, interval) => { onSetCadence(task, cadence, interval); onEdit(task.id); }}
+          onSave={(patch) => { onSetCadence(task, patch); onEdit(task.id); }}
           onClose={() => onEdit(task.id)}
         />
       )}
@@ -283,17 +288,23 @@ function CadenceEditor({
   task, onSave, onClose,
 }: {
   task: MaintenanceTask;
-  onSave: (cadence: MaintenanceCadence, interval?: number) => void;
+  onSave: (patch: Partial<MaintenanceTask>) => void;
   onClose: () => void;
 }) {
   const [cadence, setCadence] = useState<MaintenanceCadence>(task.cadence);
   const [everyDays, setEveryDays] = useState(task.intervalDays ?? 7);
   const [hours, setHours] = useState(task.runtimeHoursInterval ?? 250);
+  const [startStage, setStartStage] = useState<PlannedStage>(task.startStage ?? "flowering");
+  const [stages, setStages] = useState<PlannedStage[]>(task.stages ?? []);
 
-  const interval =
-    cadence === "weekly" || cadence === "custom" ? everyDays
-    : cadence === "runtime" ? hours
-    : undefined;
+  const save = () =>
+    onSave({
+      cadence,
+      ...(cadence === "weekly" || cadence === "custom" ? { intervalDays: everyDays } : {}),
+      ...(cadence === "runtime" ? { runtimeHoursInterval: hours } : {}),
+      // A stage-start task belongs to its stage; a scope only means something on a recurring one.
+      ...(cadence === "stage" ? { startStage, stages: [] } : { stages }),
+    });
 
   return (
     <div className="cad-pop">
@@ -332,12 +343,21 @@ function CadenceEditor({
         </div>
       )}
       {cadence === "stage" && (
-        <div className="cad-detail">Runs on stage transitions — managed by <b>Grow Cycle</b>.</div>
+        <div className="cad-detail cad-stack">
+          Due once, on the day the grow starts
+          <StartStagePicker value={startStage} onChange={setStartStage} />
+        </div>
+      )}
+      {cadence !== "stage" && (
+        <div className="cad-detail cad-stack">
+          Runs in
+          <StageScope value={stages} onChange={setStages} />
+        </div>
       )}
       {cadence === "daily" && <div className="cad-detail">Surfaces once every day.</div>}
 
       <div className="cad-foot">
-        <button className="btn primary sm" onClick={() => onSave(cadence, interval)}>
+        <button className="btn primary sm" onClick={save}>
           <Icon name="check" size={13} /> Save cadence
         </button>
         <button className="btn sm" onClick={onClose}>Cancel</button>
@@ -346,20 +366,72 @@ function CadenceEditor({
   );
 }
 
+/**
+ * Which stage's tasks to show. Plainer than Automation's cards: a row of
+ * segments, the current stage dotted.
+ */
+function StageFilter({ view, current, onView }: {
+  view: PlannedStage | "all";
+  current: GrowStageName | undefined;
+  onView: (view: PlannedStage | "all") => void;
+}) {
+  return (
+    <div className="mt-stage-filter">
+      <span className="mt-stage-label">Stage</span>
+      <div className="segmented" role="tablist" aria-label="Grow stage">
+        <button role="tab" aria-selected={view === "all"} className={view === "all" ? "on" : ""} onClick={() => onView("all")}>
+          All stages
+        </button>
+        {STAGE_DEFS.map((d) => (
+          <button key={d.stage} role="tab" aria-selected={view === d.stage} className={view === d.stage ? "on" : ""} onClick={() => onView(d.stage)}>
+            <span className="stage-dot" style={{ background: d.color }} /> {d.label}
+            {current === d.stage && <span className="stage-now">now</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One stage, for a "when a stage starts" task. */
+function StartStagePicker({ value, onChange }: { value: PlannedStage; onChange: (stage: PlannedStage) => void }) {
+  return (
+    <div className="tf-chips" role="radiogroup" aria-label="Stage">
+      {STAGE_DEFS.map((d) => (
+        <button
+          key={d.stage}
+          role="radio"
+          aria-checked={value === d.stage}
+          className={`tf-chip stage-chip${value === d.stage ? " on" : ""}`}
+          style={value === d.stage ? { color: d.color, borderColor: d.color } : undefined}
+          onClick={() => onChange(d.stage)}
+        >
+          <span className="stage-dot" style={{ background: d.color }} /> {d.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ──────────────────────────────── Today ──────────────────────────────── */
 
 function TodayView({
-  workspaceId, tasks, devices,
+  workspaceId, tasks, devices, hiddenByStage, onShowAll,
 }: {
   workspaceId: string;
   tasks: MaintenanceTask[];
   devices: Device[];
+  /** Tasks left out because they belong to other stages. */
+  hiddenByStage: number;
+  onShowAll: () => void;
 }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newRepeat, setNewRepeat] = useState("daily");
   const [newGroup, setNewGroup] = useState<MaintenanceGroupTime>("today");
+  const [newStartStage, setNewStartStage] = useState<PlannedStage>("flowering");
+  const [newStages, setNewStages] = useState<PlannedStage[]>([]);
 
   const complete = useCompleteTask(workspaceId);
   const skip = useSkipTask(workspaceId);
@@ -380,6 +452,8 @@ function TodayView({
     setNewName("");
     setNewRepeat("daily");
     setNewGroup("today");
+    setNewStartStage("flowering");
+    setNewStages([]);
     setAdding(false);
   };
 
@@ -396,7 +470,10 @@ function TodayView({
     const group = GROUPS.find((g) => g.id === newGroup) ?? GROUPS[0]!;
 
     if (preset.cadence === "stage") {
-      return <>No fixed date — moves with the <b>grow stage</b>, shown under <b>{group.label}</b></>;
+      return <>Due once, when the grow starts <b>{stageLabel(newStartStage)}</b>, shown under <b>{group.label}</b></>;
+    }
+    if (newStages.length > 0) {
+      return <>Only in <b>{newStages.map(stageLabel).join(", ")}</b> · <b>{group.label}</b> ({group.sub})</>;
     }
     const days = preset.intervalDays ?? 1;
     return (
@@ -405,7 +482,7 @@ function TodayView({
         <b>{days === 1 ? "day" : `${days} days`}</b>
       </>
     );
-  }, [newRepeat, newGroup]);
+  }, [newRepeat, newGroup, newStartStage, newStages]);
 
   const addTask = () => {
     const name = newName.trim();
@@ -422,8 +499,13 @@ function TodayView({
       // Marks it as the grower's own, so the row reads "from You" rather than
       // naming a device that never generated it.
       seededBy: "You",
-      // A stage task has no date; anything else starts due now.
-      ...(preset.cadence === "stage" ? {} : { nextDueAt: new Date().toISOString() }),
+      // A stage task's date comes from the grow plan (the controller sets it);
+      // a stage-scoped one gets its date the same way. Anything else starts due now.
+      ...(preset.cadence === "stage"
+        ? { startStage: newStartStage }
+        : newStages.length > 0
+          ? { stages: newStages }
+          : { nextDueAt: new Date().toISOString() }),
     });
     resetForm();
   };
@@ -490,6 +572,13 @@ function TodayView({
               </div>
 
               <div className="tf-group">
+                <span className="tf-label">{newRepeat === "stage" ? "Stage" : "Runs in"}</span>
+                {newRepeat === "stage"
+                  ? <StartStagePicker value={newStartStage} onChange={setNewStartStage} />
+                  : <StageScope value={newStages} onChange={setNewStages} />}
+              </div>
+
+              <div className="tf-group">
                 <span className="tf-label">When</span>
                 <div className="tf-chips">
                   {GROUPS.map((group) => (
@@ -521,6 +610,13 @@ function TodayView({
             </span>
           </div>
         </div>
+      )}
+
+      {hiddenByStage > 0 && (
+        <p className="mt-stage-note">
+          <Icon name="info" size={12} /> {hiddenByStage} task{hiddenByStage === 1 ? " is" : "s are"} for other grow stages.
+          <span className="link" onClick={onShowAll}>Show all</span>
+        </p>
       )}
 
       {tasks.length === 0 && !adding && (
@@ -557,15 +653,7 @@ function TodayView({
                   onSkip={(t) => skip.mutate({ id: t.id })}
                   onToggleBell={(t) => update.mutate({ id: t.id, notifications: !t.notifications })}
                   onEdit={(id) => setEditId(editId === id ? null : id)}
-                  onSetCadence={(t, cadence, interval) => update.mutate({
-                    id: t.id,
-                    cadence,
-                    ...(interval == null
-                      ? {}
-                      : cadence === "runtime"
-                        ? { runtimeHoursInterval: interval }
-                        : { intervalDays: interval }),
-                  })}
+                  onSetCadence={(t, patch) => update.mutate({ id: t.id, ...patch })}
                   onDelete={(t) => remove.mutate(t.id)}
                 />
               ))}
@@ -762,16 +850,33 @@ export function Maintenance() {
   const { data: completions = [] } = useMaintenanceHistory(workspace?.id);
   const { data: devices = [] } = useDevices(workspace?.id);
 
-  const doneToday = tasks.filter(isDoneToday).length;
+  /**
+   * The stage filter. It follows the grow's current stage until one is picked:
+   * a task limited to other stages cannot fall due now, so it is left off.
+   * Picking a stage shows what runs then; All stages shows everything.
+   */
+  const { data: grow } = useActiveGrow();
+  const currentStage = grow ? calcGrowStage(grow)?.stage : undefined;
+  const [stagePick, setStagePick] = useState<PlannedStage | "all" | undefined>(undefined);
+  const stageView: PlannedStage | "all" =
+    stagePick ?? (currentStage && currentStage !== "harvest" ? currentStage : "all");
+  const todayTasks = useMemo(
+    () => tasks.filter((t) =>
+      stageView === "all"
+      || (t.cadence === "stage" ? t.startStage === stageView : stageScopeApplies(t.stages, stageView))),
+    [tasks, stageView],
+  );
+
+  const doneToday = todayTasks.filter(isDoneToday).length;
   const attention = useAttention(tasks, devices);
   const notifyAll = tasks.length > 0 && tasks.every((t) => t.notifications);
   const update = useUpdateTask(workspace?.id ?? "");
 
   const badge = (
     <>
-      {tab === "today" && tasks.length > 0 && (
+      {tab === "today" && todayTasks.length > 0 && (
         <span className="tag b-ok">
-          <span className="dot-live" style={{ width: 7, height: 7 }} /> {doneToday}/{tasks.length} today
+          <span className="dot-live" style={{ width: 7, height: 7 }} /> {doneToday}/{todayTasks.length} today
         </span>
       )}
       {attention.length > 0 && (
@@ -818,9 +923,21 @@ export function Maintenance() {
 
       <PageBody>
         {isLoading || !workspace ? null : tab === "today" ? (
-          <TodayView workspaceId={workspace.id} tasks={tasks} devices={devices} />
+          <>
+            <StageFilter view={stageView} current={currentStage} onView={setStagePick} />
+            <TodayView
+              workspaceId={workspace.id}
+              tasks={todayTasks}
+              devices={devices}
+              hiddenByStage={tasks.length - todayTasks.length}
+              onShowAll={() => setStagePick("all")}
+            />
+          </>
         ) : tab === "week" ? (
-          <WeekView tasks={tasks} />
+          <>
+            <StageFilter view={stageView} current={currentStage} onView={setStagePick} />
+            <WeekView tasks={todayTasks} />
+          </>
         ) : (
           <HistoryView completions={completions} tasks={tasks} />
         )}

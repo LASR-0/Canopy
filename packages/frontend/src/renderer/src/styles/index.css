@@ -470,8 +470,12 @@ body {
 .sec-head h2 { font-size: 14px; font-weight: 600; color: var(--fg-default); }
 .sec-head .count { font-size: 12px; color: var(--fg-muted); font-family: var(--mono); }
 .sec-head .rule { flex: 1; height: 1px; background: var(--border-muted); }
-.sec-head .link { font-size: 12px; color: var(--accent-fg); cursor: pointer; }
-.sec-head .link:hover { text-decoration: underline; }
+/* A text link, wherever it sits: blue, a pointer, underlined on hover. It was
+   only styled inside a section heading, so the activity feed's "Show all
+   activity" and the stage filter's "Show all" read as plain text. */
+.link { color: var(--accent-fg); cursor: pointer; }
+.link:hover { text-decoration: underline; }
+.sec-head .link { font-size: 12px; }
 
 /* ── sensor cards ──────────────────────────────────────────── */
 .sensor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 14px; }
@@ -728,6 +732,13 @@ body {
 .gmt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .gm-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; font-family: var(--mono); color: var(--fg-default); background: var(--canvas-subtle); border: 1px solid var(--border-muted); border-radius: 6px; padding: 2px 8px; }
 .gm-chip svg { color: var(--fg-muted); }
+/* Canopy's strip has All stages in front of the prototype's four. */
+.gm-modes.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gm-name { display: inline-flex; align-items: center; gap: 6px; }
+.gm-note { margin-top: 9px; font-size: 12px; color: var(--attention-fg); }
+.gmt-empty { font-size: 12px; color: var(--fg-subtle); font-style: italic; }
+.gmt-link { margin-top: 10px; padding: 0; border: none; background: none; font-family: var(--sans); font-size: 12px; color: var(--accent-fg); cursor: pointer; align-self: flex-start; }
+.gmt-link:hover { text-decoration: underline; }
 .auto-sec { border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); margin-bottom: 10px; overflow: hidden; }
 .auto-sec-head { display: flex; align-items: center; gap: 11px; width: 100%; padding: 12px 14px; background: var(--canvas-subtle); border: none; cursor: pointer; font-family: var(--sans); color: var(--fg-default); }
 .auto-sec-head:hover { background: var(--canvas-hover); }
@@ -816,7 +827,7 @@ body {
 .gc-dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 10px; }
 .gc-row-main { flex: 1; min-width: 0; }
 .gc-stage-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 9px; color: var(--fg-default); }
-.gc-mode-chip { font-size: 11px; font-weight: 600; font-family: var(--mono); color: var(--accent-fg); background: var(--accent-muted); border-radius: 5px; padding: 1px 7px; cursor: pointer; }
+.gc-mode-chip { font-size: 11px; font-weight: 600; font-family: var(--mono); color: var(--accent-fg); background: var(--accent-muted); border: none; border-radius: 5px; padding: 1px 7px; cursor: pointer; }
 .gc-mode-chip:hover { text-decoration: underline; }
 .gc-range { font-size: 11.5px; color: var(--fg-muted); font-family: var(--mono); margin-top: 2px; }
 .gc-status { flex: 0 0 auto; }
@@ -1068,7 +1079,9 @@ body {
 /* side panels */
 .sv-side { display: flex; flex-direction: column; gap: 14px; }
 .sv-panel { border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-default); overflow: hidden; }
-.svp-head { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-bottom: 1px solid var(--border-default); background: var(--canvas-subtle); }
+.svp-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 13px; border: none; border-bottom: 1px solid var(--border-default); background: var(--canvas-subtle); color: var(--fg-default); font-family: var(--sans); text-align: left; cursor: pointer; }
+.svp-head:hover { background: var(--canvas-hover); }
+.sv-panel.closed .svp-head { border-bottom: none; }
 .svp-head h3 { font-size: 12.5px; font-weight: 600; }
 .svp-head .svp-count { margin-left: auto; font-size: 11px; color: var(--fg-muted); font-family: var(--mono); border: 1px solid var(--border-muted); border-radius: 20px; padding: 0 7px; }
 
@@ -1495,6 +1508,25 @@ body {
 .imp-result-row .imp-ws-counts { grid-column: 1; }
 .imp-result-row .btn { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 
+/* ── grow stages (components/StagePicker.tsx, Automation's stage bar) ── */
+.stage-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.stage-chip { display: inline-flex; align-items: center; gap: 6px; }
+.stage-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.stage-tag { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; line-height: 16px; }
+.stage-now { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--success-fg); background: var(--success-muted); border-radius: 4px; padding: 0 5px; }
+.au-block + .au-block { margin-top: 22px; }
+.mt-stage-note { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; font-size: 12px; color: var(--fg-muted); }
+.mt-stage-filter { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.mt-stage-label { font-size: 11px; font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .04em; }
+.mt-stage-filter .segmented button { display: inline-flex; align-items: center; gap: 6px; font-family: var(--sans); }
+.cad-stack { flex-direction: column; align-items: flex-start; gap: 6px; }
+.au-block-empty { margin: 0 0 8px; font-size: 12.5px; color: var(--fg-subtle); font-style: italic; }
+.copy-stage { width: 200px; padding: 4px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--canvas-overlay); box-shadow: 0 8px 24px rgba(1, 4, 9, 0.18); }
+.copy-stage-head { padding: 6px 8px 4px; font-size: 11px; font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .04em; }
+.copy-stage-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: none; border-radius: 5px; background: transparent; color: var(--fg-default); font-family: var(--sans); font-size: 13px; cursor: pointer; text-align: left; }
+.copy-stage-item:hover { background: var(--canvas-subtle); }
+.copy-stage-note { padding: 6px 8px; border-top: 1px solid var(--border-muted); margin-top: 4px; font-size: 11px; color: var(--fg-subtle); }
+
 /* ── canopy switch ─────────────────────────────────────────── */
 [data-slot="switch"] {
   width: 38px;
@@ -1722,6 +1754,10 @@ body {
 .ws-mgmt-form { display: flex; flex-direction: column; gap: 10px; width: fit-content; margin-inline: auto; }
 .ws-mgmt-form .gc-field input { width: 0; min-width: 100%; box-sizing: border-box; }
 .ws-mgmt-actions { display: flex; gap: 8px; margin-top: 2px; }
+/* One line each: a wrapped "Are you sure?" made the row two lines tall and
+   stretched the buttons beside it. Armed, the delete also sets smaller. */
+.ws-mgmt-actions .btn { white-space: nowrap; }
+.ws-mgmt-actions .btn.ghost-danger.armed { font-size: 11px; padding-left: 7px; padding-right: 7px; }
 .ws-mgmt-header {
   display: flex;
   align-items: center;
@@ -2666,7 +2702,8 @@ body {
   min-width: 34px;
 }
 
-.au-add-action { align-self: flex-start; }
+/* Icon and text on one line: the chip wrapped "Add equipment" onto two. */
+.au-add-action { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; align-self: flex-start; }
 
 /* Group headings carry an icon, so the label needs to align with it. */
 .mt-group-h h4 { display: flex; align-items: center; gap: 6px; }

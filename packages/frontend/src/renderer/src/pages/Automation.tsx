@@ -8,6 +8,14 @@ import { Tag } from "@/components/Tag";
 import { Toggle } from "@/components/Toggle";
 import { Tip } from "@/components/Tip";
 import { TimeField } from "@/components/TimeField";
+import { StageScope, StageTags, stageLabel } from "@/components/StagePicker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useActiveGrow } from "@/hooks/useActiveGrow";
+import { STAGE_DEFS, calcGrowStage } from "@/lib/growStage";
+import { useNavigate, useTabRequest } from "@/shell/navigation";
+import { useThresholds } from "@/hooks/useThresholds";
+import { thresholdFor } from "@/lib/thresholds";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -24,7 +32,8 @@ import {
 import { useRoles } from "@/hooks/useDevices";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
 import { CONTROL_ROLES, ROLE_META, SENSE_ROLES, roleName, subsystemForRole } from "@/lib/roles";
-import { METRIC_META } from "@/lib/metrics";
+import { METRIC_META, formatMetricValue, unitLabel } from "@/lib/metrics";
+import { isPlannedStage, type PlannedStage } from "@canopy/shared-types";
 import type {
   ActuatorCommand,
   Automation as AutomationRecord,
@@ -32,8 +41,11 @@ import type {
   AutomationSubsystem,
   AutomationTrigger,
   Comparator,
+  GrowCycle,
+  GrowStageName,
   Metric,
   RoleKind,
+  SensorThreshold,
 } from "@canopy/shared-types";
 
 // ── Display catalogues ────────────────────────────────────────────────────────
@@ -258,6 +270,8 @@ interface Draft {
   threshold: number;
   forSeconds: number | undefined;
   actions: AutomationAction[];
+  /** The stages it runs in; empty for every stage. */
+  stages: PlannedStage[];
 }
 
 function blankDraft(): Draft {
@@ -274,6 +288,7 @@ function blankDraft(): Draft {
     threshold: 28,
     forSeconds: 300,
     actions: [{ role: "light", command: { op: "on" } }],
+    stages: [],
   };
 }
 
@@ -282,6 +297,7 @@ function draftFrom(automation: AutomationRecord): Draft {
   const draft = blankDraft();
   draft.name = automation.name;
   draft.actions = automation.actions.length > 0 ? automation.actions : draft.actions;
+  draft.stages = automation.stages ?? [];
 
   const trigger = automation.trigger;
   draft.kind = trigger.kind;
@@ -346,6 +362,8 @@ function derivedFields(draft: Draft): Partial<AutomationRecord> {
     subsystem: subsystemForRole(primaryRole),
     driver: trigger.kind === "rule" ? "any" : "schedule",
     controlRes: variable ? "variable" : "on-off",
+    // An empty list clears a scope: every stage.
+    stages: draft.stages,
     ...(primaryRole ? { actuatorRole: primaryRole, requiresRole: primaryRole } : {}),
   };
 }
@@ -423,13 +441,16 @@ function ActionRow({ action, canRemove, onChange, onRemove }: {
   );
 }
 
-function AutomationEditor({ initial, busy, onCancel, onSave }: {
+function AutomationEditor({ initial, defaultStages, busy, onCancel, onSave }: {
   initial?: AutomationRecord;
+  /** For a new one: the stage picked in the bar, so it is made where you are looking. */
+  defaultStages?: PlannedStage[];
   busy: boolean;
   onCancel: () => void;
   onSave: (fields: Partial<AutomationRecord>) => void;
 }) {
-  const [draft, setDraft] = useState<Draft>(() => (initial ? draftFrom(initial) : blankDraft()));
+  const [draft, setDraft] = useState<Draft>(() =>
+    initial ? draftFrom(initial) : { ...blankDraft(), stages: defaultStages ?? [] });
   const patch = (next: Partial<Draft>) => setDraft((d) => ({ ...d, ...next }));
 
   const kindMeta = TRIGGER_KINDS.find((t) => t.id === draft.kind)!;
@@ -590,6 +611,14 @@ function AutomationEditor({ initial, busy, onCancel, onSave }: {
         )}
 
         <div className="tf-group">
+          <span className="tf-label">Runs in</span>
+          <StageScope value={draft.stages} onChange={(stages) => patch({ stages })} />
+          {draft.stages.length > 0 && (
+            <p className="au-hint">Idles outside {draft.stages.length === 1 ? "this stage" : "these stages"}, and while no grow is running.</p>
+          )}
+        </div>
+
+        <div className="tf-group">
           <span className="tf-label">
             {draft.kind === "window" ? "Inside the window" : "Then"}
           </span>
@@ -656,7 +685,7 @@ function relativeTime(iso: string): string {
   return `in ${Math.round(hours / 24)}d`;
 }
 
-function AutomationCard({ automation, unassigned, busy, onToggle, onEdit, onDelete, onRelease }: {
+function AutomationCard({ automation, unassigned, busy, onToggle, onEdit, onDelete, onRelease, onCopy }: {
   automation: AutomationRecord;
   unassigned: boolean;
   busy: boolean;
@@ -664,7 +693,9 @@ function AutomationCard({ automation, unassigned, busy, onToggle, onEdit, onDele
   onEdit: () => void;
   onDelete: () => void;
   onRelease: () => void;
+  onCopy: (stage: PlannedStage) => void;
 }) {
+  const [copying, setCopying] = useState(false);
   const held = !!automation.overrideUntil && automation.overrideUntil > new Date().toISOString();
 
   return (
@@ -672,6 +703,7 @@ function AutomationCard({ automation, unassigned, busy, onToggle, onEdit, onDele
       <div className="au-card-main">
         <div className="au-card-head">
           <span className="au-name">{automation.name}</span>
+          <StageTags stages={automation.stages} />
           {held && (
             <Tag variant="warn">
               <Icon name="lock" size={10} /> {automation.overrideState ?? "held"}
@@ -710,7 +742,126 @@ function AutomationCard({ automation, unassigned, busy, onToggle, onEdit, onDele
             <Icon name="pencil" size={13} />
           </button>
         </Tip>
+        {/* A scoped copy to edit: the Veg light schedule turned into Flower's. */}
+        <Popover open={copying} onOpenChange={setCopying}>
+          <Tip content="Copy to stage…">
+            <PopoverTrigger asChild>
+              <button className="icon-ghost2" aria-label={`Copy ${automation.name} to a stage`} disabled={busy}>
+                <Icon name="layers" size={13} />
+              </button>
+            </PopoverTrigger>
+          </Tip>
+          <PopoverContent className="copy-stage p-0" side="bottom" align="end" sideOffset={6}>
+            <div className="copy-stage-head">Copy to stage</div>
+            {STAGE_DEFS.map((d) => (
+              <button key={d.stage} className="copy-stage-item" onClick={() => { setCopying(false); onCopy(d.stage); }}>
+                <span className="stage-dot" style={{ background: d.color }} /> {d.label}
+              </button>
+            ))}
+            <div className="copy-stage-note">The copy starts switched off, ready to edit.</div>
+          </PopoverContent>
+        </Popover>
         <DeleteButton onDelete={onDelete} ariaLabel={`Delete ${automation.name}`} />
+      </div>
+    </div>
+  );
+}
+
+// ── Stage hero ────────────────────────────────────────────────────────────────
+
+const STAGE_ICON: Record<PlannedStage, IconName> = {
+  seedling: "seedling",
+  vegetative: "leaf",
+  flowering: "sun",
+  flush: "drop",
+};
+
+/** "weeks 3–6" for a stage in the grow's plan, or nothing without a grow. */
+function stageWeeks(grow: GrowCycle | undefined, stage: PlannedStage): string | null {
+  if (!grow) return null;
+  let start = 0;
+  for (const d of STAGE_DEFS) {
+    const weeks = d.weeks(grow);
+    if (d.stage === stage) {
+      if (weeks === 0) return "skipped";
+      return weeks === 1 ? `week ${start + 1}` : `weeks ${start + 1}–${start + weeks}`;
+    }
+    start += weeks;
+  }
+  return null;
+}
+
+/**
+ * The prototype's Growth mode strip, with the stages of the grow: pick one to
+ * see what runs then, or All stages. Beside it, the target ranges that apply
+ * in the stage picked (a stage's own band, else the default), where the
+ * prototype showed fixed "bundled targets".
+ */
+function StageHero({ view, onView, grow, currentStage, thresholds, counts, onTargets }: {
+  view: PlannedStage | "all";
+  onView: (view: PlannedStage | "all") => void;
+  grow: GrowCycle | undefined;
+  currentStage: GrowStageName | undefined;
+  thresholds: SensorThreshold[];
+  /** Automations that run in each stage, and in all. */
+  counts: Record<PlannedStage | "all", number>;
+  onTargets: () => void;
+}) {
+  const stage = view === "all" ? undefined : view;
+  const bands = (Object.keys(METRIC_META) as Metric[])
+    .map((metric) => ({ metric, band: thresholdFor(metric, thresholds, stage) }))
+    .filter((b): b is { metric: Metric; band: SensorThreshold } => !!b.band);
+
+  const card = (key: PlannedStage | "all", name: string, icon: IconName, sub: string) => (
+    <button
+      key={key}
+      role="tab"
+      aria-selected={view === key}
+      className={cn("gm-card", view === key && "on")}
+      onClick={() => onView(key)}
+    >
+      <span className="gm-ico"><Icon name={icon} size={16} /></span>
+      <span className="gm-name">
+        {name}
+        {key !== "all" && currentStage === key && <span className="stage-now">now</span>}
+      </span>
+      <span className="gm-weeks">{sub}</span>
+    </button>
+  );
+
+  return (
+    <div className="gm-hero">
+      <div className="gm-left">
+        <div className="gm-kicker">Grow stage · what runs when</div>
+        <div className="gm-modes five" role="tablist" aria-label="Grow stage">
+          {card("all", "All stages", "layers", `${counts.all} automation${counts.all === 1 ? "" : "s"}`)}
+          {STAGE_DEFS.map((d) =>
+            card(d.stage, d.label, STAGE_ICON[d.stage], stageWeeks(grow, d.stage) ?? `${counts[d.stage]} run${counts[d.stage] === 1 ? "s" : ""} here`),
+          )}
+        </div>
+        {!grow && counts.all > 0 && (
+          <div className="gm-note">No grow running: automations limited to stages are idle.</div>
+        )}
+      </div>
+      <div className="gm-targets">
+        <div className="gmt-label">Target ranges · <b>{stage ? stageLabel(stage) : "Default"}</b></div>
+        {bands.length > 0 ? (
+          <div className="gmt-chips">
+            {/* Icon and range, as the prototype's chips: the name is on hover. */}
+            {bands.map(({ metric, band }) => (
+              <Tip key={metric} content={`${METRIC_META[metric].label}${band.stage ? ` · ${stageLabel(band.stage as PlannedStage)} range` : " · default range"}`}>
+                <span className="gm-chip">
+                  <Icon name={METRIC_META[metric].icon} size={12} />
+                  {formatMetricValue(band.minValue, metric)}–{formatMetricValue(band.maxValue, metric)}
+                  {unitLabel(band.unit) && ` ${unitLabel(band.unit)}`}
+                </span>
+              </Tip>
+            ))}
+          </div>
+        ) : (
+          <div className="gmt-empty">None set yet.</div>
+        )}
+        <button className="gmt-link" onClick={onTargets}>Edit target ranges</button>
       </div>
     </div>
   );
@@ -730,6 +881,22 @@ export function Automation() {
 
   const [editing, setEditing] = useState<string | "new" | null>(null);
 
+  /**
+   * The stage bar: every automation, or what runs in one stage. Other pages
+   * open a stage directly (Grow Cycle's stage chips).
+   */
+  const [stageView, setStageView] = useState<PlannedStage | "all">("all");
+  useTabRequest("automation", (tab) => { if (isPlannedStage(tab)) setStageView(tab); });
+  const { data: grow } = useActiveGrow();
+  const currentStage = grow ? calcGrowStage(grow)?.stage : undefined;
+  const { data: thresholds = [] } = useThresholds(workspace?.id);
+  const navigate = useNavigate();
+  const stageCounts = useMemo(() => {
+    const counts = { all: automations.length } as Record<PlannedStage | "all", number>;
+    for (const d of STAGE_DEFS) counts[d.stage] = automations.filter((a) => !a.stages?.length || a.stages.includes(d.stage)).length;
+    return counts;
+  }, [automations]);
+
   const busy = create.isPending || update.isPending || remove.isPending;
   const assignedRoles = useMemo(
     () => new Set(roleList.map((r) => r.role)),
@@ -741,14 +908,43 @@ export function Automation() {
   const sections = useClosedSections();
 
   /** Grouped by the subsystem the controller stored, in catalogue order. */
-  const groups = useMemo(
-    () =>
-      SUBSYSTEMS.map((subsystem) => ({
-        ...subsystem,
-        items: automations.filter((a) => a.subsystem === subsystem.id),
-      })).filter((g) => g.items.length > 0),
-    [automations],
-  );
+  const groupsOf = (list: AutomationRecord[]) =>
+    SUBSYSTEMS.map((subsystem) => ({
+      ...subsystem,
+      items: list.filter((a) => a.subsystem === subsystem.id),
+    })).filter((g) => g.items.length > 0);
+
+  /**
+   * What the page shows. All stages: everything. One stage: the automations
+   * scoped to it, then the ones that run in every stage, which answers "what
+   * happens in Flower?" without reading every card.
+   */
+  const blocks = useMemo(() => {
+    if (stageView === "all") return [{ key: "all", title: null as string | null, items: automations }];
+    return [
+      { key: stageView, title: `Only in ${stageLabel(stageView)}`, items: automations.filter((a) => a.stages?.includes(stageView)) },
+      { key: "every", title: "Every stage", items: automations.filter((a) => !a.stages?.length) },
+    ];
+  }, [automations, stageView]);
+
+  /** A disabled, scoped copy, opened in the editor. */
+  const copyToStage = (source: AutomationRecord, stage: PlannedStage) =>
+    create.mutate(
+      {
+        name: `${source.name} (${stageLabel(stage)})`,
+        enabled: false,
+        kind: source.kind,
+        subsystem: source.subsystem,
+        driver: source.driver,
+        trigger: source.trigger,
+        actions: source.actions,
+        stages: [stage],
+        ...(source.actuatorRole ? { actuatorRole: source.actuatorRole } : {}),
+        ...(source.controlRes ? { controlRes: source.controlRes } : {}),
+        ...(source.requiresRole ? { requiresRole: source.requiresRole } : {}),
+      },
+      { onSuccess: (created) => { sections.open(created.subsystem); setEditing(created.id); } },
+    );
 
   const editingRecord = editing && editing !== "new"
     ? automations.find((a) => a.id === editing)
@@ -779,8 +975,19 @@ export function Automation() {
       <PageBody>
         {isLoading || !workspace ? null : (
           <>
+            <StageHero
+              view={stageView}
+              onView={setStageView}
+              grow={grow}
+              currentStage={currentStage}
+              thresholds={thresholds}
+              counts={stageCounts}
+              onTargets={() => navigate("targets")}
+            />
+
             {editing === "new" && (
               <AutomationEditor
+                {...(stageView !== "all" ? { defaultStages: [stageView] } : {})}
                 busy={busy}
                 onCancel={() => setEditing(null)}
                 onSave={(fields) => {
@@ -803,55 +1010,72 @@ export function Automation() {
               />
             )}
 
-            {groups.map((group) => (
-              <AutomationSection
-                key={group.id}
-                subsystem={group}
-                items={group.items}
-                isOpen={!sections.closed.has(group.id)}
-                onToggle={() => sections.toggle(group.id)}
-                onReveal={() => sections.open(group.id)}
-              >
-                <div className="au-list">
-                  {group.items.map((automation) =>
-                    editingRecord?.id === automation.id ? (
-                      <AutomationEditor
-                        key={automation.id}
-                        initial={automation}
-                        busy={busy}
-                        onCancel={() => setEditing(null)}
-                        onSave={(fields) => {
-                          update.mutate(
-                            { id: automation.id, ...fields },
-                            { onSuccess: () => setEditing(null) },
-                          );
-                        }}
-                      />
-                    ) : (
-                      <AutomationCard
-                        key={automation.id}
-                        automation={automation}
-                        busy={busy}
-                        unassigned={
-                          !!automation.requiresRole && !assignedRoles.has(automation.requiresRole)
-                        }
-                        onToggle={(enabled) => update.mutate({ id: automation.id, enabled })}
-                        onEdit={() => setEditing(automation.id)}
-                        onDelete={() => remove.mutate(automation.id)}
-                        onRelease={() =>
-                          // Explicit nulls: omitting a key means "leave
-                          // unchanged", so this is how a hold is cleared.
-                          update.mutate({
-                            id: automation.id,
-                            overrideUntil: null,
-                            overrideState: null,
-                          })
-                        }
-                      />
-                    ),
-                  )}
-                </div>
-              </AutomationSection>
+            {blocks.map((block) => (
+              <div key={block.key} className="au-block">
+                {block.title && (
+                  <div className="sec-head">
+                    <h2>{block.title}</h2>
+                    <span className="count">{block.items.length}</span>
+                    <span className="rule" />
+                  </div>
+                )}
+                {block.title && block.items.length === 0 && (
+                  <p className="au-block-empty">
+                    {block.key === "every" ? "Nothing runs in every stage." : `Nothing is limited to ${stageLabel(block.key as PlannedStage)} yet.`}
+                  </p>
+                )}
+                {groupsOf(block.items).map((group) => (
+                  <AutomationSection
+                    key={`${block.key}:${group.id}`}
+                    subsystem={group}
+                    items={group.items}
+                    isOpen={!sections.closed.has(group.id)}
+                    onToggle={() => sections.toggle(group.id)}
+                    onReveal={() => sections.open(group.id)}
+                  >
+                    <div className="au-list">
+                      {group.items.map((automation) =>
+                        editingRecord?.id === automation.id ? (
+                          <AutomationEditor
+                            key={automation.id}
+                            initial={automation}
+                            busy={busy}
+                            onCancel={() => setEditing(null)}
+                            onSave={(fields) => {
+                              update.mutate(
+                                { id: automation.id, ...fields },
+                                { onSuccess: () => setEditing(null) },
+                              );
+                            }}
+                          />
+                        ) : (
+                          <AutomationCard
+                            key={automation.id}
+                            automation={automation}
+                            busy={busy}
+                            unassigned={
+                              !!automation.requiresRole && !assignedRoles.has(automation.requiresRole)
+                            }
+                            onToggle={(enabled) => update.mutate({ id: automation.id, enabled })}
+                            onEdit={() => setEditing(automation.id)}
+                            onDelete={() => remove.mutate(automation.id)}
+                            onCopy={(stage) => copyToStage(automation, stage)}
+                            onRelease={() =>
+                              // Explicit nulls: omitting a key means "leave
+                              // unchanged", so this is how a hold is cleared.
+                              update.mutate({
+                                id: automation.id,
+                                overrideUntil: null,
+                                overrideState: null,
+                              })
+                            }
+                          />
+                        ),
+                      )}
+                    </div>
+                  </AutomationSection>
+                ))}
+              </div>
             ))}
           </>
         )}

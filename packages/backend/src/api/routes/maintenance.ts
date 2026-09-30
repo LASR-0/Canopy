@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { db } from "../../store/index.js";
+import { db, sqliteConnection } from "../../store/index.js";
+import { parseStages, stagesJson, stagesProblem } from "../../grow/stage-scope.js";
+import { syncStageTasks } from "../../grow/stage-tasks.js";
 import { maintenanceTasks, maintenanceCompletions, maintenanceDayNotes } from "../../store/schema.js";
-import { ok } from "../reply.js";
-import type { MaintenanceTask, MaintenanceCompletion, MaintenanceDayNote } from "@canopy/shared-types";
+import { err, ok } from "../reply.js";
+import { isPlannedStage, type MaintenanceTask, type MaintenanceCompletion, type MaintenanceDayNote } from "@canopy/shared-types";
 
 function rowToTask(row: typeof maintenanceTasks.$inferSelect): MaintenanceTask {
   const t: MaintenanceTask = {
@@ -20,6 +22,9 @@ function rowToTask(row: typeof maintenanceTasks.$inferSelect): MaintenanceTask {
   if (row.seededBy)   t.seededBy = row.seededBy;
   if (row.deviceId)   t.deviceId = row.deviceId;
   if (row.nextDueAt)  t.nextDueAt = row.nextDueAt;
+  const stages = parseStages(row.stagesJson);
+  if (stages)         t.stages = stages;
+  if (isPlannedStage(row.startStage)) t.startStage = row.startStage;
   if (row.lastDoneAt) t.lastDoneAt = row.lastDoneAt;
   return t;
 }
@@ -74,6 +79,11 @@ export async function maintenanceRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const id = randomUUID();
       const b = req.body;
+      const badStages = stagesProblem(b.stages);
+      if (badStages) return reply.status(400).send(err("validation_failed", badStages));
+      if (b.startStage != null && !isPlannedStage(b.startStage)) {
+        return reply.status(400).send(err("validation_failed", "startStage must be a planned grow stage"));
+      }
       await db.insert(maintenanceTasks).values({
         id,
         workspaceId: req.params.workspaceId,
@@ -87,7 +97,10 @@ export async function maintenanceRoutes(app: FastifyInstance): Promise<void> {
         ...(b.seededBy  ? { seededBy: b.seededBy }   : {}),
         ...(b.deviceId  ? { deviceId: b.deviceId }   : {}),
         ...(b.nextDueAt ? { nextDueAt: b.nextDueAt } : {}),
+        stagesJson: stagesJson(b.stages),
+        ...(b.startStage ? { startStage: b.startStage } : {}),
       });
+      syncStageTasks(sqliteConnection);
       const [row] = await db.select().from(maintenanceTasks).where(eq(maintenanceTasks.id, id));
       return reply.status(201).send(ok(rowToTask(row!)));
     },
@@ -97,6 +110,11 @@ export async function maintenanceRoutes(app: FastifyInstance): Promise<void> {
     "/workspaces/:workspaceId/maintenance/:id",
     async (req, reply) => {
       const b = req.body;
+      const badStages = stagesProblem(b.stages);
+      if (badStages) return reply.status(400).send(err("validation_failed", badStages));
+      if (b.startStage != null && !isPlannedStage(b.startStage)) {
+        return reply.status(400).send(err("validation_failed", "startStage must be a planned grow stage"));
+      }
       const updates: Partial<typeof maintenanceTasks.$inferInsert> = {};
       if (b.name)                          updates.name = b.name;
       if (b.cadence)                       updates.cadence = b.cadence;
@@ -105,9 +123,13 @@ export async function maintenanceRoutes(app: FastifyInstance): Promise<void> {
       if (b.intervalDays != null)          updates.intervalDays = b.intervalDays;
       if (b.runtimeHoursInterval != null)  updates.runtimeHoursInterval = b.runtimeHoursInterval;
       if (b.nextDueAt !== undefined)        updates.nextDueAt = b.nextDueAt ?? null;
+      if (b.stages !== undefined)           updates.stagesJson = stagesJson(b.stages);
+      if (b.startStage !== undefined)       updates.startStage = b.startStage ?? null;
       if (Object.keys(updates).length > 0) {
         await db.update(maintenanceTasks).set(updates).where(eq(maintenanceTasks.id, req.params.id));
       }
+      // A new scope or start stage moves the due date now, not a minute later.
+      syncStageTasks(sqliteConnection);
       const [row] = await db.select().from(maintenanceTasks).where(eq(maintenanceTasks.id, req.params.id));
       return reply.send(ok(rowToTask(row!)));
     },

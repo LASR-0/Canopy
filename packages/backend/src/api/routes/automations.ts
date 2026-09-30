@@ -7,6 +7,7 @@ import { isValidCron, nextScheduledRun, parseClockTime } from "../../scheduler/s
 import { refreshRules } from "../../rules/index.js";
 import { ok, err } from "../reply.js";
 import type { Automation, AutomationPatch, AutomationTrigger } from "@canopy/shared-types";
+import { parseStages, stagesJson, stagesProblem } from "../../grow/stage-scope.js";
 
 function rowToAutomation(row: typeof automations.$inferSelect): Automation {
   const automation: Automation = {
@@ -25,7 +26,8 @@ function rowToAutomation(row: typeof automations.$inferSelect): Automation {
   if (row.actuatorRole)  automation.actuatorRole = row.actuatorRole as NonNullable<Automation["actuatorRole"]>;
   if (row.controlRes)    automation.controlRes = row.controlRes as NonNullable<Automation["controlRes"]>;
   if (row.requiresRole)  automation.requiresRole = row.requiresRole as NonNullable<Automation["requiresRole"]>;
-  if (row.stage)         automation.stage = row.stage as NonNullable<Automation["stage"]>;
+  const stages = parseStages(row.stagesJson);
+  if (stages)            automation.stages = stages;
   if (row.overrideUntil) automation.overrideUntil = row.overrideUntil;
   if (row.overrideState) automation.overrideState = row.overrideState;
 
@@ -123,6 +125,8 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       if (!body.name?.trim()) {
         return reply.status(400).send(err("validation_failed", "name is required"));
       }
+      const badStages = stagesProblem(body.stages);
+      if (badStages) return reply.status(400).send(err("validation_failed", badStages));
 
       // Appended to the end of the list rather than assuming zero, which would
       // silently reorder every existing card.
@@ -147,7 +151,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
         ...(body.requiresRole ? { requiresRole: body.requiresRole } : {}),
         triggerJson: JSON.stringify(trigger),
         actionsJson: JSON.stringify(body.actions ?? []),
-        ...(body.stage ? { stage: body.stage } : {}),
+        stagesJson: stagesJson(body.stages),
         sortOrder: body.sortOrder ?? nextOrder ?? 0,
       });
 
@@ -168,6 +172,8 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
         const invalid = validateTrigger(body.trigger);
         if (invalid) return reply.status(400).send(err("validation_failed", invalid));
       }
+      const badStages = stagesProblem(body.stages);
+      if (badStages) return reply.status(400).send(err("validation_failed", badStages));
 
       const updates: Partial<typeof automations.$inferInsert> = {};
       if (body.name !== undefined)          updates.name = body.name;
@@ -180,7 +186,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       if (body.requiresRole !== undefined)  updates.requiresRole = body.requiresRole;
       if (body.trigger !== undefined)       updates.triggerJson = JSON.stringify(body.trigger);
       if (body.actions !== undefined)       updates.actionsJson = JSON.stringify(body.actions);
-      if (body.stage !== undefined)         updates.stage = body.stage ?? null;
+      if (body.stages !== undefined)        updates.stagesJson = stagesJson(body.stages);
       if (body.overrideUntil !== undefined) updates.overrideUntil = body.overrideUntil ?? null;
       if (body.overrideState !== undefined) updates.overrideState = body.overrideState ?? null;
       if (body.sortOrder !== undefined)     updates.sortOrder = body.sortOrder;

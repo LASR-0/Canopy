@@ -595,13 +595,29 @@ function PlantEditor({ plant, name, dims, onChange, onRemove, onClose }: {
 
 // ── Side panels ───────────────────────────────────────────────────────────────
 
+/**
+ * A side panel (Placed, Plants, Available) that collapses to its header.
+ * Whether each is open is remembered per viewer: a convenience, so browser
+ * storage, and the page works without it.
+ */
 function Panel({ icon, title, count, children }: { icon: IconName; title: string; count: number; children: ReactNode }) {
+  const key = `canopy.setup.closed.${title}`;
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(key) !== "1"; } catch { return true; }
+  });
+  const toggle = () => {
+    setOpen((o) => {
+      try { localStorage.setItem(key, o ? "1" : "0"); } catch { /* storage unavailable */ }
+      return !o;
+    });
+  };
   return (
-    <div className="sv-panel">
-      <div className="svp-head">
+    <div className={`sv-panel${open ? "" : " closed"}`}>
+      <button className="svp-head" onClick={toggle} aria-expanded={open}>
+        <span className="ash-chev" style={{ transform: open ? "none" : "rotate(-90deg)" }}><Icon name="chevron" size={13} /></span>
         <Icon name={icon} size={13} /><h3>{title}</h3><span className="svp-count">{count}</span>
-      </div>
-      {children}
+      </button>
+      {open && children}
     </div>
   );
 }

@@ -336,7 +336,10 @@ export const automations = sqliteTable("automations", {
   requiresRole: text("requires_role"),
   triggerJson:  text("trigger_json").notNull(),
   actionsJson:  text("actions_json").notNull().default("[]"),
+  /** Unused since 7.5 H, which replaced it with stagesJson. */
   stage:        text("stage"),
+  /** JSON PlannedStage[]: the stages it runs in. Null or empty: every stage. */
+  stagesJson:   text("stages_json"),
   overrideUntil: text("override_until"),
   overrideState: text("override_state"),
   sortOrder:    integer("sort_order").notNull().default(0),
@@ -366,6 +369,10 @@ export const maintenanceTasks = sqliteTable("maintenance_tasks", {
    * due date: completing or skipping moves `next_due_at` on, which re-arms it.
    */
   dueNotifiedAt: text("due_notified_at"),
+  /** JSON PlannedStage[]: the stages a recurring task belongs to. Null: every stage. */
+  stagesJson:    text("stages_json"),
+  /** For cadence "stage": the stage whose start it falls due on. */
+  startStage:    text("start_stage"),
 });
 
 // ── maintenance_completions ───────────────────────────────────────────────────

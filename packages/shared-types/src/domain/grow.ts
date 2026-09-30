@@ -94,10 +94,20 @@ export interface GrowStageInfo {
   totalDay: number;
 }
 
-/** Stages in the order a grow moves through them. Harvest is an end state. */
-const ORDERED_STAGES: GrowStageName[] = ["seedling", "vegetative", "flowering", "flush"];
+/** A stage with a planned length: every stage but harvest, which is an end state. */
+export type PlannedStage = Exclude<GrowStageName, "harvest">;
 
-function plannedDays(grow: GrowCycle): number[] {
+/** Stages in the order a grow moves through them. */
+export const PLANNED_STAGES: readonly PlannedStage[] = ["seedling", "vegetative", "flowering", "flush"];
+const ORDERED_STAGES = PLANNED_STAGES;
+
+/** What the stage maths needs from a grow. */
+export type GrowPlan = Pick<
+  GrowCycle,
+  "startedAt" | "plannedSeedlingWeeks" | "plannedVegWeeks" | "plannedFlowerWeeks" | "plannedFlushWeeks"
+>;
+
+function plannedDays(grow: GrowPlan): number[] {
   return [
     grow.plannedSeedlingWeeks * 7,
     grow.plannedVegWeeks * 7,
@@ -117,7 +127,7 @@ function plannedDays(grow: GrowCycle): number[] {
  * in the final stage rather than falling off the end — plans slip, and the
  * alternative is a tent with no stage at all.
  */
-export function calcGrowStage(grow: GrowCycle, now = new Date()): GrowStageInfo | undefined {
+export function calcGrowStage(grow: GrowPlan, now = new Date()): GrowStageInfo | undefined {
   if (!grow.startedAt) return undefined;
 
   const startMs = new Date(grow.startedAt).getTime();
@@ -147,4 +157,30 @@ export function calcGrowStage(grow: GrowCycle, now = new Date()): GrowStageInfo 
 /** Total planned duration of the grow in days. */
 export function growTotalPlannedDays(grow: GrowCycle): number {
   return plannedDays(grow).reduce((a, b) => a + b, 0);
+}
+
+/**
+ * When a stage starts in a grow's plan: its start plus the planned days of the
+ * stages before it. Undefined for a grow that has not started. Moves when the
+ * plan is edited, which is the point: it is the plan's answer, not a record.
+ */
+export function stageStartDate(grow: GrowPlan, stage: PlannedStage): Date | undefined {
+  if (!grow.startedAt) return undefined;
+  const days = plannedDays(grow);
+  const before = days.slice(0, PLANNED_STAGES.indexOf(stage)).reduce((a, b) => a + b, 0);
+  return new Date(Date.parse(grow.startedAt) + before * 86_400_000);
+}
+
+/**
+ * Whether something scoped to `stages` applies in `current`. No scope always
+ * applies. A scope with no current stage (no grow running) does not: "Flower
+ * only" has no answer then, so it idles rather than pretending.
+ */
+export function stageScopeApplies(stages: readonly GrowStageName[] | undefined, current: GrowStageName | undefined): boolean {
+  if (!stages || stages.length === 0) return true;
+  return current !== undefined && stages.includes(current);
+}
+
+export function isPlannedStage(value: unknown): value is PlannedStage {
+  return typeof value === "string" && (PLANNED_STAGES as readonly string[]).includes(value);
 }

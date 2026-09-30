@@ -77,21 +77,32 @@ describe("appliesInCurrentStage", () => {
 
   it("applies when the scope matches the current stage", () => {
     setActiveGrowsForTesting([["ws-1", grow("2026-01-01T00:00:00.000Z")]]);
-    expect(appliesInCurrentStage("ws-1", "seedling", DAY_3)).toBe(true);
-    expect(appliesInCurrentStage("ws-1", "flowering", DAY_50)).toBe(true);
+    expect(appliesInCurrentStage("ws-1", ["seedling"], DAY_3)).toBe(true);
+    expect(appliesInCurrentStage("ws-1", ["flowering"], DAY_50)).toBe(true);
   });
 
   it("does not apply when the scope is a different stage", () => {
     setActiveGrowsForTesting([["ws-1", grow("2026-01-01T00:00:00.000Z")]]);
-    expect(appliesInCurrentStage("ws-1", "flowering", DAY_3)).toBe(false);
-    expect(appliesInCurrentStage("ws-1", "seedling", DAY_50)).toBe(false);
+    expect(appliesInCurrentStage("ws-1", ["flowering"], DAY_3)).toBe(false);
+    expect(appliesInCurrentStage("ws-1", ["seedling"], DAY_50)).toBe(false);
+  });
+
+  it("applies in any of several stages, and not outside them", () => {
+    setActiveGrowsForTesting([["ws-1", grow("2026-01-01T00:00:00.000Z")]]);
+    expect(appliesInCurrentStage("ws-1", ["seedling", "vegetative"], DAY_3)).toBe(true);
+    expect(appliesInCurrentStage("ws-1", ["seedling", "vegetative"], DAY_50)).toBe(false);
+  });
+
+  it("treats an empty scope as every stage", () => {
+    setActiveGrowsForTesting([["ws-1", null]]);
+    expect(appliesInCurrentStage("ws-1", [], DAY_3)).toBe(true);
   });
 
   it("idles a scoped automation when no grow is running", () => {
     // The decision: a scope with no stage to match does not run. The alternative
     // — ignoring the scope — makes "flowering only" a lie.
     setActiveGrowsForTesting([["ws-1", null]]);
-    expect(appliesInCurrentStage("ws-1", "flowering", DAY_3)).toBe(false);
+    expect(appliesInCurrentStage("ws-1", ["flowering"], DAY_3)).toBe(false);
   });
 
   it("keeps workspaces independent", () => {
@@ -100,8 +111,8 @@ describe("appliesInCurrentStage", () => {
       ["ws-1", grow("2026-01-01T00:00:00.000Z")],
       ["ws-2", null],
     ]);
-    expect(appliesInCurrentStage("ws-1", "seedling", DAY_3)).toBe(true);
-    expect(appliesInCurrentStage("ws-2", "seedling", DAY_3)).toBe(false);
+    expect(appliesInCurrentStage("ws-1", ["seedling"], DAY_3)).toBe(true);
+    expect(appliesInCurrentStage("ws-2", ["seedling"], DAY_3)).toBe(false);
   });
 
   it("follows a re-planned timeline", () => {
@@ -111,8 +122,8 @@ describe("appliesInCurrentStage", () => {
     setActiveGrowsForTesting([["ws-1", short]]);
     // Day 20 was vegetative with 2 seedling weeks; with 1 it still is, but day 10
     // has moved from seedling to vegetative.
-    expect(appliesInCurrentStage("ws-1", "seedling", new Date("2026-01-10T12:00:00.000Z"))).toBe(false);
-    expect(appliesInCurrentStage("ws-1", "vegetative", new Date("2026-01-10T12:00:00.000Z"))).toBe(true);
+    expect(appliesInCurrentStage("ws-1", ["seedling"], new Date("2026-01-10T12:00:00.000Z"))).toBe(false);
+    expect(appliesInCurrentStage("ws-1", ["vegetative"], new Date("2026-01-10T12:00:00.000Z"))).toBe(true);
   });
 });
 

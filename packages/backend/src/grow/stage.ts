@@ -14,7 +14,7 @@
 import { inArray } from "drizzle-orm";
 import { db } from "../store/index.js";
 import { grows, workspaces } from "../store/schema.js";
-import { calcGrowStage } from "@canopy/shared-types";
+import { calcGrowStage, stageScopeApplies } from "@canopy/shared-types";
 import type { GrowCycle, GrowStageName } from "@canopy/shared-types";
 
 /** null means the workspace exists and has no grow running. */
@@ -73,13 +73,11 @@ export function currentStage(workspaceId: string, now: Date = new Date()): GrowS
  */
 export function appliesInCurrentStage(
   workspaceId: string,
-  scope: GrowStageName | undefined,
+  scope: readonly GrowStageName[] | undefined,
   now: Date = new Date(),
 ): boolean {
-  if (!scope) return true;
-  const stage = currentStage(workspaceId, now);
-  if (stage === undefined) return false;
-  return stage === scope;
+  if (!scope || scope.length === 0) return true;
+  return stageScopeApplies(scope, currentStage(workspaceId, now));
 }
 
 /** Load the map directly, bypassing the database. Tests only. */

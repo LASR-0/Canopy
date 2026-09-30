@@ -1,4 +1,5 @@
 import type { Id, Timestamp } from "./common.js";
+import type { PlannedStage } from "./grow.js";
 
 export type MaintenanceCadence = "daily" | "weekly" | "stage" | "runtime" | "custom";
 
@@ -16,6 +17,17 @@ export interface MaintenanceTask {
   cadence: MaintenanceCadence;
   /** For "weekly": repeat every N days (1–30). */
   intervalDays?: number;
+  /**
+   * For "stage": the stage whose start it falls due on, once per grow ("Switch
+   * to bloom nutrients" when Flower starts). The date comes from the grow plan.
+   */
+  startStage?: PlannedStage;
+  /**
+   * The stages a recurring task belongs to. Absent (or empty) means every
+   * stage. Outside them the task is hidden from Today, never falls due and is
+   * never announced; its next due date moves to the start of its next stage.
+   */
+  stages?: PlannedStage[];
   /** For "runtime": trigger every N device runtime-hours (50–500). */
   runtimeHoursInterval?: number;
   /** Display label for what generated this task (e.g. "pH sensor", "Carbon filter"). */
