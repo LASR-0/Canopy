@@ -4,6 +4,17 @@ import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon, type IconName } from "@/components/Icon";
 import { DeleteButton } from "@/components/DeleteButton";
+import { exportPdf } from "@/lib/pdf";
+import {
+  EntryPhotos,
+  PhotoEditor,
+  draftPhotosFrom,
+  photoDropProps,
+  photoRefs,
+  uploading,
+  usePhotoAdder,
+  type DraftPhoto,
+} from "./journal/Photos";
 import { Tag } from "@/components/Tag";
 import { Tip } from "@/components/Tip";
 import { STAGE_DEFS, calcGrowStage, growTotalPlannedDays } from "@/lib/growStage";
@@ -27,6 +38,7 @@ import type {
   GrowCycle,
   GrowMilestone,
   JournalEntry,
+  JournalEntryBody,
   JournalEntryType,
   RoleAssignment,
 } from "@canopy/shared-types";
@@ -42,14 +54,8 @@ const J_TYPE: Record<JournalEntryType, { label: string; icon: IconName; tint: st
   photo:       { label: "Photo",       icon: "camera",   tint: "#f78166" },
 };
 
-/**
- * Types the composer offers.
- *
- * Photo is left out until attachments can be stored: offering it would file a
- * text note under "Photo" with no photo, and the "Attach photo" button would be
- * a control that does nothing. An existing photo entry still renders.
- */
-const COMPOSER_TYPES: JournalEntryType[] = ["observation", "experiment", "technique", "measurement"];
+/** Types the composer offers. Every type can hold photos; "Photo" is for an entry that is mostly photos. */
+const COMPOSER_TYPES: JournalEntryType[] = ["observation", "experiment", "technique", "measurement", "photo"];
 
 /** Oldest live reading the composer will preview. Matches the server's stamp. */
 const ENV_MAX_AGE_MS = 15 * 60 * 1000;
@@ -358,25 +364,29 @@ function hasContent(draft: Draft): boolean {
   return false;
 }
 
-function Composer({ entry, stamp, busy, error, onSubmit, onCancel }: {
+function Composer({ workspaceId, entry, stamp, busy, error, onSubmit, onCancel }: {
+  workspaceId: string;
   /** The entry being edited; absent for a new one. */
   entry?: JournalEntry;
   stamp?: ReactNode;
   busy: boolean;
   error?: string | undefined;
-  onSubmit: (body: Partial<JournalEntry>, reset: () => void) => void;
+  onSubmit: (body: JournalEntryBody, reset: () => void) => void;
   onCancel?: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(entry));
+  const [photos, setPhotos] = useState<DraftPhoto[]>(() => draftPhotosFrom(entry?.photos));
+  const addPhotos = usePhotoAdder(workspaceId, setPhotos);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const editing = !!entry;
-  const types = entry?.type === "photo" ? [...COMPOSER_TYPES, "photo" as const] : COMPOSER_TYPES;
+  const types = COMPOSER_TYPES;
+  const hasPhotos = photoRefs(photos).length > 0;
 
   const setPair = (i: number, side: 0 | 1, value: string) =>
     set("measurements", draft.measurements.map((p, j) => (j === i ? (side === 0 ? [value, p[1]] : [p[0], value]) : p)));
 
   return (
-    <div className="j-composer">
+    <div className="j-composer" {...photoDropProps(addPhotos)}>
       {stamp && <div className="jc-stamp">{stamp}</div>}
       <div className="jc-types" role="radiogroup" aria-label="Entry type">
         {types.map((k) => {
@@ -456,11 +466,15 @@ function Composer({ entry, stamp, busy, error, onSubmit, onCancel }: {
 
       <textarea
         className="jc-text"
-        placeholder="Record an observation, a hypothesis you're testing, a technique, or a measurement…"
+        placeholder={draft.type === "photo"
+          ? "A note to go with the photos (optional)…"
+          : "Record an observation, a hypothesis you're testing, a technique, or a measurement…"}
         value={draft.body}
         onChange={(e) => set("body", e.target.value)}
         aria-label="Note"
       />
+
+      <PhotoEditor drafts={photos} onChange={setPhotos} onAdd={addPhotos} />
 
       <div className="jc-foot">
         {error && <span className="jc-error">{error}</span>}
@@ -468,8 +482,13 @@ function Composer({ entry, stamp, busy, error, onSubmit, onCancel }: {
         {onCancel && <button className="btn" onClick={onCancel} style={{ marginRight: 8 }}>Cancel</button>}
         <button
           className="btn primary"
-          disabled={!hasContent(draft) || busy}
-          onClick={() => onSubmit(bodyFrom(draft, editing), () => setDraft(draftFrom()))}
+          disabled={!(hasContent(draft) || hasPhotos) || busy || uploading(photos)}
+          onClick={() =>
+            onSubmit({ ...bodyFrom(draft, editing), photos: photoRefs(photos) }, () => {
+              setDraft(draftFrom());
+              setPhotos([]);
+            })
+          }
         >
           {editing ? <><Icon name="check" size={13} /> Save</> : <><Icon name="plus" size={13} /> Add to notebook</>}
         </button>
@@ -549,6 +568,7 @@ function EntryCard({ entry, selected, editable, onEdit, onDelete }: {
           </div>
         )}
         {body && <div className="je-text">{body}</div>}
+        {entry.photos && <EntryPhotos photos={entry.photos} />}
         {entry.updatedAt && <div className="je-edited">edited {fmtFull(new Date(entry.updatedAt))}</div>}
       </div>
     </div>
@@ -616,8 +636,9 @@ function GrowNotebook({ workspaceId, grow, editable }: {
 
       {editable && (
         <>
-          <div className="sec-head" style={{ marginTop: 22 }}><h2>New entry</h2><span className="rule" /></div>
+          <div className="sec-head no-print" style={{ marginTop: 22 }}><h2>New entry</h2><span className="rule" /></div>
           <Composer
+            workspaceId={workspaceId}
             busy={create.isPending}
             error={errorOf(create.error)}
             stamp={
@@ -651,6 +672,7 @@ function GrowNotebook({ workspaceId, grow, editable }: {
         {entries.map((entry) =>
           editingId === entry.id ? (
             <Composer
+              workspaceId={workspaceId}
               key={entry.id}
               entry={entry}
               busy={update.isPending}
@@ -883,6 +905,21 @@ export function Journal() {
   const stageInfo = active ? calcGrowStage(active) : undefined;
   const shown = viewing ?? (tab === "current" ? active : undefined);
 
+  /**
+   * The notebook as a PDF: the page itself, printed (lib/pdf.ts), with the
+   * composer and the controls left off by the print styles.
+   */
+  const [exporting, setExporting] = useState(false);
+  const exportJournal = async (grow: GrowCycle) => {
+    setExporting(true);
+    try {
+      const name = (grow.strain || grow.name).replace(/[^\w-]+/g, "-").replace(/^-|-$/g, "") || "grow";
+      await exportPdf(`canopy-journal-${name}-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const crumb = viewing
     ? `${viewing.strain || viewing.name} · Archive`
     : tab === "history" ? "Archive"
@@ -904,16 +941,23 @@ export function Journal() {
         crumbs={[workspace?.name ?? "Workspace", crumb, "Journal"]}
         badge={badge}
         actions={
-          viewing ? (
-            <button className="btn" onClick={() => setViewing(null)}>
-              <Icon name="arrow-left" size={13} /> Back to history
-            </button>
-          ) : (
-            <div className="j-tabs">
-              <button className={tab === "current" ? "on" : ""} onClick={() => setTab("current")}>Current</button>
-              <button className={tab === "history" ? "on" : ""} onClick={() => setTab("history")}>History</button>
-            </div>
-          )
+          <>
+            {shown && (
+              <button className="btn" onClick={() => void exportJournal(shown)} disabled={exporting}>
+                <Icon name="external" size={13} /> {exporting ? "Exporting…" : "Export PDF"}
+              </button>
+            )}
+            {viewing ? (
+              <button className="btn" onClick={() => setViewing(null)}>
+                <Icon name="arrow-left" size={13} /> Back to history
+              </button>
+            ) : (
+              <div className="j-tabs">
+                <button className={tab === "current" ? "on" : ""} onClick={() => setTab("current")}>Current</button>
+                <button className={tab === "history" ? "on" : ""} onClick={() => setTab("history")}>History</button>
+              </div>
+            )}
+          </>
         }
       />
 

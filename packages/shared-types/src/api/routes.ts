@@ -8,6 +8,7 @@ import type {
   Automation,
   AutomationPatch,
   JournalEntry,
+  JournalEntryBody,
   MaintenanceTask,
   MaintenanceCompletion,
   MaintenanceDayNote,
@@ -135,8 +136,11 @@ export interface ApiRoutes {
 
   // ── Journal ───────────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/grows/:growId/journal":         { res: JournalEntry[] };
-  "POST /workspaces/:workspaceId/grows/:growId/journal":        { body: Partial<JournalEntry>; res: JournalEntry };
-  "PATCH /workspaces/:workspaceId/grows/:growId/journal/:id":   { body: Partial<JournalEntry>; res: JournalEntry };
+  "POST /workspaces/:workspaceId/grows/:growId/journal":        { body: JournalEntryBody; res: JournalEntry };
+  "PATCH /workspaces/:workspaceId/grows/:growId/journal/:id":   { body: JournalEntryBody; res: JournalEntry };
+  // Photo upload is `POST /workspaces/:workspaceId/journal-photos` with the
+  // image bytes as the body, so it is not in this JSON map. It answers with a
+  // JournalPhoto; the file is served at `GET /journal-photos/:id`.
   "DELETE /workspaces/:workspaceId/grows/:growId/journal/:id":  { res: { deleted: true } };
 
   // ── Maintenance ───────────────────────────────────────────────────────────

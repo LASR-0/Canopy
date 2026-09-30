@@ -12,7 +12,7 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "../store/index.js";
 import { readingsRaw, roleAssignments } from "../store/schema.js";
 import { computeVpd } from "../device-manager/derived.js";
-import type { JournalEntry, JournalEntryType } from "@canopy/shared-types";
+import type { JournalEntryBody, JournalEntryType } from "@canopy/shared-types";
 
 export const JOURNAL_TYPES: readonly JournalEntryType[] = [
   "observation",
@@ -69,13 +69,23 @@ const text = (v: unknown): string | null =>
   typeof v === "string" && v.trim() ? v.trim() : null;
 
 /**
+ * The title for an entry that has only photos: its first caption, or simply
+ * "Photo" or "Photos".
+ */
+export function photoTitle(photos: readonly { caption?: string | undefined }[]): string | null {
+  if (photos.length === 0) return null;
+  return text(photos[0]!.caption) ?? (photos.length === 1 ? "Photo" : "Photos");
+}
+
+/**
  * Validate the content of a new entry.
  *
  * Returns a message instead of throwing, so the route can answer 400 with it.
- * An entry needs *something* in it: a title, a body, a hypothesis or a
- * measurement. The composer sends a body and lets the title be derived.
+ * An entry needs *something* in it: a title, a body, a hypothesis, a
+ * measurement or a photo. The composer sends a body and lets the title be
+ * derived.
  */
-export function parseNewEntry(input: Partial<JournalEntry>): EntryContent | string {
+export function parseNewEntry(input: JournalEntryBody): EntryContent | string {
   const type = input.type ?? "observation";
   if (!JOURNAL_TYPES.includes(type)) return `Unknown entry type "${String(type)}"`;
 
@@ -86,9 +96,10 @@ export function parseNewEntry(input: Partial<JournalEntry>): EntryContent | stri
   const hypothesis = text(input.hypothesis);
   // An experiment is named by what it tests; anything else by its first line.
   const source = type === "experiment" ? hypothesis ?? body : body ?? hypothesis;
-  const title = text(input.title) ?? titleFrom(source ?? "");
+  const photos = Array.isArray(input.photos) ? input.photos : [];
+  const title = text(input.title) ?? (titleFrom(source ?? "") || photoTitle(photos));
 
-  if (!title && !measurements) return "An entry needs a title, a body or a measurement";
+  if (!title && !measurements) return "An entry needs a title, a body, a measurement or a photo";
 
   return {
     type,

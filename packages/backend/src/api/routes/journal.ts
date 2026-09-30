@@ -2,8 +2,15 @@ import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { ok, err } from "../reply.js";
-import type { JournalEntry } from "@canopy/shared-types";
-import { db } from "../../store/index.js";
+import type { JournalEntry, JournalEntryBody, JournalPhotoRef } from "@canopy/shared-types";
+import { db, sqliteConnection } from "../../store/index.js";
+import { PHOTO_DIR } from "../../store/paths.js";
+import {
+  deleteEntryPhotoFiles,
+  photoRefsProblem,
+  photosForEntries,
+  setEntryPhotos,
+} from "../../grow/journal-photos.js";
 import { grows, journalEntries } from "../../store/schema.js";
 import {
   JOURNAL_TYPES,
@@ -12,6 +19,7 @@ import {
   growDayAt,
   parseMeasurements,
   parseNewEntry,
+  photoTitle,
   titleFrom,
 } from "../../grow/journal.js";
 
@@ -32,9 +40,6 @@ function rowToEntry(row: typeof journalEntries.$inferSelect): JournalEntry {
   if (row.measurementsJson) {
     try { e.measurements = JSON.parse(row.measurementsJson) as [string, string][]; } catch { /* skip */ }
   }
-  if (row.attachmentsJson) {
-    try { e.attachments = JSON.parse(row.attachmentsJson) as string[]; } catch { /* skip */ }
-  }
   if (row.envTempC != null)  e.envTempC = row.envTempC;
   if (row.envRhPct != null)  e.envRhPct = row.envRhPct;
   if (row.envVpdKpa != null) e.envVpdKpa = row.envVpdKpa;
@@ -52,6 +57,15 @@ async function findGrow(workspaceId: string, growId: string) {
 
 type Params = { workspaceId: string; growId: string };
 
+/** Entries with their photos, in one query for the lot. */
+function withPhotos(entries: JournalEntry[]): JournalEntry[] {
+  const photos = photosForEntries(sqliteConnection, entries.map((e) => e.id));
+  return entries.map((e) => {
+    const list = photos.get(e.id);
+    return list ? { ...e, photos: list } : e;
+  });
+}
+
 export async function journalRoutes(app: FastifyInstance): Promise<void> {
   /** Newest first, which is how the notebook reads. */
   app.get<{ Params: Params }>(
@@ -67,7 +81,7 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
           ),
         )
         .orderBy(desc(journalEntries.createdAt));
-      return reply.send(ok(rows.map(rowToEntry)));
+      return reply.send(ok(withPhotos(rows.map(rowToEntry))));
     },
   );
 
@@ -77,7 +91,7 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
    * Accepting them from the caller would let two clocks disagree about which day
    * an entry belongs to, and would let a note carry conditions nobody measured.
    */
-  app.post<{ Params: Params; Body: Partial<JournalEntry> }>(
+  app.post<{ Params: Params; Body: JournalEntryBody }>(
     "/workspaces/:workspaceId/grows/:growId/journal",
     async (req, reply) => {
       const { workspaceId, growId } = req.params;
@@ -96,6 +110,11 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
 
       const now = new Date();
       const id = randomUUID();
+      const photos = req.body?.photos;
+      if (photos !== undefined) {
+        const problem = photoRefsProblem(sqliteConnection, workspaceId, id, photos);
+        if (problem) return reply.status(400).send(err("validation_failed", problem));
+      }
       await db.insert(journalEntries).values({
         id,
         workspaceId,
@@ -111,8 +130,10 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
         createdAt: now.toISOString(),
       });
 
+      if (photos?.length) await setEntryPhotos(sqliteConnection, PHOTO_DIR, workspaceId, id, photos);
+
       const [row] = await db.select().from(journalEntries).where(eq(journalEntries.id, id));
-      return reply.status(201).send(ok(rowToEntry(row!)));
+      return reply.status(201).send(ok(withPhotos([rowToEntry(row!)])[0]!));
     },
   );
 
@@ -120,7 +141,7 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
    * Edits the content only. An empty string clears a field, which is how a
    * typed client says "remove this" when the field is optional-not-nullable.
    */
-  app.patch<{ Params: Params & { id: string }; Body: Partial<JournalEntry> }>(
+  app.patch<{ Params: Params & { id: string }; Body: JournalEntryBody }>(
     "/workspaces/:workspaceId/grows/:growId/journal/:id",
     async (req, reply) => {
       const { workspaceId, growId, id } = req.params;
@@ -133,6 +154,11 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
       if (!existing) return reply.status(404).send(err("not_found", "Journal entry not found"));
 
       const b = req.body ?? {};
+      const photos: JournalPhotoRef[] | undefined = b.photos;
+      if (photos !== undefined) {
+        const problem = photoRefsProblem(sqliteConnection, workspaceId, id, photos);
+        if (problem) return reply.status(400).send(err("validation_failed", problem));
+      }
       const clean = (v: string) => (v.trim() ? v.trim() : null);
       const updates: Partial<typeof journalEntries.$inferInsert> = {};
 
@@ -156,17 +182,22 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
         // A blank title falls back to the body rather than leaving the entry
         // unnamed in the notebook.
         const body = updates.body !== undefined ? updates.body : existing.body;
-        const title = clean(b.title) ?? titleFrom(body ?? "");
+        const photoList = photos ?? photosForEntries(sqliteConnection, [id]).get(id) ?? [];
+        const title = clean(b.title) ?? (titleFrom(body ?? "") || photoTitle(photoList));
         if (!title) return reply.status(400).send(err("validation_failed", "An entry needs a title or a body"));
         updates.title = title.slice(0, MAX_TITLE_LENGTH);
       }
 
+      if (photos !== undefined) {
+        await setEntryPhotos(sqliteConnection, PHOTO_DIR, workspaceId, id, photos);
+        updates.updatedAt = new Date().toISOString();
+      }
       if (Object.keys(updates).length > 0) {
         updates.updatedAt = new Date().toISOString();
         await db.update(journalEntries).set(updates).where(where);
       }
       const [row] = await db.select().from(journalEntries).where(where);
-      return reply.send(ok(rowToEntry(row!)));
+      return reply.send(ok(withPhotos([rowToEntry(row!)])[0]!));
     },
   );
 
@@ -174,6 +205,8 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
     "/workspaces/:workspaceId/grows/:growId/journal/:id",
     async (req, reply) => {
       const { workspaceId, growId, id } = req.params;
+      // The rows cascade with the entry; the files have to be removed by hand.
+      await deleteEntryPhotoFiles(sqliteConnection, PHOTO_DIR, id);
       const removed = await db
         .delete(journalEntries)
         .where(

@@ -34,9 +34,8 @@ export interface JournalEntry {
   /** Freeform key-value spot checks: [["pH","6.2"], ["EC","1.4 mS/cm"]] */
   measurements?: [string, string][];
 
-  // ── Photo fields ─────────────────────────────────────────────────────────
-  /** Local file paths, relative to Canopy data directory. */
-  attachments?: string[];
+  /** Photos, in order. Any entry type can have them. Absent when there are none. */
+  photos?: JournalPhoto[];
 
   // ── Auto-stamped environment snapshot ───────────────────────────────────
   envTempC?: number;
@@ -46,3 +45,28 @@ export interface JournalEntry {
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }
+
+/**
+ * A photo on a journal entry. Stored by the controller in its data directory
+ * and served at `GET /journal-photos/:id`. Uploaded before the entry is saved,
+ * so the composer can show it straight away; saving the entry attaches it.
+ */
+export interface JournalPhoto {
+  id: Id;
+  /** Written beneath the photo, like on a Polaroid. */
+  caption?: string;
+  width: number;
+  height: number;
+}
+
+/** How a create or edit names an entry's photos: in order, each with its caption. */
+export interface JournalPhotoRef {
+  id: Id;
+  caption?: string;
+}
+
+/**
+ * The body of a create or edit. `photos` replaces the entry's photos
+ * wholesale: one left out is deleted.
+ */
+export type JournalEntryBody = Omit<Partial<JournalEntry>, "photos"> & { photos?: JournalPhotoRef[] };

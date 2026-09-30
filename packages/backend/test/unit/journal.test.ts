@@ -59,6 +59,16 @@ describe("parseNewEntry", () => {
     expect(parseNewEntry({ body: "   " })).toMatch(/needs a title/);
   });
 
+  it("accepts an entry that is only photos, titled by the first caption", () => {
+    expect(parseNewEntry({ type: "photo", photos: [{ id: "p1", caption: "Week 3 canopy" }, { id: "p2" }] }))
+      .toMatchObject({ title: "Week 3 canopy" });
+  });
+
+  it("titles uncaptioned photos by how many there are", () => {
+    expect(parseNewEntry({ photos: [{ id: "p1" }] })).toMatchObject({ title: "Photo" });
+    expect(parseNewEntry({ photos: [{ id: "p1" }, { id: "p2" }] })).toMatchObject({ title: "Photos" });
+  });
+
   it("accepts a measurement-only entry and gives it a title", () => {
     const entry = parseNewEntry({ type: "measurement", measurements: [["pH", "6.2"]] });
     expect(entry).toMatchObject({ title: "Measurements", measurements: [["pH", "6.2"]] });

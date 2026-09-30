@@ -251,13 +251,28 @@ export const journalEntries = sqliteTable("journal_entries", {
   result:      text("result"),
   /** JSON: [["pH","6.2"],["EC","1.4 mS/cm"]] */
   measurementsJson:  text("measurements_json"),
-  /** JSON: string[] — local file paths relative to data dir */
+  /** Unused: photos are in journal_photos. Never written; kept for older databases. */
   attachmentsJson:   text("attachments_json"),
   envTempC:    real("env_temp_c"),
   envRhPct:    real("env_rh_pct"),
   envVpdKpa:   real("env_vpd_kpa"),
   createdAt:   text("created_at").notNull(),
   updatedAt:   text("updated_at"),
+});
+
+// ── journal_photos ────────────────────────────────────────────────────────────
+export const journalPhotos = sqliteTable("journal_photos", {
+  id:          text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  /** Null from upload until the entry is saved. */
+  entryId:     text("entry_id").references(() => journalEntries.id, { onDelete: "cascade" }),
+  caption:     text("caption"),
+  sortOrder:   integer("sort_order").notNull().default(0),
+  width:       integer("width").notNull(),
+  height:      integer("height").notNull(),
+  contentType: text("content_type").notNull(),
+  bytes:       integer("bytes").notNull(),
+  createdAt:   text("created_at").notNull(),
 });
 
 // ── events ────────────────────────────────────────────────────────────────────

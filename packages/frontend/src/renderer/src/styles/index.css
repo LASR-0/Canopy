@@ -1418,6 +1418,61 @@ body {
 .rp-sub { font-size: 12px; color: var(--fg-muted); margin-bottom: 10px; }
 .rp-preview .chart-canvas { height: 320px; }
 
+/* ── journal photos (pages/journal/Photos.tsx) ─────────────── */
+/* Composer: a strip of thumbnails, each with its caption. */
+.jc-photos { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 10px; }
+.jp-strip { display: flex; flex-wrap: wrap; gap: 10px; }
+.jp-item { width: 132px; display: flex; flex-direction: column; gap: 5px; }
+.jp-item[draggable="true"] { cursor: grab; }
+.jp-thumb { position: relative; width: 132px; height: 132px; border-radius: 6px; overflow: hidden; background: var(--canvas-inset); border: 1px solid var(--border-default); }
+.jp-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.jp-busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(1, 4, 9, 0.45); }
+.jp-failed { position: absolute; inset: auto 0 0 0; display: flex; align-items: center; gap: 5px; padding: 4px 6px; background: var(--danger-fg); color: #fff; font-size: 11px; font-weight: 600; }
+.jp-item.failed .jp-thumb img { opacity: .45; }
+.jp-tools { position: absolute; top: 4px; right: 4px; display: flex; gap: 3px; opacity: 0; transition: opacity .12s; }
+.jp-item:hover .jp-tools, .jp-tools:focus-within { opacity: 1; }
+.jp-tool { width: 22px; height: 22px; display: grid; place-items: center; border: none; border-radius: 5px; background: rgba(1, 4, 9, 0.72); color: #fff; cursor: pointer; }
+.jp-tool:hover { background: rgba(1, 4, 9, 0.9); }
+.jp-tool.del:hover { background: var(--danger-fg); }
+.jp-tool:disabled { opacity: .35; cursor: not-allowed; }
+.jp-caption { width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: 12px; font-family: var(--sans); color: var(--fg-default); background: var(--canvas-inset); border: 1px solid var(--border-default); border-radius: 5px; }
+.jp-caption:focus { outline: none; border-color: var(--accent-emphasis); }
+
+/* Entry: a Polaroid. The frame stays white in both themes, because a Polaroid
+   is white; the deeper bottom band holds the caption. */
+.je-photos { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px; outline: none; }
+.je-photos:focus-visible .polaroid { box-shadow: 0 0 0 2px var(--accent-emphasis), 0 6px 18px rgba(1, 4, 9, 0.35); }
+.polaroid { position: relative; margin: 0; width: 280px; padding: 12px 12px 0; background: #f7f5ef; border-radius: 3px; box-shadow: 0 1px 2px rgba(1, 4, 9, 0.25), 0 6px 18px rgba(1, 4, 9, 0.35); }
+.pol-img { display: block; width: 100%; aspect-ratio: 1; padding: 0; border: none; background: #d9d6ce; cursor: zoom-in; overflow: hidden; }
+.pol-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pol-caption { min-height: 52px; padding: 12px 4px 14px; box-sizing: border-box; font-family: var(--sans); font-size: 14px; line-height: 1.35; color: #2b2a27; text-align: center; overflow-wrap: anywhere; }
+.pol-caption.empty { min-height: 44px; padding: 0; }
+.pol-nav { position: absolute; top: calc(12px + 128px); width: 30px; height: 30px; margin-top: -15px; display: grid; place-items: center; border: none; border-radius: 50%; background: rgba(1, 4, 9, 0.6); color: #fff; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.pol-nav.prev { left: 18px; }
+.pol-nav.prev svg { transform: rotate(90deg); }
+.pol-nav.next { right: 18px; }
+.pol-nav.next svg { transform: rotate(-90deg); }
+.polaroid:hover .pol-nav, .pol-nav:focus-visible { opacity: 1; }
+.pol-count { position: absolute; top: 18px; right: 18px; padding: 1px 7px; border-radius: 10px; background: rgba(1, 4, 9, 0.6); color: #fff; font-family: var(--mono); font-size: 10.5px; }
+.pol-dots { display: flex; gap: 6px; width: 280px; justify-content: center; }
+.pol-dot { width: 7px; height: 7px; padding: 0; border: none; border-radius: 50%; background: var(--border-default); cursor: pointer; }
+.pol-dot.on { background: var(--accent-fg); }
+
+/* A carousel renders every photo; only the current one shows on screen. */
+.polaroid.pol-off { display: none; }
+
+/* The whole photo, over the page. */
+.lightbox { position: fixed; inset: 0; z-index: 950; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 32px; background: rgba(1, 4, 9, 0.88); }
+.lb-figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: calc(100vw - 160px); }
+.lb-figure img { max-width: 100%; max-height: calc(100vh - 140px); object-fit: contain; border-radius: 3px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6); }
+.lb-figure figcaption { color: #e6edf3; font-size: 14px; display: flex; gap: 12px; align-items: baseline; }
+.lb-count { font-family: var(--mono); font-size: 12px; color: #8b949e; }
+.lb-close { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; display: grid; place-items: center; border: none; border-radius: 50%; background: rgba(255, 255, 255, 0.1); color: #fff; cursor: pointer; }
+.lb-nav { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; border: none; border-radius: 50%; background: rgba(255, 255, 255, 0.1); color: #fff; cursor: pointer; }
+.lb-nav.prev svg { transform: rotate(90deg); }
+.lb-nav.next svg { transform: rotate(-90deg); }
+.lb-close:hover, .lb-nav:hover { background: rgba(255, 255, 255, 0.2); }
+
 /* ── canopy switch ─────────────────────────────────────────── */
 [data-slot="switch"] {
   width: 38px;
@@ -2660,4 +2715,34 @@ body {
   font-size: 12.5px;
   color: var(--fg-subtle);
   text-align: center;
+}
+
+/* ── print (lib/pdf.ts) ──────────────────────────────────────── */
+/* What a PDF export prints: the page's content, flowing across pages, with
+   the app's chrome and every control left off. The theme is switched to light
+   for the render; these rules do the rest. */
+@media print {
+  .titlebar, .sidebar, .ch-actions, .no-print,
+  .j-composer, .je-actions, .j-mile-add, .j-mile-del,
+  .pol-nav, .pol-count, .pol-dots, .tip, .lightbox { display: none !important; }
+
+  /* The app is a fixed-height window that scrolls inside; on paper it has to run on. */
+  html, body, #root, .app, .body, .main, .page-body {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  .page-inner { max-width: none; padding: 0; }
+  .content-header { border-bottom: 1px solid var(--border-default); margin-bottom: 14px; }
+
+  .j-entry, .box, .polaroid { break-inside: avoid; }
+  .sec-head { break-after: avoid; }
+
+  /* Every photo of an entry, side by side, rather than one carousel frame. */
+  .je-photos { flex-direction: row; flex-wrap: wrap; gap: 14px; }
+  .polaroid.pol-off { display: block; }
+  .polaroid { width: 200px; padding: 9px 9px 0; box-shadow: 0 0 0 1px #d0cdc4; }
+  .pol-caption { font-size: 12px; min-height: 40px; padding: 8px 2px 10px; }
+  .pol-caption.empty { min-height: 30px; }
 }

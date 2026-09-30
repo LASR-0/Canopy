@@ -5,12 +5,17 @@ export interface BleDeviceInfo {
   deviceName: string;
 }
 
-/** The only native surface the UI needs right now: window controls + platform. */
+/** The native surface the UI needs: window controls, platform, and PDF export. */
 const windowApi = {
   minimize: () => ipcRenderer.send("window:minimize"),
   toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
   close: () => ipcRenderer.send("window:close"),
   platform: process.platform,
+  /** The page as it prints now, as PDF bytes. */
+  renderPdf: (): Promise<Uint8Array> => ipcRenderer.invoke("pdf:render"),
+  /** Ask where to save the PDF and write it. The path, or null when cancelled. */
+  savePdf: (fileName: string, data: Uint8Array): Promise<string | null> =>
+    ipcRenderer.invoke("pdf:save", fileName, data),
 };
 
 /** BLE provisioning: wraps the main-process device chooser interception. */

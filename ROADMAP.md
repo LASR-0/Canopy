@@ -1147,26 +1147,57 @@ only, so it could not stop an ok ⇄ warn flap.
    - Custom report dates use the native `<input type="date">`. Only the
      time input was replaced in C.3.
 
-#### E. Journal
+#### E. Journal ✅ built — awaiting a hands-on check
 
 The notebook stays one long log in day order, as in the prototype. Day
 navigation was planned here on 2026-09-30 and dropped the same day.
 
-1. **Photos on every entry type**, not only "Photo". Every entry form gets an
-   "Add photos" button, and an entry can hold one photo or several.
-   - **One photo is shown on its own. Several are shown in a carousel**
-     (arrows, dots, and a count such as 2 / 5).
-   - **Each photo can have a caption**, shown beneath it like a Polaroid: the
-     photo in a light frame with a deeper bottom edge, and the caption written
-     in that bottom band. The caption belongs to the photo and moves with it
-     in the carousel.
-   - Photos can be reordered and removed while the entry is edited.
-   - This needs what Phase 7 deferred: attachment storage in the data
-     directory, a way to serve the files to the renderer, and cleanup when an
-     entry is deleted.
-2. **PDF export** of a grow's journal as it appears in the UI. Electron's
-   `webContents.printToPDF` renders the page itself, so the PDF matches the
-   screen without a second layout.
+1. **Photos on every entry type** ✅. Every entry form has "Add photos",
+   the "Photo" type is back in the composer, and an entry of only photos is
+   valid. It is titled by its first caption, or "Photo" / "Photos".
+   - **One photo is a Polaroid. Several are a carousel of Polaroids** with
+     arrows, dots, a "2 / 5" count, and arrow keys when focused. The frame is
+     white in both themes, since a Polaroid is white. The picture is square,
+     as the originals were, so portrait and landscape shots sit the same
+     size. The caption is written in the deeper bottom band. A click opens
+     the whole photo, uncropped, in a lightbox with its caption, arrows and
+     Esc.
+   - **In the composer**, photos show at once from a local preview and upload
+     in the background. Each gets a caption, can be reordered by dragging or
+     with the arrow buttons, and can be removed. Photos can also be dropped
+     anywhere on the composer. Saving waits for uploads still running.
+   - **The renderer shrinks each photo before upload**: long edge 2400 px,
+     JPEG at 85 %. A phone original is several megabytes, and the controller
+     may be a Pi on Wi-Fi. Re-encoding also strips the metadata, location
+     included, and applies the camera's rotation. The controller stores the
+     bytes as sent, so it needs no image library, and it checks the file's
+     signature rather than trusting its content type. HEIC cannot be read by
+     Chromium; the composer says to export it as JPEG.
+   - **Storage** (`grow/journal-photos.ts`): files in
+     `data/attachments/journal/`, rows in a new `journal_photos` table. A
+     photo is uploaded before its entry exists (`POST /journal-photos`, the
+     image bytes as the body, with no multipart dependency) and is attached
+     when the entry is saved. A create or edit names the entry's photos in
+     order, with captions, and any left out are deleted. Files are served at
+     `GET /journal-photos/:id` with a permanent cache, since an id never
+     names different bytes.
+   - **Cleanup**: deleting an entry deletes its files. A daily
+     `prune_attachments` job removes uploads never attached within a day,
+     and files nothing points at, which is what a deleted grow or workspace
+     leaves behind, since the database cascade cannot reach the disk.
+   - The unused `attachments_json` column is left in place for older
+     databases.
+2. **PDF export** ✅: "Export PDF" in the Journal header, for the current
+   grow or one opened from History. It is Electron's `printToPDF` of the page
+   itself (`lib/pdf.ts`), A4, so the PDF matches the screen without a second
+   layout. For the render the page switches to the light theme and loads
+   every photo, since lazy images below the fold would print blank. Print
+   styles leave off the titlebar, sidebar, composer and every control, let
+   the notebook run across pages instead of scrolling inside the window, and
+   lay each entry's photos out side by side instead of as a carousel. Two
+   IPC steps, render then save, so the app is back to normal before the save
+   dialog opens. Only the print layout was checked here (headless Chromium,
+   which renders it the same way); the save dialog needs a run in Electron.
 
 #### F. Database import / export
 
@@ -1181,8 +1212,8 @@ tent's history. Questions to settle when it is built:
   merging two tents' histories is a project of its own.
 - **Import must not brick the controller:** validate the file and its schema
   first, and apply the column-additions path to an older export.
-- **Attachments:** once journal photos exist (E.1), an export is the database
-  *plus* the attachment files, not the database alone.
+- **Attachments:** journal photos exist now (E.1), so an export is the
+  database *plus* `data/attachments/`, not the database alone.
 
 #### G. Workspaces: archive and recently deleted
 

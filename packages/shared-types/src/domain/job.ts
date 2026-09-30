@@ -6,6 +6,7 @@ export type JobType =
   | "prune_raw"
   | "prune_hourly"
   | "prune_events"
+  | "prune_attachments"
   | "archive_grow"
   | "backup"
   | "maintenance_check"

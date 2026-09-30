@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /**
@@ -81,6 +82,21 @@ function createWindow(): void {
     win.isMaximized() ? win.unmaximize() : win.maximize(),
   );
   ipcMain.on("window:close", () => win.close());
+
+  // PDF export, in two steps so the page can leave its print state (light
+  // theme, every photo shown) before the save dialog opens: render, then save.
+  ipcMain.handle("pdf:render", () =>
+    win.webContents.printToPDF({ printBackground: true, pageSize: "A4", margins: { marginType: "default" } }),
+  );
+  ipcMain.handle("pdf:save", async (_e, fileName: string, data: Uint8Array) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      defaultPath: join(app.getPath("documents"), fileName),
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (canceled || !filePath) return null;
+    await writeFile(filePath, data);
+    return filePath;
+  });
 
   // BLE scanning: intercept native device chooser so the renderer can show its own UI.
   win.webContents.on("select-bluetooth-device", (event, deviceList, callback) => {

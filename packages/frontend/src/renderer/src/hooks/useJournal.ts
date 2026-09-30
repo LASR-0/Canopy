@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/http";
-import type { GrowMilestone, JournalEntry } from "@canopy/shared-types";
+import type { GrowMilestone, JournalEntryBody } from "@canopy/shared-types";
 
 /** A grow's notebook, newest first. */
 export function useJournal(workspaceId: string | undefined, growId: string | undefined) {
@@ -31,7 +31,7 @@ export function useMilestones(workspaceId: string | undefined, growId: string | 
 export function useCreateEntry(workspaceId: string, growId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<JournalEntry>) =>
+    mutationFn: (body: JournalEntryBody) =>
       api("POST /workspaces/:workspaceId/grows/:growId/journal", {
         params: { workspaceId, growId },
         body,
@@ -43,7 +43,7 @@ export function useCreateEntry(workspaceId: string, growId: string) {
 export function useUpdateEntry(workspaceId: string, growId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: Partial<JournalEntry> & { id: string }) =>
+    mutationFn: ({ id, ...body }: JournalEntryBody & { id: string }) =>
       api("PATCH /workspaces/:workspaceId/grows/:growId/journal/:id", {
         params: { workspaceId, growId, id },
         body,

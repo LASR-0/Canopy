@@ -17,6 +17,8 @@ import { canIngest } from "../controller/state.js";
 import { rollupDaily, rollupHourly } from "./jobs/rollup.js";
 import { pruneEvents, pruneHourly, pruneRaw } from "./jobs/prune.js";
 import { runBackup } from "./jobs/backup.js";
+import { pruneAttachments } from "../grow/journal-photos.js";
+import { PHOTO_DIR } from "../store/paths.js";
 import type { JobType } from "@canopy/shared-types";
 
 /**
@@ -101,6 +103,7 @@ function handlers(settings: Settings): Partial<Record<JobType, JobHandler>> {
     prune_raw: (now) => pruneRaw(sqliteConnection, settings.rawRetentionDays, now),
     prune_hourly: (now) => pruneHourly(sqliteConnection, settings.hourlyRetentionDays, now),
     prune_events: (now) => pruneEvents(sqliteConnection, settings.eventRetentionDays, now),
+    prune_attachments: (now) => pruneAttachments(sqliteConnection, PHOTO_DIR, now),
     vacuum: (now) =>
       runBackup(
         sqliteConnection,
@@ -116,6 +119,7 @@ const CADENCE: Record<JobType, Cadence> = {
   prune_raw: (now) => nextMidnight(now),
   prune_hourly: (now) => inDays(7, now),
   prune_events: (now) => nextMidnight(now),
+  prune_attachments: (now) => nextMidnight(now),
   vacuum: (now, settings) => inDays(settings.backupIntervalDays, now),
   // No handler yet; checked rarely so an unimplemented job is not a hot loop.
   archive_grow: (now) => inDays(1, now),

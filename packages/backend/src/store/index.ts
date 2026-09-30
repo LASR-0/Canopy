@@ -2,14 +2,10 @@ import Database from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import * as schema from "./schema.js";
+import { DATA_DIR, DB_PATH } from "./paths.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const DATA_DIR = process.env["DATA_DIR"] ?? join(__dirname, "../../../data");
-const DB_PATH  = process.env["DB_PATH"]   ?? join(DATA_DIR, "canopy.db");
+export { DATA_DIR } from "./paths.js";
 
 mkdirSync(DATA_DIR, { recursive: true });
 
@@ -345,6 +341,25 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
     CREATE INDEX IF NOT EXISTS idx_journal_grow_day
       ON journal_entries (grow_id, grow_day);
 
+    /* ── journal_photos ───────────────────────────────────────────────── */
+    /* The file lives in the data directory (journal/photos.ts). entry_id is
+       null between upload and the entry being saved; prune_attachments
+       clears what is never attached. */
+    CREATE TABLE IF NOT EXISTS journal_photos (
+      id            TEXT PRIMARY KEY,
+      workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      entry_id      TEXT REFERENCES journal_entries(id) ON DELETE CASCADE,
+      caption       TEXT,
+      sort_order    INTEGER NOT NULL DEFAULT 0,
+      width         INTEGER NOT NULL,
+      height        INTEGER NOT NULL,
+      content_type  TEXT NOT NULL,
+      bytes         INTEGER NOT NULL,
+      created_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_journal_photos_entry
+      ON journal_photos (entry_id, sort_order);
+
     /* ── events ───────────────────────────────────────────────────────── */
     CREATE TABLE IF NOT EXISTS events (
       id            TEXT PRIMARY KEY,
@@ -502,6 +517,7 @@ export function seedData(database: InstanceType<typeof Database>): void {
   seedJob.run("job_prune_raw",           "prune_raw",           in24h);
   seedJob.run("job_prune_hourly",        "prune_hourly",        in7d);
   seedJob.run("job_prune_events",        "prune_events",        in1h);
+  seedJob.run("job_prune_attachments",   "prune_attachments",   in1h);
   seedJob.run("job_maintenance_check",   "maintenance_check",   nextMid);
   seedJob.run("job_vacuum",              "vacuum",              in7d);
 }
