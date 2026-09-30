@@ -13,7 +13,7 @@ import { Maintenance } from "@/pages/Maintenance";
 import { Logging }     from "@/pages/Logging";
 import { Settings }    from "@/pages/Settings";
 import { Targets }     from "@/pages/Targets";
-import { NavigationContext, type Navigate } from "./navigation";
+import { NavigationContext, TabRequestContext, type Navigate, type TabRequest } from "./navigation";
 
 const PAGES: Record<PageId, React.ComponentType> = {
   overview:     Overview,
@@ -67,11 +67,13 @@ function useFocusTarget(id: string | null, onDone: () => void) {
 export function Shell() {
   const [page, setPage] = useState<PageId>("overview");
   const [focus, setFocus] = useState<string | null>(null);
+  const [tabRequest, setTabRequest] = useState<TabRequest | null>(null);
   const Page = PAGES[page];
 
-  const navigate: Navigate = useCallback((to, focusId) => {
+  const navigate: Navigate = useCallback((to, options) => {
     setPage(to);
-    setFocus(focusId ?? null);
+    setFocus(options?.focusId ?? null);
+    if (options?.tab) setTabRequest({ page: to, tab: options.tab });
   }, []);
   const clearFocus = useCallback(() => setFocus(null), []);
   useFocusTarget(focus, clearFocus);
@@ -80,15 +82,17 @@ export function Shell() {
     <ThemeProvider>
       <TipProvider>
         <NavigationContext.Provider value={navigate}>
-          <div className="app">
-            <Titlebar />
-            <div className="body">
-              <Sidebar active={page} onNavigate={navigate} />
-              <div className="main">
-                <Page />
+          <TabRequestContext.Provider value={tabRequest}>
+            <div className="app">
+              <Titlebar />
+              <div className="body">
+                <Sidebar active={page} onNavigate={navigate} />
+                <div className="main">
+                  <Page />
+                </div>
               </div>
             </div>
-          </div>
+          </TabRequestContext.Provider>
         </NavigationContext.Provider>
       </TipProvider>
     </ThemeProvider>

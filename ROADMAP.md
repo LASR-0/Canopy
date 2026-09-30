@@ -1006,7 +1006,7 @@ only, so it could not stop an ok ⇄ warn flap.
      is a page switcher. Picking a result opens the page and scrolls to the
      item with a brief outline. The navigation context now takes an optional
      `focusId`, and the Shell brings `[data-search-id]` into view once it
-     renders. The keyboard-first side stays with H.
+     renders. The keyboard-first side stays with I.
    - **The profile avatar ("L") is gone.**
    - **Also**: the Overview's "New automation" button had no handler. It
      opens the Automation page now.
@@ -1055,32 +1055,104 @@ only, so it could not stop an ok ⇄ warn flap.
    so search can still reach one: the Shell sends the closed ancestor
    (`[data-collapsed]`) a `reveal` event, and it opens before the scroll.
 
-#### D. Logging becomes the record
+#### D. Logging becomes the record ✅ built — awaiting a hands-on check
 
-1. **Tabs on the Logging page**: *Graph* (today's page), *Logs* (a table of
-   alerts, warnings, out-of-range periods and device events, filterable by
-   type, metric and time), and *Activity* (the full automation and sensor
-   activity). The first, pre-prototype Logging page had a table toggle of
-   this kind, and it was a good idea.
-2. **Overview previews**: activity and logs at the bottom of the Overview,
-   each with a "show all" link into the matching Logging tab. The existing
-   "show all" links on the automation and sensor activity point there too,
-   via `useNavigate()`.
-3. **Chart templates**: saved presets for which metrics, which options and
-   how the chart is laid out. `chart_layouts` already stores some of this.
-4. **Export**: CSV of the raw data, and a **report generator**: a UI to pick
-   a window, metrics and resolution, then export that selection as CSV or
-   PNG.
+1. **Tabs on the Logging page** ✅: *Graph* (the chart), *Logs* and
+   *Activity*, in the page header like the Journal's. Decided 2026-09-30:
+   **Logs is the problems, Activity is everything.**
+   - **Logs** (`pages/logging/LogsTab.tsx`, `GET /logs`) is one table over a
+     window of 24H, 7D, 30D or 90D, filtered by kind (out of range,
+     automations, devices, maintenance) and by metric. Threshold alerts are
+     **folded into out-of-range periods**, one row per excursion. A period
+     runs from the first alert on a channel to its recovery and shows its
+     worst level, duration (or "ongoing"), device and channel, and it expands
+     to the steps inside it. The controller builds the periods
+     (`backend/src/logs`), reading 7 days before the window so a period that
+     began earlier keeps its real start. Failed runs, failsafe trips, devices
+     going offline or coming back, and tasks falling due are listed as they
+     are. On the live data, 24 hours of flapping alerts became 54 rows.
+   - **Activity** (`pages/logging/ActivityTab.tsx`) is the full record,
+     newest first, grouped by day, filtered by event group and paged 100 at a
+     time. `GET /events` takes a `before` cursor, so a page boundary never
+     repeats a row.
+   - **Events have a `metric` column**, filled for threshold alerts from now
+     on. Older rows read it from their description, which always starts with
+     the metric. Descriptions are shown with the metric's label ("Soil
+     moisture 44.9%…", not "soil_moisture 44.9%…") everywhere events appear.
+   - **Pages can open a tab**: `navigate(page, { tab })`, read with
+     `useTabRequest`. The search palette's `focusId` moved into the same
+     options.
+   - **Fixed on the way, a restart left alert periods open for good.** The
+     threshold checker kept each channel's status in memory, so after a
+     restart a channel that had been out of range came back as "never left",
+     and its recovery was never written. A restart while it was still out of
+     range wrote the crossing twice. Each channel is now seeded from its last
+     recorded alert the first time it reports (`rules/threshold-history.ts`).
+   - **Fixed on the way, the controller stalled for seconds at a time.**
+     `GET /readings/latest` ran a GROUP BY over every raw reading: 2.2 s
+     against 1.7 million rows, during which better-sqlite3 (synchronous)
+     blocked every other request, ingest included. A page asking twice froze
+     the API for about 7 s. The latest reading per channel is now kept in
+     memory at the two insert sites (`device-manager/latest.ts`), seeded
+     once per workspace. A new index, `idx_readings_raw_latest`, brings that
+     seed down to 0.2 s. It is built on the first start after this change,
+     which takes a few seconds on a large database.
+   - **Fixed on the way, the sidebar could flood the controller.** Marking a
+     page seen is optimistic. When the request failed, the badge rolled back,
+     which fired the request again in a tight loop (133 requests in 4 s while
+     the controller was unreachable). It now tries once per page and newest
+     notification.
+2. **Overview previews** ✅: a *Problems* section under Devices shows the
+   five newest rows of the Logs tab for the last 24 hours, with an ongoing
+   count and "Show all" into Logs. The activity feed in the Overview's side
+   column already is the activity preview, so it gets "Show all activity"
+   into the Activity tab rather than a second copy at the bottom.
+3. **Chart templates** ✅: a saved layout now holds how the chart is drawn,
+   not only which metrics: Overlay or Stack, the night, targets and
+   out-of-range options, and which event markers show (`view`, stored as
+   `chart_layouts.view_json`). Decided 2026-09-30: **not the time range**,
+   so applying "Root zone" keeps whether you are looking at today or last
+   month. Layouts saved before this apply their metrics only. Changing the
+   mode, an option or a marker group leaves the template, as toggling a
+   metric already did. The UI calls them templates now.
+4. **Export** ✅: a **Report…** button on the Graph tab opens the report
+   generator (`pages/logging/ReportModal.tsx`). You pick a window (24 hours,
+   7 days, 30 days, this grow, or custom dates), the metrics, and a
+   resolution (raw, hourly or daily). It exports as:
+   - **CSV data** (`GET /readings/export`): long format, one row per reading
+     (timestamp, metric, unit, value or average/min/max, device, channel),
+     because raw readings from different devices share no timestamps. It is
+     written a page of 5,000 rows at a time, yielding between pages, so a
+     large export never stalls the controller. On the live data, a week of
+     raw readings (1.7 million rows, 113 MB) took 6 s, and the API answered
+     within 150 ms throughout. It downloads natively, so Electron streams it
+     to disk instead of holding it in the renderer. Raw readings are kept 7
+     days by default, and the generator says so when a window reaches
+     further back.
+   - **PNG report**: decided 2026-09-30, **a composed sheet**. Title (tent
+     and grow), the window and resolution, a card per metric with average,
+     min and max, then the chart. It is drawn on a canvas in the theme's own
+     colours, and a live preview in the dialog shows what will be exported.
+   - The quick **CSV** and **PNG** buttons stay, for the chart as shown.
+   - **Fixed on the way, the PNG export's text was black.** The chart SVG
+     takes its colours from CSS variables and its text styles from
+     stylesheet classes, and neither survives serialisation, so every label
+     came out black on the dark surface. Computed styles are now copied
+     inline before rasterising (`svgToImage`).
+   - **Fixed on the way, a date went missing on 7D and 30D.** Ticks were
+     evenly spaced, so seven across seven days fell 28 h apart and one date
+     never showed. Day-scale ticks now sit on local midnights.
+   - The chart and its helpers moved out of `Logging.tsx` into
+     `pages/logging/chart.tsx`, which the Graph tab and the report share.
+   - Custom report dates use the native `<input type="date">`. Only the
+     time input was replaced in C.3.
 
 #### E. Journal
 
-1. **Step through the days.** The Notebook header gets a day stepper,
-   ‹ Day 12 · Sep 18 ›, that moves back through previous days and forward to
-   today, and never past it: › is disabled on today. Stepping shows that
-   day's entries, and a day with none says so. Picking a day on the activity
-   graph moves the stepper there, and any past day can be picked, not only
-   days with entries. "All days" returns to the full notebook.
-2. **Photos on every entry type**, not only "Photo". Every entry form gets an
+The notebook stays one long log in day order, as in the prototype. Day
+navigation was planned here on 2026-09-30 and dropped the same day.
+
+1. **Photos on every entry type**, not only "Photo". Every entry form gets an
    "Add photos" button, and an entry can hold one photo or several.
    - **One photo is shown on its own. Several are shown in a carousel**
      (arrows, dots, and a count such as 2 / 5).
@@ -1092,7 +1164,7 @@ only, so it could not stop an ok ⇄ warn flap.
    - This needs what Phase 7 deferred: attachment storage in the data
      directory, a way to serve the files to the renderer, and cleanup when an
      entry is deleted.
-3. **PDF export** of a grow's journal as it appears in the UI. Electron's
+2. **PDF export** of a grow's journal as it appears in the UI. Electron's
    `webContents.printToPDF` renders the page itself, so the PDF matches the
    screen without a second layout.
 
@@ -1109,7 +1181,7 @@ tent's history. Questions to settle when it is built:
   merging two tents' histories is a project of its own.
 - **Import must not brick the controller:** validate the file and its schema
   first, and apply the column-additions path to an older export.
-- **Attachments:** once journal photos exist (E.2), an export is the database
+- **Attachments:** once journal photos exist (E.1), an export is the database
   *plus* the attachment files, not the database alone.
 
 #### G. Workspaces: archive and recently deleted
@@ -1139,7 +1211,42 @@ things:
    restore), and whether restoring a workspace whose devices have moved on
    restores it without them.
 
-#### H. Keyboard-only use *(low priority)*
+#### H. Grow stages in Automation and Maintenance
+
+Decided 2026-09-30. Both pages have stage support that cannot be used.
+**Automations** have a `stage` field that the rules engine and the scheduler
+respect (a Flower-only rule idles outside Flower), but the editor has no
+field for it. **Maintenance** has a "By stage" cadence ("once per grow
+stage") that never falls due: `nextDueAfter` returns nothing for it and
+nothing watches stage changes.
+
+1. **Automations run in any set of stages.** The default is *Every stage*.
+   Otherwise the automation runs in the stages ticked: an 18/6 light for
+   Seedling and Veg, a 12/12 light for Flower and Flush. The stored single
+   `stage` becomes a list, where empty means every stage, and existing rows
+   carry over. The editor gets a "Runs in" field, and a card shows its
+   stages as chips.
+2. **A stage bar at the top of Automation**, where the prototype's Growth
+   mode strip was: *All stages*, then each stage of the grow, with the
+   current one marked. Picking a stage shows what runs then: the
+   automations scoped to it, and an *Every stage* section for the rest.
+   This answers "what happens in Flower?" without reading every card.
+   *All stages* shows everything, with stage chips. "New automation"
+   defaults to the stage picked.
+3. **"Copy to stage…"** on a card makes a scoped copy to edit, e.g. the Veg
+   light schedule turned into the Flower one. Setting up per stage should
+   not mean building each automation from scratch.
+4. **Maintenance tasks can be scoped to stages.** "Check trichomes", daily,
+   Flower only. Outside its stages a task is hidden from Today, never falls
+   due and is never announced.
+5. **"By stage" becomes "When a stage starts"**: due once, on the day the
+   grow enters the chosen stage ("Switch to bloom nutrients" at Flower). The
+   date comes from the grow plan (start date plus planned weeks), so no
+   transition hook is needed, and it moves if the plan is edited.
+6. **Grow Cycle's stage chip** ("Automations scoped to this stage") opens
+   Automation with that stage picked.
+
+#### I. Keyboard-only use *(low priority)*
 
 Navigate, open menus and trigger actions without a mouse. Do this last,
 because it touches every page, and it is easier once B and C have settled

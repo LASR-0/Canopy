@@ -14,6 +14,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { Database } from "better-sqlite3";
+import { eventMetric } from "../events/metric.js";
 import {
   NOTIFICATION_CHANNELS,
   type AppEvent,
@@ -61,6 +62,7 @@ interface ClassifiedRow {
   description: string;
   severity: string | null;
   occurred_at: string;
+  metric: string | null;
   channel: NotificationChannel;
   seen_to: string;
 }
@@ -83,6 +85,8 @@ function toNotification(row: ClassifiedRow): AppNotification {
   if (row.source_id)    n.sourceId = row.source_id;
   if (row.source_label) n.sourceLabel = row.source_label;
   if (row.severity)     n.severity = row.severity as NonNullable<AppEvent["severity"]>;
+  const metric = eventMetric(row);
+  if (metric)           n.metric = metric;
   return n;
 }
 

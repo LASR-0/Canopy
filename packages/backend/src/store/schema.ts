@@ -277,6 +277,8 @@ export const events = sqliteTable("events", {
   /** null | warn | err — used by Overview health panel */
   severity:     text("severity"),
   occurredAt:   text("occurred_at").notNull(),
+  /** threshold_alert only: the metric it is about. Null on rows written before 7.5 D. */
+  metric:       text("metric"),
 });
 
 // ── notification_seen ─────────────────────────────────────────────────────────
@@ -371,6 +373,8 @@ export const chartLayouts = sqliteTable("chart_layouts", {
   metricsJson: text("metrics_json").notNull(),
   sortOrder:   integer("sort_order").notNull().default(0),
   createdAt:   text("created_at").notNull(),
+  /** ChartView as JSON: mode, options and marker groups. Null on layouts saved before 7.5 D. */
+  viewJson:    text("view_json"),
 });
 
 // ── jobs ──────────────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import { db } from "../store/index.js";
 import { events, roleAssignments } from "../store/schema.js";
 import { actuateDevice } from "../device-manager/actuate.js";
 import { broadcast } from "../ws/index.js";
-import type { Automation, AutomationAction, EventType, RoleKind } from "@canopy/shared-types";
+import type { Automation, AutomationAction, EventType, Metric, RoleKind } from "@canopy/shared-types";
 
 /** Every device currently holding a role in this workspace. */
 export async function devicesForRole(
@@ -90,6 +90,7 @@ export interface EventRecord {
   sourceId?: string;
   sourceLabel?: string;
   severity?: "warn" | "err";
+  metric?: Metric;
   at?: Date;
 }
 
@@ -111,6 +112,7 @@ export async function recordEvent(event: EventRecord): Promise<void> {
     ...(event.sourceId ? { sourceId: event.sourceId } : {}),
     ...(event.sourceLabel ? { sourceLabel: event.sourceLabel } : {}),
     ...(event.severity ? { severity: event.severity } : {}),
+    ...(event.metric ? { metric: event.metric } : {}),
   });
 }
 

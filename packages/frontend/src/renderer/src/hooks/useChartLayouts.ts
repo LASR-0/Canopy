@@ -25,7 +25,7 @@ export function useChartLayouts(workspaceId: string | undefined) {
 export function useCreateChartLayout(workspaceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Pick<ChartLayout, "name" | "metrics">) =>
+    mutationFn: (body: Pick<ChartLayout, "name" | "metrics" | "view">) =>
       api("POST /workspaces/:workspaceId/chart-layouts", { params: { workspaceId }, body }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["chart-layouts", workspaceId] }),
   });

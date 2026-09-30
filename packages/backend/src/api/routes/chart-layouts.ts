@@ -4,10 +4,10 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { chartLayouts } from "../../store/schema.js";
 import { ok } from "../reply.js";
-import type { ChartLayout } from "@canopy/shared-types";
+import type { ChartLayout, ChartView } from "@canopy/shared-types";
 
 function rowToLayout(row: typeof chartLayouts.$inferSelect): ChartLayout {
-  return {
+  const layout: ChartLayout = {
     id: row.id,
     workspaceId: row.workspaceId,
     name: row.name,
@@ -15,6 +15,8 @@ function rowToLayout(row: typeof chartLayouts.$inferSelect): ChartLayout {
     sortOrder: row.sortOrder,
     createdAt: row.createdAt,
   };
+  if (row.viewJson) layout.view = JSON.parse(row.viewJson) as ChartView;
+  return layout;
 }
 
 export async function chartLayoutRoutes(app: FastifyInstance): Promise<void> {
@@ -39,6 +41,7 @@ export async function chartLayoutRoutes(app: FastifyInstance): Promise<void> {
         workspaceId: req.params.workspaceId,
         name: req.body.name ?? "Layout",
         metricsJson: JSON.stringify(req.body.metrics ?? []),
+        ...(req.body.view ? { viewJson: JSON.stringify(req.body.view) } : {}),
         sortOrder: req.body.sortOrder ?? 0,
         createdAt: now,
       });

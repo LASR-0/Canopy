@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
 import { useMarkSeen, useNotifications } from "@/hooks/useNotifications";
 import { cn, timeAgo } from "@/lib/utils";
+import { eventText } from "@/lib/events";
 import { useNavigate } from "./navigation";
 import type { AppNotification, NotificationChannel } from "@canopy/shared-types";
 
@@ -48,7 +49,7 @@ export function NotificationBell() {
   };
 
   const go = (n: AppNotification) => {
-    navigate(n.channel, FOCUSABLE.has(n.channel) ? n.sourceId : undefined);
+    navigate(n.channel, { focusId: FOCUSABLE.has(n.channel) ? n.sourceId : undefined });
     setOpen(false);
   };
 
@@ -84,7 +85,7 @@ export function NotificationBell() {
                   <Icon name={ch.icon} size={13} />
                 </span>
                 <span className="nb-body">
-                  <span className="nb-desc">{n.description}</span>
+                  <span className="nb-desc">{eventText(n.description, n.metric)}</span>
                   <span className="nb-meta">
                     {ch.label}
                     {n.sourceLabel && <> · {n.sourceLabel}</>}

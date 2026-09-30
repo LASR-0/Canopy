@@ -1353,6 +1353,71 @@ body {
   100%    { box-shadow: 0 0 0 2px transparent; }
 }
 
+/* ── Logging: Logs and Activity tabs (pages/logging/) ───────── */
+.lt-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.lt-n { font-family: var(--mono); font-size: 10.5px; color: var(--fg-subtle); margin-left: 2px; }
+.lt-metric { min-width: 170px; }
+.lt-summary { font-size: 12px; color: var(--fg-muted); margin: 2px 0 12px; }
+.lt-ongoing { color: var(--danger-fg); font-weight: 600; }
+.lt-note { color: var(--fg-subtle); font-style: italic; }
+.lt-table { overflow: hidden; }
+.lt-row {
+  display: grid;
+  grid-template-columns: 18px 112px minmax(0, 1fr) minmax(0, 220px) 90px;
+  align-items: center; gap: 12px;
+  width: 100%; padding: 9px 14px;
+  border: none; border-top: 1px solid var(--border-muted);
+  background: transparent; text-align: left;
+  font-family: var(--sans); font-size: 12.5px; color: var(--fg-default);
+}
+.lt-head { border-top: none; background: var(--canvas-subtle); font-size: 11px; font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .04em; padding-top: 7px; padding-bottom: 7px; }
+.lt-click { cursor: pointer; }
+.lt-click:hover, .lt-click.open { background: var(--canvas-subtle); }
+.lt-chev { color: var(--fg-muted); display: grid; place-items: center; transition: transform .15s; }
+.lt-when { font-family: var(--mono); font-size: 11.5px; color: var(--fg-muted); white-space: nowrap; }
+.lt-what { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lt-what .tag { flex-shrink: 0; font-size: 10.5px; }
+.lt-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-src { font-family: var(--mono); font-size: 11px; color: var(--fg-subtle); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-right { text-align: right; font-family: var(--mono); font-size: 11.5px; color: var(--fg-muted); }
+.lt-steps { padding: 4px 14px 10px 44px; background: var(--canvas-subtle); display: flex; flex-direction: column; gap: 5px; }
+.lt-step { display: grid; grid-template-columns: 112px 8px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 12px; color: var(--fg-muted); }
+.lt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success-fg); }
+.lt-dot.warn { background: var(--attention-fg); }
+.lt-dot.err { background: var(--danger-fg); }
+.at-day { margin-bottom: 14px; }
+.at-row {
+  display: grid; grid-template-columns: 44px 26px minmax(0, 1fr) minmax(0, 200px);
+  align-items: center; gap: 10px; padding: 7px 14px;
+  border-top: 1px solid var(--border-muted); font-size: 12.5px; color: var(--fg-default);
+}
+.at-row:first-child { border-top: none; }
+.at-row .feed-ico { width: 24px; height: 24px; }
+.at-more { display: flex; justify-content: center; margin: 6px 0 18px; }
+
+/* Overview: the problems preview and the activity feed's way into Logging. */
+.pv-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 180px) 80px; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--border-muted); font-size: 12.5px; }
+.pv-row:first-child { border-top: none; }
+.pv-row .tag { font-size: 10.5px; }
+.pv-when { text-align: right; font-family: var(--mono); font-size: 11px; color: var(--fg-muted); }
+.feed-foot { padding: 8px 14px; border-top: 1px solid var(--border-muted); font-size: 12px; text-align: right; }
+
+/* ── report generator (pages/logging/ReportModal.tsx) ──────── */
+.modal.report-modal { width: 980px; max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); display: flex; flex-direction: column; }
+.report-modal .modal-body { overflow-y: auto; color: var(--fg-default); }
+.rp { display: flex; flex-direction: column; gap: 14px; }
+.rp-field { display: flex; flex-direction: column; gap: 6px; }
+.rp-label { font-size: 11px; font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .04em; }
+.rp-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.rp-dates { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.rp-date { width: 150px; text-align: left; }
+.rp-warn { margin: 0; font-size: 12px; color: var(--attention-fg); }
+.rp-note { margin: 0; font-size: 12px; color: var(--fg-muted); }
+.rp-preview { border: 1px solid var(--border-default); border-radius: 8px; padding: 14px; transition: opacity .15s; }
+.rp-title { font-size: 16px; font-weight: 600; color: var(--fg-default); }
+.rp-sub { font-size: 12px; color: var(--fg-muted); margin-bottom: 10px; }
+.rp-preview .chart-canvas { height: 320px; }
+
 /* ── canopy switch ─────────────────────────────────────────── */
 [data-slot="switch"] {
   width: 38px;

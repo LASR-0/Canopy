@@ -24,6 +24,7 @@ import { onReading } from "../rules/index.js";
 import { checkThresholds } from "../rules/thresholds.js";
 import { recordHeartbeat } from "./heartbeat.js";
 import { deriveFromReading } from "./derived.js";
+import { rememberReading } from "./latest.js";
 import type { Capability, Metric, Reading, Unit } from "@canopy/shared-types";
 
 /** A sensor channel, resolved from the topic it publishes on. */
@@ -221,6 +222,7 @@ export async function handleTelemetry(topic: string, payload: Buffer): Promise<v
       recordedAt: reading.ts,
     });
 
+    rememberReading(reading);
     broadcast({ type: "reading", payload: reading });
 
     // Reactive work happens here rather than on a poll, so a rule responds to a

@@ -1,11 +1,17 @@
 import type { FastifyInstance } from "fastify";
-import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { db } from "../../store/index.js";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
+import { db, sqliteConnection } from "../../store/index.js";
 import { devices, readingsRaw, readingsHourly, readingsDaily } from "../../store/schema.js";
-import { ok } from "../reply.js";
+import { latestReadings } from "../../device-manager/latest.js";
+import { err, ok } from "../reply.js";
+import { Readable } from "node:stream";
+import { readingsCsv } from "../../export/readings.js";
+import {
+  METRICS,
+  type Metric,
+} from "@canopy/shared-types";
 import type {
   DeviceSeries,
-  Reading,
   ReadingPoint,
   ReadingResolution,
   ReadingSeriesQuery,
@@ -70,27 +76,8 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { workspaceId: string } }>(
     "/workspaces/:workspaceId/readings/latest",
     async (req, reply) => {
-      const { workspaceId } = req.params;
-      const rows = await db
-        .select()
-        .from(readingsRaw)
-        .where(
-          sql`${readingsRaw.id} IN (
-            SELECT MAX(id) FROM readings_raw
-            WHERE workspace_id = ${workspaceId}
-            GROUP BY device_id, channel
-          )`,
-        );
-      const readings: Reading[] = rows.map((r) => ({
-        workspaceId: r.workspaceId,
-        deviceId: r.deviceId,
-        channel: r.channel,
-        metric: r.metric as Reading["metric"],
-        unit: r.unit as Reading["unit"],
-        value: r.value,
-        ts: r.recordedAt,
-      }));
-      return reply.send(ok(readings));
+      // From memory: see device-manager/latest.ts for why not a query.
+      return reply.send(ok(await latestReadings(req.params.workspaceId)));
     },
   );
 
@@ -177,6 +164,45 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
       };
 
       return reply.send(ok(result));
+    },
+  );
+
+  /**
+   * Readings as a CSV download, for the report generator: long format, a page
+   * at a time (see export/readings.ts). `metrics` is comma-separated.
+   */
+  app.get<{
+    Params: { workspaceId: string };
+    Querystring: { from?: string; to?: string; metrics?: string; resolution?: string };
+  }>(
+    "/workspaces/:workspaceId/readings/export",
+    async (req, reply) => {
+      const { from, to } = req.query;
+      const resolution = req.query.resolution ?? "raw";
+      const metrics = (req.query.metrics ?? "").split(",").filter((m): m is Metric => METRICS.includes(m as Metric));
+      if (!from || !to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to)) || from > to) {
+        return reply.status(400).send(err("validation_failed", "from and to must be ISO timestamps, from before to"));
+      }
+      if (resolution !== "raw" && resolution !== "hourly" && resolution !== "daily") {
+        return reply.status(400).send(err("validation_failed", "resolution must be raw, hourly or daily"));
+      }
+      if (metrics.length === 0) {
+        return reply.status(400).send(err("validation_failed", "metrics must name at least one metric"));
+      }
+
+      const rows = await db
+        .select({ id: devices.id, name: devices.name })
+        .from(devices)
+        .where(eq(devices.workspaceId, req.params.workspaceId));
+      const names = new Map(rows.map((d) => [d.id, d.name]));
+
+      const stamp = `${from.slice(0, 10)}_${to.slice(0, 10)}`;
+      return reply
+        .header("content-type", "text/csv; charset=utf-8")
+        .header("content-disposition", `attachment; filename="canopy-${resolution}-${stamp}.csv"`)
+        .send(Readable.from(readingsCsv(sqliteConnection, {
+          workspaceId: req.params.workspaceId, metrics, from, to, resolution,
+        }, names)));
     },
   );
 }

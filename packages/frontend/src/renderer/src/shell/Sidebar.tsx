@@ -67,12 +67,21 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
   };
 
   // Being on a page is seeing it, including what arrives while you are there.
+  // Once per page and newest notification: a failed request rolls the badge
+  // back, and without this the rollback would fire the request again at once,
+  // in a loop for as long as the controller is unreachable.
   const activeUnseen = unseen(active);
+  const activeChannel = asChannel(active);
+  const newest = notifications?.recent.find((n) => n.channel === activeChannel)?.occurredAt ?? "";
+  const markedFor = useRef("");
   useEffect(() => {
-    const channel = asChannel(active);
-    if (channel && activeUnseen > 0) markSeen.mutate([channel]);
-    // markSeen is a new object each render; the page and its count are what matter.
-  }, [active, activeUnseen]);
+    if (!activeChannel || activeUnseen === 0) return;
+    const key = `${activeChannel}:${activeUnseen}:${newest}`;
+    if (markedFor.current === key) return;
+    markedFor.current = key;
+    markSeen.mutate([activeChannel]);
+    // markSeen is a new object each render; the page and what is unseen are what matter.
+  }, [activeChannel, activeUnseen, newest]);
 
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopHover = () => {

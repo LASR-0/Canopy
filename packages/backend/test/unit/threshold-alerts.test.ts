@@ -15,8 +15,9 @@ import {
   type SensorThreshold,
 } from "@canopy/shared-types";
 
-const { mockRecordEvent, rows } = vi.hoisted(() => ({
+const { mockRecordEvent, mockLastStatus, rows } = vi.hoisted(() => ({
   mockRecordEvent: vi.fn(async () => undefined),
+  mockLastStatus: vi.fn(async () => "ok" as "ok" | "warn" | "err"),
   rows: {
     thresholds: [] as unknown[],
     alertSettings: [] as unknown[],
@@ -38,6 +39,7 @@ vi.mock("../../src/store/index.js", () => ({
   },
 }));
 vi.mock("../../src/automation/apply.js", () => ({ recordEvent: mockRecordEvent }));
+vi.mock("../../src/rules/threshold-history.js", () => ({ lastRecordedStatus: mockLastStatus }));
 
 const schema = await import("../../src/store/schema.js");
 
@@ -74,6 +76,7 @@ const T0 = new Date("2026-09-26T12:00:00Z");
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockLastStatus.mockResolvedValue("ok");
   resetThresholdState();
   rows.thresholds = [{ ...BAND, stage: null }];
   rows.alertSettings = [];
@@ -191,6 +194,31 @@ describe("checkThresholds", () => {
     await checkThresholds(reading(999), T0);
 
     expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("after a restart", () => {
+  it("closes a period left open at shutdown with a recovery", async () => {
+    mockLastStatus.mockResolvedValue("err");
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(23), new Date(T0.getTime() + RECOVERY_DWELL_MS));
+
+    expect(mockRecordEvent).toHaveBeenCalledTimes(1);
+    expect(mockRecordEvent.mock.calls[0]?.[0]).not.toHaveProperty("severity");
+  });
+
+  it("does not record the same crossing again while still out of range", async () => {
+    mockLastStatus.mockResolvedValue("err");
+    await checkThresholds(reading(31), T0);
+
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+
+  it("looks the history up once per channel, not once per reading", async () => {
+    await checkThresholds(reading(23), T0);
+    await checkThresholds(reading(24), T0);
+
+    expect(mockLastStatus).toHaveBeenCalledTimes(1);
   });
 });
 

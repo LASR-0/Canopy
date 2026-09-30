@@ -109,7 +109,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
 
   const open = (r: Result | undefined) => {
     if (!r) return;
-    navigate(r.page, r.focusId);
+    navigate(r.page, { focusId: r.focusId });
     onClose();
   };
 

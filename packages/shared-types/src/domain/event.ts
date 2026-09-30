@@ -1,4 +1,5 @@
 import type { Id, Timestamp } from "./common.js";
+import type { Metric } from "./capability.js";
 
 export type EventType =
   | "automation_fired"
@@ -30,6 +31,8 @@ export interface AppEvent {
   sourceLabel?: string;
   description: string;
   severity?: EventSeverity;
+  /** The metric a threshold alert is about. */
+  metric?: Metric;
   occurredAt: Timestamp;
 }
 
@@ -63,4 +66,38 @@ export interface NotificationSummary {
   unseen: Record<NotificationChannel, number>;
   /** The most recent notifications, newest first, seen or not. */
   recent: AppNotification[];
+}
+
+/** One recorded step inside an out-of-range period. */
+export interface OutOfRangeStep {
+  at: Timestamp;
+  /** Absent on the recovery that ends the period. */
+  severity?: EventSeverity;
+  description: string;
+}
+
+/**
+ * One excursion of a reading outside its band: from the first threshold alert
+ * until the recovery that ends it. The warn and err steps between are folded
+ * into it, so a reading flapping near an edge is one row rather than dozens.
+ */
+export interface OutOfRangePeriod {
+  /** The id of the alert that opened the period. */
+  id: Id;
+  deviceId?: Id;
+  channel?: string;
+  metric?: Metric;
+  startedAt: Timestamp;
+  /** Absent while the reading is still out of range. */
+  endedAt?: Timestamp;
+  /** The worst level the period reached. */
+  worst: EventSeverity;
+  steps: OutOfRangeStep[];
+}
+
+/** The Logs tab: out-of-range periods, and the other events that need attention. */
+export interface LogsResponse {
+  periods: OutOfRangePeriod[];
+  /** Failed runs, failsafe trips, devices going offline or online, tasks falling due. */
+  events: AppEvent[];
 }

@@ -65,6 +65,10 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   addColumnIfMissing(db, "app_settings", "event_retention_days", "INTEGER NOT NULL DEFAULT 90");
   // The due date a task's "due" notification was last recorded for.
   addColumnIfMissing(db, "maintenance_tasks", "due_notified_at", "TEXT");
+  // The metric a threshold alert is about, so the Logs tab can filter by it.
+  addColumnIfMissing(db, "events", "metric", "TEXT");
+  // Chart templates hold the chart's mode, options and markers, not only metrics.
+  addColumnIfMissing(db, "chart_layouts", "view_json", "TEXT");
 }
 
 export function addColumnIfMissing(
@@ -223,6 +227,10 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
     );
     CREATE INDEX IF NOT EXISTS idx_readings_raw_lookup
       ON readings_raw (workspace_id, metric, recorded_at);
+    /* Newest row per channel: seeds the latest-readings cache
+       (device-manager/latest.ts) without scanning every reading. */
+    CREATE INDEX IF NOT EXISTS idx_readings_raw_latest
+      ON readings_raw (workspace_id, device_id, channel, id);
 
     CREATE TABLE IF NOT EXISTS readings_hourly (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -347,7 +355,8 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       source_label  TEXT,
       description   TEXT NOT NULL,
       severity      TEXT,
-      occurred_at   TEXT NOT NULL
+      occurred_at   TEXT NOT NULL,
+      metric        TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_events_workspace_time
       ON events (workspace_id, occurred_at DESC);
@@ -432,7 +441,8 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       name          TEXT NOT NULL,
       metrics_json  TEXT NOT NULL,
       sort_order    INTEGER NOT NULL DEFAULT 0,
-      created_at    TEXT NOT NULL
+      created_at    TEXT NOT NULL,
+      view_json     TEXT
     );
 
     /* ── jobs ─────────────────────────────────────────────────────────── */

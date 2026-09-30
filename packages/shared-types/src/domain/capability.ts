@@ -18,6 +18,12 @@ export type Metric =
   | "power"
   | "water_level";
 
+/** Every metric, for code that has to recognise one at runtime. */
+export const METRICS: readonly Metric[] = [
+  "temperature", "humidity", "co2", "vpd", "soil_moisture", "ph", "ec",
+  "lux", "ppfd", "power", "water_level",
+];
+
 /** Display units, kept alongside readings so the UI never guesses. */
 export type Unit =
   | "C"

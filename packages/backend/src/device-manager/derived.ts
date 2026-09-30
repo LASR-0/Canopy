@@ -23,6 +23,7 @@ import { readingsRaw, roleAssignments } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
 import { computeVpd } from "@canopy/shared-types";
 import type { Reading } from "@canopy/shared-types";
+import { rememberReading } from "./latest.js";
 
 /** The reserved device id for a computed reading. See store/schema.ts. */
 export const DERIVED_DEVICE_ID = "__derived__";
@@ -145,6 +146,7 @@ export async function deriveFromReading(reading: Reading, now: Date): Promise<Re
     recordedAt: derived.ts,
   });
 
+  rememberReading(derived);
   broadcast({ type: "reading", payload: derived });
   return derived;
 }

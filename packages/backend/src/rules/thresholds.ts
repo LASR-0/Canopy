@@ -17,6 +17,7 @@ import { db } from "../store/index.js";
 import { sensorThresholds, thresholdAlertSettings } from "../store/schema.js";
 import { currentStage, refreshActiveGrows, resetGrowStageForTesting } from "../grow/stage.js";
 import { recordEvent } from "../automation/apply.js";
+import { lastRecordedStatus } from "./threshold-history.js";
 import {
   alertSettingFor,
   evalThreshold,
@@ -185,15 +186,16 @@ export async function checkThresholds(
 
   const status = evalThreshold(reading.value, reading.metric, workspaceBands, stage, behaviour.warnMarginPct);
   const id = key(reading);
-  const state = channels.get(id);
+  let state = channels.get(id);
 
-  // The first reading of a healthy channel is not news. An unhealthy first
-  // reading is treated as a crossing out of "ok".
+  // First reading since the controller started: pick up where the recorded
+  // alerts left off, so a period open at shutdown is closed by a recovery (or
+  // continued) rather than forgotten. See threshold-history.ts.
   if (!state) {
-    if (status === "ok") {
-      channels.set(id, { recorded: "ok" });
-      return status;
-    }
+    const recorded = await lastRecordedStatus(reading.workspaceId, reading.deviceId, reading.channel);
+    // A slow lookup can be overtaken by the channel's next reading.
+    state = channels.get(id) ?? { recorded };
+    channels.set(id, state);
   }
   const recorded = state?.recorded ?? "ok";
 
@@ -250,6 +252,7 @@ export async function checkThresholds(
       type: "threshold_alert",
       sourceId: reading.deviceId,
       sourceLabel: reading.channel,
+      metric: reading.metric,
       description: describe(reading, report, band),
       at: now,
       ...(report === "ok" ? {} : { severity: report === "err" ? ("err" as const) : ("warn" as const) }),

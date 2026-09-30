@@ -17,6 +17,7 @@ import type {
   AppEvent,
   NotificationChannel,
   NotificationSummary,
+  LogsResponse,
   AppSettings,
   ChartLayout,
   Reading,
@@ -151,6 +152,8 @@ export interface ApiRoutes {
 
   // ── Events ────────────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/events":    { res: AppEvent[] };
+  /** Problems in a window, for the Logging page's Logs tab. */
+  "GET /workspaces/:workspaceId/logs":      { res: LogsResponse };
 
   // ── Notifications ─────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/notifications":       { res: NotificationSummary };

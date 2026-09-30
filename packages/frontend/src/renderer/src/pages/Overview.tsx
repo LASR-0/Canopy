@@ -7,6 +7,9 @@ import { Sparkline } from "@/components/Sparkline";
 import { Icon, type IconName } from "@/components/Icon";
 import { Tip } from "@/components/Tip";
 import { timeAgo } from "@/lib/utils";
+import { eventColor, eventIcon, eventText } from "@/lib/events";
+import { useLogs } from "@/hooks/useEvents";
+import { EVENT_TAG, logRows, periodTag, periodText } from "./logging/LogsTab";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useLiveReadings } from "@/hooks/useLiveReadings";
@@ -186,24 +189,8 @@ function SkeletonSensorCard({ metric }: { metric: Metric }) {
 }
 
 function FeedRow({ event }: { event: AppEvent }) {
-  const iconName: IconName =
-    event.type === "threshold_alert"  ? "alert"       :
-    event.type === "failsafe_trip"    ? "alert"       :
-    event.type === "device_online"    ? "plug"        :
-    event.type === "device_offline"   ? "plug"        :
-    event.type === "automation_fired" ? "automation"  :
-    event.type === "automation_failed" ? "automation" :
-    event.type === "stage_changed"    ? "cycle"       :
-    event.type === "maintenance_done" ? "maintenance" :
-    event.type === "maintenance_due"  ? "maintenance" :
-    "info";
-
-  const iconColor =
-    event.severity === "err"              ? "var(--danger-fg)"    :
-    event.severity === "warn"             ? "var(--attention-fg)" :
-    event.type    === "device_online"     ? "var(--success-fg)"   :
-    event.type    === "automation_fired"  ? "var(--accent-fg)"    :
-    "var(--fg-muted)";
+  const iconName = eventIcon(event.type);
+  const iconColor = eventColor(event);
 
   return (
     <div className="feed-row">
@@ -214,7 +201,7 @@ function FeedRow({ event }: { event: AppEvent }) {
         <Icon name={iconName} size={13} />
       </div>
       <div className="feed-body">
-        <div className="feed-text">{event.description}</div>
+        <div className="feed-text">{eventText(event.description, event.metric)}</div>
         {event.sourceLabel && (
           <div className="feed-meta">
             <span className="src">{event.sourceLabel}</span>
@@ -346,6 +333,7 @@ const FEED_VIEWS = [
 ] as const;
 
 function ActivityFeed({ events }: { events: AppEvent[] }) {
+  const navigate = useNavigate();
   const [viewIndex, setViewIndex] = useState(0);
   const [limitIndex, setLimitIndex] = useState(0);
 
@@ -403,7 +391,64 @@ function ActivityFeed({ events }: { events: AppEvent[] }) {
           {view.id === "automation" ? "No automation activity yet" : "Nothing else has happened yet"}
         </div>
       )}
+      <div className="feed-foot">
+        <span className="link" onClick={() => navigate("logging", { tab: "activity" })}>Show all activity</span>
+      </div>
     </div>
+  );
+}
+
+/** Rows the Overview's problems preview shows before "Show all". */
+const PROBLEMS_SHOWN = 5;
+
+/**
+ * The newest rows of the Logging page's Logs tab: the last 24 hours of what
+ * went wrong, with a way into the full table.
+ */
+function ProblemsPreview({ workspaceId, devices }: { workspaceId: string; devices: Device[] }) {
+  const navigate = useNavigate();
+  const bounds = useMemo(() => {
+    const to = Date.now();
+    return { from: to - 86_400_000, to };
+  }, []);
+  const { data } = useLogs(workspaceId, "24H", bounds.from, bounds.to);
+  const rows = useMemo(() => (data ? logRows(data.periods, data.events) : []), [data]);
+  const deviceName = useMemo(() => new Map(devices.map((d) => [d.id, d.name])), [devices]);
+  const ongoing = data?.periods.filter((p) => !p.endedAt).length ?? 0;
+
+  return (
+    <>
+      <div className="sec-head" style={{ marginTop: 24 }}>
+        <h2>Problems</h2>
+        <span className="count">{rows.length} · last 24h</span>
+        {ongoing > 0 && <span className="tag b-err" style={{ fontSize: 10.5 }}>{ongoing} ongoing</span>}
+        <span className="rule" />
+        <span className="link" onClick={() => navigate("logging", { tab: "logs" })}>Show all</span>
+      </div>
+      <div className="box">
+        {data && rows.length === 0 ? (
+          <div className="feed-empty"><Icon name="check" size={13} /> Nothing went wrong in the last 24 hours</div>
+        ) : (
+          rows.slice(0, PROBLEMS_SHOWN).map((row) => {
+            const tag = row.kind === "range" ? periodTag(row.period) : EVENT_TAG[row.event.type];
+            const text = row.kind === "range" ? periodText(row.period) : eventText(row.event.description, row.event.metric);
+            const src = row.kind === "range"
+              ? deviceName.get(row.period.deviceId ?? "") ?? row.period.channel
+              : row.kind === "device" ? deviceName.get(row.event.sourceId ?? "") : row.event.sourceLabel;
+            return (
+              <div key={row.kind === "range" ? row.period.id : row.event.id} className="pv-row">
+                {tag && <span className={`tag ${tag.cls}`}>{tag.label}</span>}
+                <span className="lt-desc">{text}</span>
+                {src && <span className="lt-src">{src}</span>}
+                <span className="pv-when">
+                  {row.kind === "range" && !row.period.endedAt ? "ongoing" : timeAgo(row.at)}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </>
   );
 }
 
@@ -602,6 +647,8 @@ export function Overview() {
                   </div>
                 </>
               )}
+
+              <ProblemsPreview workspaceId={workspace.id} devices={devices} />
             </div>
 
             {/* ── Right sidebar: maintenance + activity ───── */}

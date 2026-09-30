@@ -9,9 +9,11 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   icon?: IconName;
+  /** Extra class on the dialog, e.g. to widen it. */
+  className?: string;
 }
 
-export function Modal({ open, onClose, title, children, footer, icon }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, icon, className }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -26,7 +28,7 @@ export function Modal({ open, onClose, title, children, footer, icon }: ModalPro
       className="modal-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="modal" role="dialog" aria-modal aria-labelledby="modal-title">
+      <div className={className ? `modal ${className}` : "modal"} role="dialog" aria-modal aria-labelledby="modal-title">
         <div className="modal-head">
           {icon && <Icon name={icon} size={16} />}
           <h3 id="modal-title">{title}</h3>
