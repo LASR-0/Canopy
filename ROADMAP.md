@@ -1300,40 +1300,70 @@ switching.
    `DELETE /workspaces/:id/permanent`. Each reloads the controller's
    workspace caches (`controller/reload.ts`, shared with import).
 
-#### H. Grow stages in Automation and Maintenance
+#### H. Grow stages in Automation and Maintenance ✅ done
 
-Decided 2026-09-30. Both pages have stage support that cannot be used.
-**Automations** have a `stage` field that the rules engine and the scheduler
-respect (a Flower-only rule idles outside Flower), but the editor has no
-field for it. **Maintenance** has a "By stage" cadence ("once per grow
-stage") that never falls due: `nextDueAfter` returns nothing for it and
-nothing watches stage changes.
+Decided 2026-09-30. Both pages had stage support that could not be used.
+Automations had a `stage` field the engines respected but no editor field
+for it. Maintenance's "By stage" cadence never fell due: `nextDueAfter`
+returned nothing for it and nothing watched stage changes.
 
-1. **Automations run in any set of stages.** The default is *Every stage*.
-   Otherwise the automation runs in the stages ticked: an 18/6 light for
-   Seedling and Veg, a 12/12 light for Flower and Flush. The stored single
-   `stage` becomes a list, where empty means every stage, and existing rows
-   carry over. The editor gets a "Runs in" field, and a card shows its
-   stages as chips.
-2. **A stage bar at the top of Automation**, where the prototype's Growth
-   mode strip was: *All stages*, then each stage of the grow, with the
-   current one marked. Picking a stage shows what runs then: the
-   automations scoped to it, and an *Every stage* section for the rest.
-   This answers "what happens in Flower?" without reading every card.
-   *All stages* shows everything, with stage chips. "New automation"
-   defaults to the stage picked.
-3. **"Copy to stage…"** on a card makes a scoped copy to edit, e.g. the Veg
-   light schedule turned into the Flower one. Setting up per stage should
-   not mean building each automation from scratch.
-4. **Maintenance tasks can be scoped to stages.** "Check trichomes", daily,
-   Flower only. Outside its stages a task is hidden from Today, never falls
-   due and is never announced.
-5. **"By stage" becomes "When a stage starts"**: due once, on the day the
-   grow enters the chosen stage ("Switch to bloom nutrients" at Flower). The
-   date comes from the grow plan (start date plus planned weeks), so no
-   transition hook is needed, and it moves if the plan is edited.
-6. **Grow Cycle's stage chip** ("Automations scoped to this stage") opens
-   Automation with that stage picked.
+1. **Automations run in any set of stages** (`stages`, stored as
+   `stages_json`). Empty means every stage. The old single `stage` carries
+   over as a one-stage list. The editor has a **Runs in** field (*Every
+   stage*, or any stages ticked), and a card shows its stages as tags. The
+   engines ask `appliesInCurrentStage` with the list. A scoped automation
+   idles outside its stages, and while no grow runs, as before.
+2. **The prototype's Growth mode strip, at the top of Automation**, with
+   the prototype's own styles. Its four mode cards are the grow's stages,
+   each with its icon and its weeks in the plan ("weeks 9–14"), the current
+   one marked "now". An **All stages** card sits in front; the prototype had
+   none. Picking a stage shows *Only in Flower* (the automations scoped to
+   it), then *Every stage* (the rest), each grouped by subsystem as usual.
+   "New automation" defaults to the stage picked. Where the prototype showed
+   fixed "bundled targets", the panel beside the cards shows the real target
+   ranges in force for that stage (its own band, else the default), as
+   icon-and-range chips named on hover, with a link to Target ranges. With
+   no grow running and scoped automations present, it says they are idle.
+3. **"Copy to stage…"** on each card makes a scoped copy, named "… (Flower)",
+   and opens it in the editor. **Copies start switched off**: a copy of an
+   every-stage light schedule would otherwise run beside its original in
+   Flower, two schedules driving one light.
+4. **Maintenance tasks can be scoped to stages** ("Runs in" on the new-task
+   form and in the cadence editor). Outside its stages a task is left off
+   Today (a note says how many are, and why), never falls due and is never
+   announced. Its due date moves to the start of its next stage, so it does
+   not open that stage weeks overdue. With no grow it idles.
+   **A stage filter** above Today and Week (a plain segmented row, not
+   Automation's cards) follows the current stage until one is picked. Any
+   stage shows what runs then: every-stage tasks, tasks scoped to it, and
+   tasks due when it starts. *All stages* shows everything, and the hidden
+   note has a "Show all" link.
+5. **"By stage" is now "When a stage starts"** (`start_stage`): due once, on
+   the day the grow's plan says the stage begins. Done for this grow, it
+   waits for the next grow. The date comes from the plan (`stageStartDate`
+   in shared-types), so editing the plan moves it. `grow/stage-tasks.ts`
+   keeps these dates in step every scheduler tick, before due tasks are
+   announced, and straight after a task is edited, so no stage-change hook
+   is needed.
+6. **Grow Cycle's stage chip** shows how many automations are scoped to that
+   stage and opens Automation with the stage picked (`navigate(page, { tab
+   })`).
+
+7. **Also, from a hands-on look (2026-09-30):**
+   - A workspace's armed "Are you sure?" wrapped onto two lines and
+     stretched the buttons beside it. The row keeps each button on one line
+     now, and the armed label sets a size smaller.
+   - The Overview's *Current readings* has space above it, with or without
+     readings.
+   - Setup View's *Placed*, *Plants* and *Available* panels collapse to their
+     headers, remembered per viewer.
+   - Automation's "Edit target ranges" is a blue link with a pointer.
+   - The automation editor's "Add equipment" keeps its icon and text on one
+     line.
+   - Text links (`.link`) are blue with a pointer and an underline on hover
+     wherever they sit. They were only styled inside a section heading, so
+     the Overview activity feed's "Show all activity" and the Maintenance
+     stage note's "Show all" read as plain text.
 
 #### I. Keyboard-only use *(low priority)*
 
