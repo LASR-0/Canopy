@@ -16,6 +16,7 @@ import { maintenanceRoutes }  from "./routes/maintenance.js";
 import { eventRoutes }        from "./routes/events.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { journalPhotoRoutes } from "./routes/journal-photos.js";
+import { dataRoutes } from "./routes/data.js";
 import { chartLayoutRoutes }  from "./routes/chart-layouts.js";
 import { provisionRoutes }    from "./routes/provision.js";
 import { registerWs }         from "../ws/index.js";
@@ -46,6 +47,7 @@ export async function buildServer() {
   await app.register(eventRoutes);
   await app.register(notificationRoutes);
   await app.register(journalPhotoRoutes);
+  await app.register(dataRoutes);
   await app.register(chartLayoutRoutes);
   await app.register(provisionRoutes);
 

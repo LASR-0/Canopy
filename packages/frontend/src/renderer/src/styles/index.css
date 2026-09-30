@@ -1473,6 +1473,28 @@ body {
 .lb-nav.next svg { transform: rotate(-90deg); }
 .lb-close:hover, .lb-nav:hover { background: rgba(255, 255, 255, 0.2); }
 
+/* ── import workspaces (components/ImportModal.tsx) ─────────── */
+.import-modal { width: 560px; }
+.imp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; padding: 28px 16px; border: 1.5px dashed var(--border-default); border-radius: 8px; background: var(--canvas-inset); color: var(--fg-muted); font-family: var(--sans); font-size: 13px; cursor: pointer; }
+.imp-drop:hover { border-color: var(--accent-fg); color: var(--fg-default); }
+.imp-bar { height: 6px; border-radius: 3px; background: var(--canvas-inset); overflow: hidden; }
+.imp-bar span { display: block; height: 100%; background: var(--accent-emphasis); transition: width .3s; }
+.imp-sub { margin: 0; font-size: 12px; color: var(--fg-subtle); font-family: var(--mono); }
+.imp-list { display: flex; flex-direction: column; gap: 6px; }
+.imp-ws { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 7px; cursor: pointer; }
+.imp-ws.on { border-color: var(--accent-emphasis); background: var(--accent-muted); }
+.imp-ws input { margin-top: 3px; accent-color: var(--accent-fg); }
+.imp-ws-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.imp-ws-name { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--fg-default); }
+.imp-ws-counts { font-size: 12px; color: var(--fg-muted); line-height: 1.45; }
+.imp-ws-note { font-size: 12px; color: var(--attention-fg); }
+.imp-warn { display: flex; gap: 6px; align-items: flex-start; color: var(--fg-muted); }
+.imp-warn svg { flex-shrink: 0; margin-top: 3px; color: var(--accent-fg); }
+.imp-result { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 6px; text-align: left; }
+.imp-result-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 12px; padding: 8px 12px; border: 1px solid var(--border-default); border-radius: 7px; }
+.imp-result-row .imp-ws-counts { grid-column: 1; }
+.imp-result-row .btn { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+
 /* ── canopy switch ─────────────────────────────────────────── */
 [data-slot="switch"] {
   width: 38px;

@@ -19,5 +19,7 @@ Thumbs.db
 *.db-shm
 *.db-wal
 *.db-journal
-data/
+# The controller's data folder (database, photos, staged imports). Anchored:
+# a bare "data/" also ignored source folders such as backend/src/data.
+/packages/data/
 /archive/

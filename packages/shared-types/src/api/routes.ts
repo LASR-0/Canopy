@@ -19,6 +19,8 @@ import type {
   NotificationChannel,
   NotificationSummary,
   LogsResponse,
+  ImportPreview,
+  ImportStatus,
   AppSettings,
   ChartLayout,
   Reading,
@@ -158,6 +160,14 @@ export interface ApiRoutes {
   "GET /workspaces/:workspaceId/events":    { res: AppEvent[] };
   /** Problems in a window, for the Logging page's Logs tab. */
   "GET /workspaces/:workspaceId/logs":      { res: LogsResponse };
+
+  // ── Export / import ───────────────────────────────────────────────────────
+  // Export is `GET /data/export`, a file download. Import uploads the file as
+  // the body of `POST /data/import`, which answers with an ImportPreview; the
+  // rest is JSON.
+  "POST /data/import/:token/apply":  { body: { workspaceIds: string[] }; res: ImportStatus };
+  "GET /data/import/:token":         { res: ImportStatus };
+  "DELETE /data/import/:token":      { res: { deleted: true } };
 
   // ── Notifications ─────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/notifications":       { res: NotificationSummary };

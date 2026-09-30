@@ -65,6 +65,13 @@ export const devices = sqliteTable("devices", {
   runtimeHours:       real("runtime_hours").notNull().default(0),
   /** Soft-delete flag. Forgotten devices are hidden from the UI but kept in DB. */
   forgotten:          integer("forgotten", { mode: "boolean" }).notNull().default(false),
+  /**
+   * Set on an imported device whose hardware (its MQTT topics) already belongs
+   * to a device here. It keeps its workspace's history, roles and placement,
+   * but ingest ignores it and it cannot be driven, so readings and commands
+   * never go to two places. See data/import.ts.
+   */
+  detachedAt:         text("detached_at"),
 });
 
 // ── role_assignments ──────────────────────────────────────────────────────────

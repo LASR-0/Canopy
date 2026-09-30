@@ -12,3 +12,7 @@ export const DATA_DIR = process.env["DATA_DIR"] ?? join(here, "../../../data");
 export const DB_PATH = process.env["DB_PATH"] ?? join(DATA_DIR, "canopy.db");
 /** Journal photos (grow/journal-photos.ts). */
 export const PHOTO_DIR = join(DATA_DIR, "attachments", "journal");
+/** Imports being staged (data/import.ts); cleared on start. */
+export const IMPORT_DIR = join(DATA_DIR, "import");
+/** Scratch space, e.g. an export's database snapshot while it streams. */
+export const TMP_DIR = join(DATA_DIR, "tmp");

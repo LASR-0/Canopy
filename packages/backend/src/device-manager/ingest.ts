@@ -15,7 +15,7 @@
  * state topic is proof of life, so it refreshes the device heartbeat and is
  * otherwise ignored — reflecting actuator state back into the UI is Phase 4.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../store/index.js";
 import { devices, readingsRaw } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
@@ -103,7 +103,8 @@ export async function refreshTopicIndex(): Promise<void> {
         capabilitiesJson: devices.capabilitiesJson,
       })
       .from(devices)
-      .where(eq(devices.forgotten, false));
+      // Detached devices are imported copies of hardware another device owns.
+      .where(and(eq(devices.forgotten, false), isNull(devices.detachedAt)));
 
     index = buildTopicIndex(
       rows.map((row) => ({

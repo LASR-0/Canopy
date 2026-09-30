@@ -6,6 +6,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { initSchema } from "./store/index.js";
+import { IMPORT_DIR, TMP_DIR } from "./store/paths.js";
+import { clearStaging } from "./data/import.js";
 import { db } from "./store/index.js";
 import { workspaces, appSettings } from "./store/schema.js";
 import { buildServer, PORT } from "./api/server.js";
@@ -36,6 +38,9 @@ async function ensureDefaultWorkspace(): Promise<void> {
 async function main() {
   initSchema();
   await ensureDefaultWorkspace();
+  // An import staged before a stop can never be applied: its session was in memory.
+  await clearStaging(IMPORT_DIR);
+  await clearStaging(TMP_DIR);
 
   await startBroker();
   await startDeviceManager();

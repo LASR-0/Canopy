@@ -28,6 +28,11 @@ export interface Device {
   signalPct?: number;
   /** Cumulative runtime hours — used by runtime-cadence maintenance tasks. */
   runtimeHours: number;
+  /**
+   * When set, an imported copy of hardware that belongs to a device in another
+   * workspace: kept for history, but not read from or driven.
+   */
+  detachedAt?: string;
 }
 
 /**

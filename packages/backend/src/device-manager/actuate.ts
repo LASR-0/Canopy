@@ -151,6 +151,9 @@ export async function actuateDevice(
   if (row.forgotten) {
     return fail("not_found", "Device has been forgotten; rescan before driving it");
   }
+  if (row.detachedAt) {
+    return fail("conflict", "This is an imported copy of hardware another workspace controls");
+  }
 
   let capabilities: Capability[];
   try {

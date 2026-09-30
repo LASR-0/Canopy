@@ -44,6 +44,7 @@ function rowToDevice(row: typeof devices.$inferSelect): Device {
   if (row.firmware)          device.firmware = row.firmware;
   if (row.lastSeen)          device.lastSeen = row.lastSeen;
   if (row.signalPct != null) device.signalPct = row.signalPct;
+  if (row.detachedAt)        device.detachedAt = row.detachedAt;
   return device;
 }
 

@@ -10,7 +10,7 @@
  */
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { applyColumnAdditions, applyDDL, seedData } from "../../src/store/index.js";
+import { applyColumnAdditions, applyDDL, seedData } from "../../src/store/ddl.js";
 import * as schema from "../../src/store/schema.js";
 
 export interface TestDb {

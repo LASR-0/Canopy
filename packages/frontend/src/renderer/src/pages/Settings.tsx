@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ProvisionModal } from "@/components/ProvisionModal";
+import { ImportModal } from "@/components/ImportModal";
 import { Tip } from "@/components/Tip";
 import {
   useWorkspaces,
@@ -27,7 +28,7 @@ import {
 import { useDevices, useRoles, useAssignRole, useScan } from "@/hooks/useDevices";
 import { ROLE_META, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
 import { useHealthStatus } from "@/hooks/useBackend";
-import { api } from "@/lib/http";
+import { api, BACKEND_URL } from "@/lib/http";
 import { wsManager } from "@/lib/ws";
 import { cn } from "@/lib/utils";
 import type { Device, RoleAssignment, AppSettings } from "@canopy/shared-types";
@@ -46,7 +47,11 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
         <div className="dev-id">
           <div className="dev-name">
             {device.name}
-            {!device.online && <span className="tag b-idle" style={{ fontSize: 10 }}>offline</span>}
+            {device.detachedAt ? (
+              <Tip content="Imported copy: this hardware belongs to a device in another workspace, so it is not read from or driven here">
+                <span className="tag b-warn" style={{ fontSize: 10 }}>detached</span>
+              </Tip>
+            ) : !device.online && <span className="tag b-idle" style={{ fontSize: 10 }}>offline</span>}
           </div>
           <div className="dev-host">
             {device.model && <span>{device.model}</span>}
@@ -321,6 +326,7 @@ export function Settings() {
   const deleteWorkspace = useDeleteWorkspace();
   const qc = useQueryClient();
   const [showProvision, setShowProvision] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   // Connect WS when Settings page is mounted
   useEffect(() => { wsManager.connect(); }, []);
@@ -748,6 +754,25 @@ export function Settings() {
                         onCheckedChange={(val) => patchSettings.mutate({ backupEnabled: val })}
                       />
                     </div>
+                    <div className="auto-row">
+                      <div className="auto-meta">
+                        <div className="auto-name">Export everything</div>
+                        <div className="auto-desc">Every workspace with its history and photos, in one .canopy file</div>
+                      </div>
+                      {/* A native download: Electron streams it to disk and asks where. */}
+                      <a className="btn sm" href={`${BACKEND_URL}/data/export`}>
+                        <Icon name="external" size={13} /> Export…
+                      </a>
+                    </div>
+                    <div className="auto-row">
+                      <div className="auto-meta">
+                        <div className="auto-name">Import workspaces</div>
+                        <div className="auto-desc">Add the workspaces from a .canopy file beside yours; nothing here changes</div>
+                      </div>
+                      <button className="btn sm" onClick={() => setShowImport(true)}>
+                        <Icon name="arrow-down" size={13} /> Import…
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -796,6 +821,7 @@ export function Settings() {
           {...(workspace?.id ? { workspaceId: workspace.id } : {})}
         />
       )}
+      <ImportModal open={showImport} onClose={() => setShowImport(false)} />
     </>
   );
 }

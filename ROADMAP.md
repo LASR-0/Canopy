@@ -1199,21 +1199,60 @@ navigation was planned here on 2026-09-30 and dropped the same day.
    dialog opens. Only the print layout was checked here (headless Chromium,
    which renders it the same way); the save dialog needs a run in Electron.
 
-#### F. Database import / export
+#### F. Database import / export ✅ built — awaiting a hands-on check
 
-Export the whole database to a file and import one back, from Settings →
-Data & Storage. This is a backup, a move to a new machine, and a way to share a
-tent's history. Questions to settle when it is built:
+Decided 2026-09-30: **export is everything, and import adds**. An import
+brings a file's workspaces in beside yours, with their grows, journal,
+photos, automations, devices and history, and replaces nothing. It loads
+straight away, with no restart. Both live in Settings → Data & Storage.
 
-- **Consistency:** the controller writes constantly, so the export must be
-  a consistent snapshot. SQLite's online backup API gives one; a file copy
-  does not.
-- **Import replaces or merges:** replacing is simple and honest, while
-  merging two tents' histories is a project of its own.
-- **Import must not brick the controller:** validate the file and its schema
-  first, and apply the column-additions path to an older export.
-- **Attachments:** journal photos exist now (E.1), so an export is the
-  database *plus* `data/attachments/`, not the database alone.
+1. **Export** (`GET /data/export`, `data/export.ts`): one `.canopy` file, a
+   gzipped tar of a manifest, a database snapshot and every journal photo.
+   It opens in any archive tool once renamed `.tar.gz`. The snapshot uses
+   SQLite's online backup API: consistent while the controller writes, and
+   copied a few pages at a time rather than in one blocking statement. The
+   tar reader and writer are ~150 lines (`data/tar.ts`), so there is no
+   archive dependency. It downloads natively, so Electron streams it to
+   disk. On the live data, 609 MB of database became a 55 MB file in 16 s,
+   with the API answering throughout (one probe at 233 ms).
+2. **Import, in two steps** (`data/import.ts`), in a modal like
+   provisioning's (choose file → review → import):
+   - **Stage.** The upload streams to disk. Only the entries an export
+     writes are unpacked, and no name from the archive is used as a path. It
+     must be a Canopy export this version can read (a newer version is
+     refused with "update Canopy") holding an intact database, which is then
+     brought up to the current schema the same way the live database is on
+     start. The review lists the file's workspaces with their counts, and
+     archived ones start unticked. A name you already have becomes "Tent 1
+     (imported)". Devices whose hardware is already here are counted.
+   - **Apply.** The staged database is attached and the chosen workspaces
+     are copied in with **new ids**, every reference between rows remapped,
+     so a file can be imported twice, or into the controller it came from,
+     without colliding. Everything but the readings goes in one transaction.
+     Readings are copied 5,000 at a time, yielding between batches, so ingest
+     and the API carry on. On the live data, 2.04 million readings took
+     12.5 s, with the event loop's p99 stall at 68 ms. The photos are copied
+     under their new ids. Afterwards the new workspaces are loaded into the
+     controller's caches (device topics, derived roles, rules, thresholds,
+     active grows), which is why no restart is needed. A failure removes
+     whatever went in. Imported history does not light the badges.
+3. **A device already here stays where it is** (decided 2026-09-30). An
+   imported device whose MQTT topics belong to a device here is copied with
+   its workspace's history, roles and placement, but **detached**
+   (`devices.detached_at`): the topic index leaves it out and actuation
+   refuses it, so readings and commands never go to two places. Its card
+   says "detached", with the reason on hover. Other imported devices are
+   live and start offline until the heartbeat hears from them.
+4. **Fixed on the way, tests opened the dev database.** The DDL helpers
+   moved to `store/ddl.ts` and the data paths to `store/paths.ts`, so code
+   working on another database (a test's, a staged import) no longer opens
+   the live one just by importing the store.
+5. **Fixed on the way, `.gitignore` hid a source folder.** Its bare
+   `data/` rule, meant for the controller's data folder, also matched
+   `backend/src/data/`, so the export and import code would never have been
+   committed. The rule is anchored to `/packages/data/` now.
+6. **Still to check by hand**: Electron's save dialog for the export
+   download, which the headless checks cannot reach.
 
 #### G. Workspaces: archive and recently deleted
 
