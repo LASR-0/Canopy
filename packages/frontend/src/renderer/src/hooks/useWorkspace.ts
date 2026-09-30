@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/http";
 import type { Workspace, AppSettings } from "@canopy/shared-types";
 
-/** Fetch all non-archived workspaces. */
+/** The live workspaces: not archived, not in Recently deleted. */
 export function useWorkspaces() {
   return useQuery({
     queryKey: ["workspaces"],
@@ -63,12 +63,23 @@ export function useCreateWorkspace() {
   });
 }
 
-/** Soft-delete (archive) a workspace. Switches active if needed. */
-export function useDeleteWorkspace() {
+/** Archived and recently deleted workspaces. Under ["workspaces"], so every change to the list refreshes it. */
+export function useStoredWorkspaces() {
+  return useQuery({
+    queryKey: ["workspaces", "stored"],
+    queryFn: ({ signal }) => api("GET /workspaces/stored", { signal }),
+  });
+}
+
+/**
+ * Put a workspace away: archive it, or move it to Recently deleted. Either way
+ * it leaves the live list at once, and if it was the active one the app moves
+ * to another, as the controller does.
+ */
+function usePutAwayWorkspace(send: (workspaceId: string) => Promise<unknown>) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (workspaceId: string) =>
-      api("DELETE /workspaces/:workspaceId", { params: { workspaceId } }),
+    mutationFn: send,
     onMutate: async (workspaceId) => {
       await qc.cancelQueries({ queryKey: ["workspaces"] });
       const prevWorkspaces = qc.getQueryData<Workspace[]>(["workspaces"]);
@@ -99,6 +110,42 @@ export function useDeleteWorkspace() {
       void qc.invalidateQueries({ queryKey: ["workspaces"] });
       void qc.invalidateQueries({ queryKey: ["settings"] });
     },
+  });
+}
+
+/** Archive: put away indefinitely, restorable at any time. */
+export function useArchiveWorkspace() {
+  return usePutAwayWorkspace((workspaceId) =>
+    api("POST /workspaces/:workspaceId/archive", { params: { workspaceId } }));
+}
+
+/** Delete: into Recently deleted, restorable for 7 days. */
+export function useDeleteWorkspace() {
+  return usePutAwayWorkspace((workspaceId) =>
+    api("DELETE /workspaces/:workspaceId", { params: { workspaceId } }));
+}
+
+/** Back to live, from archived or Recently deleted. */
+export function useRestoreWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (workspaceId: string) =>
+      api("POST /workspaces/:workspaceId/restore", { params: { workspaceId } }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["workspaces"] });
+      // A restored device may have come back detached.
+      void qc.invalidateQueries({ queryKey: ["devices"] });
+    },
+  });
+}
+
+/** From Recently deleted, for good, now. */
+export function usePurgeWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (workspaceId: string) =>
+      api("DELETE /workspaces/:workspaceId/permanent", { params: { workspaceId } }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["workspaces"] }),
   });
 }
 

@@ -1,5 +1,6 @@
 import type {
   Workspace,
+  StoredWorkspaces,
   Device,
   RoleAssignment,
   GrowCycle,
@@ -83,9 +84,17 @@ export interface ApiRoutes {
   "POST /controller/command":       { body: ControllerCommand; res: ControllerStatus };
 
   // ── Workspaces ────────────────────────────────────────────────────────────
+  /** Live workspaces only; see /workspaces/stored for the others. */
   "GET /workspaces":                { res: Workspace[] };
+  "GET /workspaces/stored":         { res: StoredWorkspaces };
+  "POST /workspaces/:workspaceId/archive":  { res: Workspace };
+  /** Back to live, from archived or Recently deleted. */
+  "POST /workspaces/:workspaceId/restore":  { res: { workspace: Workspace; detachedDevices: number } };
+  /** Remove a workspace in Recently deleted for good, now rather than after 7 days. */
+  "DELETE /workspaces/:workspaceId/permanent": { res: { deleted: true } };
   "POST /workspaces":               { body: CreateWorkspaceBody; res: Workspace };
   "PATCH /workspaces/:workspaceId": { body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions">>; res: Workspace };
+  /** Move to Recently deleted, restorable for 7 days. */
   "DELETE /workspaces/:workspaceId": { res: { deleted: true } };
 
   // ── Layout (Setup View) ───────────────────────────────────────────────────

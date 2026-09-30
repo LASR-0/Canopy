@@ -5,7 +5,12 @@ export const workspaces = sqliteTable("workspaces", {
   id:             text("id").primaryKey(),
   name:           text("name").notNull(),
   createdAt:      text("created_at").notNull(),
+  /** Unused since 7.5 G, which replaced it with archivedAt and deletedAt. */
   archived:       integer("archived", { mode: "boolean" }).notNull().default(false),
+  /** Put away: restorable at any time; the controller does nothing for it. */
+  archivedAt:     text("archived_at"),
+  /** In Recently deleted: purged 7 days after this. */
+  deletedAt:      text("deleted_at"),
   timezone:       text("timezone").notNull().default("UTC"),
   widthCm:        integer("width_cm"),
   depthCm:        integer("depth_cm"),

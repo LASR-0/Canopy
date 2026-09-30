@@ -15,9 +15,9 @@
  * state topic is proof of life, so it refreshes the device heartbeat and is
  * otherwise ignored — reflecting actuator state back into the UI is Phase 4.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../store/index.js";
-import { devices, readingsRaw } from "../store/schema.js";
+import { devices, readingsRaw, workspaces } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
 import { canIngest } from "../controller/state.js";
 import { onReading } from "../rules/index.js";
@@ -104,7 +104,16 @@ export async function refreshTopicIndex(): Promise<void> {
       })
       .from(devices)
       // Detached devices are imported copies of hardware another device owns.
-      .where(and(eq(devices.forgotten, false), isNull(devices.detachedAt)));
+      // Devices of an archived or deleted workspace are idle until it is
+      // restored: no readings are recorded, so nothing is judged or triggered.
+      .where(and(
+        eq(devices.forgotten, false),
+        isNull(devices.detachedAt),
+        inArray(
+          devices.workspaceId,
+          db.select({ id: workspaces.id }).from(workspaces).where(and(isNull(workspaces.archivedAt), isNull(workspaces.deletedAt))),
+        ),
+      ));
 
     index = buildTopicIndex(
       rows.map((row) => ({

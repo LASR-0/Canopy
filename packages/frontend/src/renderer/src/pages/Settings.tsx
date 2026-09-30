@@ -24,6 +24,10 @@ import {
   useAppSettings,
   usePatchWorkspace,
   useDeleteWorkspace,
+  useArchiveWorkspace,
+  useStoredWorkspaces,
+  useRestoreWorkspace,
+  usePurgeWorkspace,
 } from "@/hooks/useWorkspace";
 import { useDevices, useRoles, useAssignRole, useScan } from "@/hooks/useDevices";
 import { ROLE_META, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
@@ -246,8 +250,6 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
 }) {
   const [name, setName] = useState(workspace.name);
   const [tz, setTz] = useState(workspace.timezone);
-  // The form locks while the delete counts down, so nothing is saved to a workspace about to go.
-  const [deleting, setDeleting] = useState(false);
   const patch = usePatchWorkspace(workspace.id);
 
   useEffect(() => {
@@ -267,7 +269,7 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
         </div>
         <div className="gc-field">
           <label>Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} disabled={deleting} />
+          <input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="gc-field">
           <label>Timezone</label>
@@ -275,25 +277,24 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
             value={tz}
             placeholder="e.g. Australia/Sydney"
             onChange={(e) => setTz(e.target.value)}
-            disabled={deleting}
           />
         </div>
         <div className="ws-mgmt-actions">
+          {/* No countdown: a deleted workspace can be restored for 7 days.
+              The countdown belongs to "Delete now", which cannot be undone. */}
           <DeleteButton
             label="Delete"
-            countdown
             onDelete={() => onDelete(workspace.id)}
-            onPendingChange={setDeleting}
             disabled={isOnly}
-            title={isOnly ? "Cannot delete the only workspace" : undefined}
+            title={isOnly ? "Keep at least one workspace" : "Moves it to Recently deleted, where it can be restored for 7 days"}
           />
 
           {/* Archive — single click, no confirmation (reversible action) */}
-          <Tip content="Archive workspace">
+          <Tip content={isOnly ? "Keep at least one workspace" : "Put it away; restore it any time. Nothing runs for it meanwhile."}>
             <button
               className="btn archive sm"
               onClick={() => onArchive(workspace.id)}
-              disabled={isOnly || deleting}
+              disabled={isOnly}
             >
               <Icon name="archive" size={13} /> Archive
             </button>
@@ -302,12 +303,83 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
           <button
             className="btn primary sm"
             onClick={() => patch.mutate({ name, timezone: tz })}
-            disabled={patch.isPending || deleting}
+            disabled={patch.isPending}
           >
             <Icon name="check" size={13} /> Save
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Archived and recently deleted workspaces ─────────────────────────────────
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+const daysLeft = (iso: string) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000));
+
+/**
+ * The workspaces put away, under the live ones: Archived, each restorable at
+ * any time, and Recently deleted, each restorable until it is purged. Both
+ * start collapsed; they are what you come looking for, not what you work in.
+ */
+function StoredWorkspaces() {
+  const { data } = useStoredWorkspaces();
+  const restore = useRestoreWorkspace();
+  const purge = usePurgeWorkspace();
+  const [open, setOpen] = useState<{ archived: boolean; deleted: boolean }>({ archived: false, deleted: false });
+  const [note, setNote] = useState("");
+
+  const onRestore = (id: string, name: string) =>
+    restore.mutate(id, {
+      onSuccess: ({ detachedDevices }) =>
+        setNote(detachedDevices > 0
+          ? `${name} is back. ${detachedDevices} of its devices ${detachedDevices === 1 ? "is" : "are"} now used by another workspace, so ${detachedDevices === 1 ? "it comes" : "they come"} back detached.`
+          : `${name} is back.`),
+    });
+
+  // The note outlives the lists: restoring the last one empties them.
+  if (!data || (data.archived.length === 0 && data.deleted.length === 0 && !note)) return null;
+
+  const group = (key: "archived" | "deleted", title: string, list: typeof data.archived) =>
+    list.length > 0 && (
+      <div className="ws-stored">
+        <button className="ws-stored-head" onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))} aria-expanded={open[key]}>
+          <span className="ash-chev" style={{ transform: open[key] ? "none" : "rotate(-90deg)" }}><Icon name="chevron" size={13} /></span>
+          {title}
+          <span className="count">{list.length}</span>
+        </button>
+        {open[key] && list.map((w) => (
+          <div key={w.id} className="ws-stored-row">
+            <div className="ws-stored-meta">
+              <span className="ws-mgmt-name">{w.name}</span>
+              <span className="ws-stored-when">
+                {key === "archived"
+                  ? `archived ${fmtDate(w.archivedAt!)}`
+                  : `deleted ${fmtDate(w.deletedAt!)} · ${daysLeft(w.purgeAt!) === 0 ? "removed today" : `${daysLeft(w.purgeAt!)} day${daysLeft(w.purgeAt!) === 1 ? "" : "s"} left`}`}
+              </span>
+            </div>
+            <button className="btn sm" onClick={() => onRestore(w.id, w.name)} disabled={restore.isPending}>
+              <Icon name="refresh" size={12} /> Restore
+            </button>
+            {key === "deleted" && (
+              <DeleteButton
+                label="Delete now"
+                countdown
+                onDelete={() => purge.mutate(w.id)}
+                title="Removes it and everything in it for good"
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+
+  return (
+    <div className="box ws-stored-box">
+      {group("archived", "Archived", data.archived)}
+      {group("deleted", "Recently deleted", data.deleted)}
+      {note && <div className="ws-stored-note">{note}</div>}
     </div>
   );
 }
@@ -324,6 +396,7 @@ export function Settings() {
   const { state: scanState, found: scanFound, startScan, resetScan } = useScan(workspace?.id);
   const assignRole = useAssignRole(workspace?.id ?? "");
   const deleteWorkspace = useDeleteWorkspace();
+  const archiveWorkspace = useArchiveWorkspace();
   const qc = useQueryClient();
   const [showProvision, setShowProvision] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -658,10 +731,11 @@ export function Settings() {
                         isOnly={workspaceList.length === 1}
                         isLast={i === workspaceList.length - 1}
                         onDelete={(id) => deleteWorkspace.mutate(id)}
-                        onArchive={(id) => deleteWorkspace.mutate(id)}
+                        onArchive={(id) => archiveWorkspace.mutate(id)}
                       />
                     ))}
                   </div>
+                  <StoredWorkspaces />
                 </div>
               )}
               </div>

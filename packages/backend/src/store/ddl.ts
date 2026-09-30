@@ -39,6 +39,12 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   addColumnIfMissing(db, "chart_layouts", "view_json", "TEXT");
   // An imported copy of hardware that already belongs to another workspace.
   addColumnIfMissing(db, "devices", "detached_at", "TEXT");
+  // Archive and Recently deleted, as timestamps (7.5 G). The old flag was set
+  // by both the Archive and the Delete button, so what it marked is archived.
+  if (addColumnIfMissing(db, "workspaces", "archived_at", "TEXT")) {
+    db.prepare(`UPDATE workspaces SET archived_at = ? WHERE archived = 1`).run(new Date().toISOString());
+  }
+  addColumnIfMissing(db, "workspaces", "deleted_at", "TEXT");
 }
 
 export function addColumnIfMissing(
@@ -69,7 +75,9 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       id              TEXT PRIMARY KEY,
       name            TEXT NOT NULL,
       created_at      TEXT NOT NULL,
-      archived        INTEGER NOT NULL DEFAULT 0,
+      archived        INTEGER NOT NULL DEFAULT 0,  /* unused since 7.5 G; see archived_at */
+      archived_at     TEXT,
+      deleted_at      TEXT,
       timezone        TEXT NOT NULL DEFAULT 'UTC',
       width_cm        INTEGER,
       depth_cm        INTEGER,
@@ -493,6 +501,7 @@ export function seedData(database: InstanceType<typeof Database>): void {
   seedJob.run("job_prune_hourly",        "prune_hourly",        in7d);
   seedJob.run("job_prune_events",        "prune_events",        in1h);
   seedJob.run("job_prune_attachments",   "prune_attachments",   in1h);
+  seedJob.run("job_purge_workspaces",    "purge_workspaces",    in1h);
   seedJob.run("job_maintenance_check",   "maintenance_check",   nextMid);
   seedJob.run("job_vacuum",              "vacuum",              in7d);
 }

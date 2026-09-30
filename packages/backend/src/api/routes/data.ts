@@ -3,24 +3,8 @@ import { sqliteConnection } from "../../store/index.js";
 import { IMPORT_DIR, PHOTO_DIR, TMP_DIR } from "../../store/paths.js";
 import { exportArchive, exportFileName } from "../../data/export.js";
 import { ImportError, applyImport, discardImport, importStatus, stageImport } from "../../data/import.js";
-import { refreshTopicIndex } from "../../device-manager/ingest.js";
-import { refreshDerivedRoles } from "../../device-manager/derived.js";
-import { refreshRules } from "../../rules/index.js";
-import { refreshThresholds } from "../../rules/thresholds.js";
-import { refreshActiveGrows } from "../../grow/stage.js";
+import { reloadWorkspaceCaches } from "../../controller/reload.js";
 import { err, ok } from "../reply.js";
-
-/**
- * Load newly imported workspaces into the controller: the same caches a
- * start fills. Existing workspaces are reloaded along with them, unchanged.
- */
-async function loadImported(): Promise<void> {
-  await refreshTopicIndex();
-  await refreshDerivedRoles();
-  await refreshRules();
-  await refreshThresholds();
-  await refreshActiveGrows();
-}
 
 export async function dataRoutes(app: FastifyInstance): Promise<void> {
   // An upload can be hundreds of megabytes, so it is handed over as a stream
@@ -65,7 +49,7 @@ export async function dataRoutes(app: FastifyInstance): Promise<void> {
       if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === "string")) {
         return reply.status(400).send(err("validation_failed", "Choose at least one workspace from the file"));
       }
-      void applyImport(sqliteConnection, req.params.token, ids as string[], PHOTO_DIR, loadImported);
+      void applyImport(sqliteConnection, req.params.token, ids as string[], PHOTO_DIR, reloadWorkspaceCaches);
       return reply.status(202).send(ok(importStatus(req.params.token)!));
     },
   );

@@ -235,6 +235,20 @@ describe("evaluateAutomations — window triggers", () => {
   });
 });
 
+describe("evaluateAutomations — put-away workspaces", () => {
+  it("does nothing for an archived workspace", async () => {
+    tableRows.set(workspaces, [{ id: "ws-1", timezone: "UTC", archivedAt: "2026-09-26T00:00:00Z", deletedAt: null }]);
+    await evaluateAutomations(NOON);
+    expect(mockActuate).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for a workspace in Recently deleted", async () => {
+    tableRows.set(workspaces, [{ id: "ws-1", timezone: "UTC", archivedAt: null, deletedAt: "2026-09-26T00:00:00Z" }]);
+    await evaluateAutomations(NOON);
+    expect(mockActuate).not.toHaveBeenCalled();
+  });
+});
+
 describe("evaluateAutomations — failed runs", () => {
   const REFUSED = { ok: false, code: "device_unreachable", message: "down" } as never;
   const SENT = { ok: true, sent: { topic: "t", payload: "p" }, channel: "ch" };

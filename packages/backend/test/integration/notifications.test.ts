@@ -142,7 +142,7 @@ describe("announceDueTasks", () => {
 
   it("leaves archived workspaces alone", () => {
     const db = setup();
-    db.prepare(`INSERT INTO workspaces (id, name, created_at, archived) VALUES ('ws-old', 'Old', ?, 1)`).run(daysAgo(30));
+    db.prepare(`INSERT INTO workspaces (id, name, created_at, archived_at) VALUES ('ws-old', 'Old', ?, ?)`).run(daysAgo(30), daysAgo(1));
     task(db, "t1", minsAgo(10), 1, "ws-old");
 
     expect(announceDueTasks(db, NOW)).toBe(0);

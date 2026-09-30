@@ -34,6 +34,7 @@ import type { ImportPreview, ImportStatus, ImportWorkspacePreview, ImportedWorks
 import { NOTIFICATION_CHANNELS } from "@canopy/shared-types";
 import { applyColumnAdditions, applyDDL } from "../store/ddl.js";
 import { extractTar } from "./tar.js";
+import { alreadyClaimed, claimedTopics, type DeviceTopicsRow } from "../device-manager/claims.js";
 import { DB_ENTRY, EXPORT_FORMAT, EXPORT_VERSION, MANIFEST_ENTRY, PHOTO_PREFIX, type ExportManifest } from "./export.js";
 
 /** Readings copied per batch, between yields to the event loop. */
@@ -58,45 +59,13 @@ interface StagedFile {
   manifest: ExportManifest;
 }
 
-/** The topics a device answers on: its prefix and every capability's topics. */
-function deviceTopics(row: { mqtt_topic_prefix: string | null; capabilities_json: string }): Set<string> {
-  const topics = new Set<string>();
-  if (row.mqtt_topic_prefix) topics.add(`prefix:${row.mqtt_topic_prefix}`);
-  try {
-    for (const cap of JSON.parse(row.capabilities_json) as { stateTopic?: string; commandTopic?: string }[]) {
-      if (cap.stateTopic) topics.add(cap.stateTopic);
-      if (cap.commandTopic) topics.add(cap.commandTopic);
-    }
-  } catch {
-    // A device with unreadable capabilities claims only its prefix.
-  }
-  return topics;
-}
-
-/** Every topic claimed by a live (not forgotten, not detached) device here. */
-function liveTopics(live: SqliteDatabase): Set<string> {
-  const rows = live.prepare(
-    `SELECT mqtt_topic_prefix, capabilities_json FROM devices WHERE forgotten = 0 AND detached_at IS NULL`,
-  ).all() as { mqtt_topic_prefix: string | null; capabilities_json: string }[];
-  const all = new Set<string>();
-  for (const row of rows) for (const t of deviceTopics(row)) all.add(t);
-  return all;
-}
-
-/** The ids of a file's devices whose hardware is already here. */
+/** The ids of a file's devices whose hardware is already claimed here. */
 function devicesAlreadyHere(staged: SqliteDatabase, live: SqliteDatabase, workspaceIds: readonly string[]): Set<string> {
-  const here = liveTopics(live);
-  const out = new Set<string>();
   const rows = staged.prepare(
     `SELECT id, mqtt_topic_prefix, capabilities_json FROM devices
      WHERE forgotten = 0 AND workspace_id IN (${workspaceIds.map(() => "?").join(",")})`,
-  ).all(...workspaceIds) as { id: string; mqtt_topic_prefix: string | null; capabilities_json: string }[];
-  for (const row of rows) {
-    for (const t of deviceTopics(row)) {
-      if (here.has(t)) { out.add(row.id); break; }
-    }
-  }
-  return out;
+  ).all(...workspaceIds) as (DeviceTopicsRow & { id: string })[];
+  return alreadyClaimed(rows, claimedTopics(live));
 }
 
 /** "Tent 1" is taken? "Tent 1 (imported)", then "Tent 1 (imported 2)"… */
@@ -178,8 +147,10 @@ function openStaged(dbPath: string): SqliteDatabase {
 function preview(staged: SqliteDatabase, live: SqliteDatabase, token: string, exportedAt: string): ImportPreview {
   const count = (sql: string, id: string) => (staged.prepare(sql).get(id) as { n: number }).n;
   const taken = new Set((live.prepare(`SELECT name FROM workspaces`).all() as { name: string }[]).map((r) => r.name));
-  const rows = staged.prepare(`SELECT id, name, archived FROM workspaces ORDER BY created_at`).all() as
-    { id: string; name: string; archived: number }[];
+  // A workspace in the file's Recently deleted is on its way out: not offered.
+  const rows = staged.prepare(
+    `SELECT id, name, archived_at FROM workspaces WHERE deleted_at IS NULL ORDER BY created_at`,
+  ).all() as { id: string; name: string; archived_at: string | null }[];
 
   const workspaces: ImportWorkspacePreview[] = rows.map((w) => {
     const importedName = freeName(w.name, taken);
@@ -187,7 +158,7 @@ function preview(staged: SqliteDatabase, live: SqliteDatabase, token: string, ex
       id: w.id,
       name: w.name,
       ...(importedName ? { importedName } : {}),
-      archived: w.archived === 1,
+      archived: w.archived_at !== null,
       grows: count(`SELECT COUNT(*) n FROM grows WHERE workspace_id = ?`, w.id),
       entries: count(`SELECT COUNT(*) n FROM journal_entries WHERE workspace_id = ?`, w.id),
       photos: count(`SELECT COUNT(*) n FROM journal_photos WHERE workspace_id = ? AND entry_id IS NOT NULL`, w.id),
@@ -363,7 +334,7 @@ export async function applyImport(
     live.prepare(`ATTACH DATABASE ? AS imp`).run(file.dbPath);
     attached = true;
 
-    const known = new Set((live.prepare(`SELECT id FROM imp.workspaces`).all() as { id: string }[]).map((r) => r.id));
+    const known = new Set((live.prepare(`SELECT id FROM imp.workspaces WHERE deleted_at IS NULL`).all() as { id: string }[]).map((r) => r.id));
     const chosen = [...new Set(workspaceIds)].filter((id) => known.has(id));
     if (chosen.length === 0) throw new ImportError("Choose at least one workspace from the file");
 

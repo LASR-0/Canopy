@@ -139,14 +139,14 @@ export function isNotificationChannel(value: unknown): value is NotificationChan
  *
  * Once per due date. `due_notified_at` holds the `next_due_at` last announced,
  * and completing or skipping a task moves `next_due_at` on, which re-arms it.
- * Tasks in archived workspaces are left alone.
+ * Tasks in archived or deleted workspaces are left alone.
  */
 export function announceDueTasks(db: Database, now: Date = new Date()): number {
   const at = now.toISOString();
   const due = db.prepare(`
     SELECT t.id, t.workspace_id, t.name, t.next_due_at
     FROM maintenance_tasks t
-    JOIN workspaces w ON w.id = t.workspace_id AND w.archived = 0
+    JOIN workspaces w ON w.id = t.workspace_id AND w.archived_at IS NULL AND w.deleted_at IS NULL
     WHERE t.notifications = 1
       AND t.next_due_at IS NOT NULL
       AND t.next_due_at <= ?

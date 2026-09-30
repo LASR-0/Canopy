@@ -14,10 +14,11 @@ import { buildServer, PORT } from "./api/server.js";
 import { startBroker, MQTT_PORT } from "./broker/index.js";
 import { startDeviceManager } from "./device-manager/index.js";
 import { startScheduler } from "./scheduler/index.js";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 async function ensureDefaultWorkspace(): Promise<void> {
-  const existing = await db.select().from(workspaces).where(eq(workspaces.archived, false));
+  // Only a live workspace counts: the app always needs one to open.
+  const existing = await db.select().from(workspaces).where(and(isNull(workspaces.archivedAt), isNull(workspaces.deletedAt)));
   if (existing.length > 0) return;
 
   const id = randomUUID();
@@ -26,7 +27,6 @@ async function ensureDefaultWorkspace(): Promise<void> {
     id,
     name: "My Workspace",
     createdAt: now,
-    archived: false,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
   });
 

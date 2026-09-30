@@ -1,8 +1,18 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { randomUUID } from "node:crypto";
-import { eq, and } from "drizzle-orm";
-import { db } from "../../store/index.js";
-import { workspaces, roleAssignments, appSettings, devicePlacements, plants } from "../../store/schema.js";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { db, sqliteConnection } from "../../store/index.js";
+import { PHOTO_DIR } from "../../store/paths.js";
+import { reloadWorkspaceCaches } from "../../controller/reload.js";
+import {
+  WorkspaceStateError,
+  archiveWorkspace,
+  deleteWorkspace,
+  purgeAt,
+  purgeWorkspace,
+  restoreWorkspace,
+} from "../../workspaces/lifecycle.js";
+import { workspaces, roleAssignments, devicePlacements, plants } from "../../store/schema.js";
 import { ok, err } from "../reply.js";
 import { dimensionsProblem, type EnclosureDimensions, type Workspace, type RoleAssignment } from "@canopy/shared-types";
 import { dimensionsChanged, rescalePlacement, rescalePlant } from "../../layout/index.js";
@@ -42,9 +52,13 @@ function rowToWorkspace(row: typeof workspaces.$inferSelect): Workspace {
     id: row.id,
     name: row.name,
     createdAt: row.createdAt,
-    archived: row.archived,
     timezone: row.timezone,
   };
+  if (row.archivedAt) w.archivedAt = row.archivedAt;
+  if (row.deletedAt) {
+    w.deletedAt = row.deletedAt;
+    w.purgeAt = purgeAt(row.deletedAt);
+  }
   const dimensions = dimensionsOf(row);
   if (dimensions) w.dimensions = dimensions;
   if (row.activeGrowId != null) w.activeGrowId = row.activeGrowId;
@@ -53,8 +67,58 @@ function rowToWorkspace(row: typeof workspaces.$inferSelect): Workspace {
 
 export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
   app.get("/workspaces", async (_req, reply) => {
-    const rows = await db.select().from(workspaces).where(eq(workspaces.archived, false));
+    const rows = await db.select().from(workspaces).where(and(isNull(workspaces.archivedAt), isNull(workspaces.deletedAt)));
     return reply.send(ok(rows.map(rowToWorkspace)));
+  });
+
+  /** Archived and recently deleted workspaces, newest first. */
+  app.get("/workspaces/stored", async (_req, reply) => {
+    const archived = await db.select().from(workspaces)
+      .where(and(isNotNull(workspaces.archivedAt), isNull(workspaces.deletedAt)))
+      .orderBy(desc(workspaces.archivedAt));
+    const deleted = await db.select().from(workspaces)
+      .where(isNotNull(workspaces.deletedAt))
+      .orderBy(desc(workspaces.deletedAt));
+    return reply.send(ok({ archived: archived.map(rowToWorkspace), deleted: deleted.map(rowToWorkspace) }));
+  });
+
+  /**
+   * Archive, restore and delete change which workspaces the controller acts
+   * for, so the caches are reloaded after. Null when the change was refused
+   * and the error has been sent.
+   */
+  async function change<T>(reply: FastifyReply, fn: () => T | Promise<T>): Promise<{ value: T } | null> {
+    try {
+      const value = await fn();
+      await reloadWorkspaceCaches();
+      return { value };
+    } catch (e) {
+      if (!(e instanceof WorkspaceStateError)) throw e;
+      await reply.status(e.notFound ? 404 : 409).send(err(e.notFound ? "not_found" : "conflict", e.message));
+      return null;
+    }
+  }
+
+  const current = async (id: string) =>
+    rowToWorkspace((await db.select().from(workspaces).where(eq(workspaces.id, id)))[0]!);
+
+  app.post<{ Params: { workspaceId: string } }>("/workspaces/:workspaceId/archive", async (req, reply) => {
+    const done = await change(reply, () => archiveWorkspace(sqliteConnection, req.params.workspaceId));
+    if (!done) return reply;
+    return reply.send(ok(await current(req.params.workspaceId)));
+  });
+
+  app.post<{ Params: { workspaceId: string } }>("/workspaces/:workspaceId/restore", async (req, reply) => {
+    const done = await change(reply, () => restoreWorkspace(sqliteConnection, req.params.workspaceId));
+    if (!done) return reply;
+    return reply.send(ok({ workspace: await current(req.params.workspaceId), detachedDevices: done.value.detachedDevices }));
+  });
+
+  /** For good, now, rather than after 7 days. Only from Recently deleted. */
+  app.delete<{ Params: { workspaceId: string } }>("/workspaces/:workspaceId/permanent", async (req, reply) => {
+    const done = await change(reply, () => purgeWorkspace(sqliteConnection, PHOTO_DIR, req.params.workspaceId));
+    if (!done) return reply;
+    return reply.send(ok({ deleted: true as const }));
   });
 
   app.post<{ Body: { name: string; timezone?: string } }>(
@@ -69,7 +133,6 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
         id,
         name: name.trim(),
         createdAt: new Date().toISOString(),
-        archived: false,
         timezone: timezone ?? "UTC",
       });
       const [row] = await db.select().from(workspaces).where(eq(workspaces.id, id));
@@ -123,18 +186,12 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  /** Archive (soft-delete) a workspace */
+  /** Move to Recently deleted, restorable for 7 days. */
   app.delete<{ Params: { workspaceId: string } }>(
     "/workspaces/:workspaceId",
     async (req, reply) => {
-      const { workspaceId } = req.params;
-      const [row] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId));
-      if (!row) return reply.status(404).send(err("not_found", "Workspace not found"));
-      await db.update(workspaces).set({ archived: true }).where(eq(workspaces.id, workspaceId));
-      // If this was the active workspace, clear the active workspace setting
-      await db.update(appSettings)
-        .set({ activeWorkspaceId: null })
-        .where(and(eq(appSettings.id, 1), eq(appSettings.activeWorkspaceId, workspaceId)));
+      const done = await change(reply, () => deleteWorkspace(sqliteConnection, req.params.workspaceId));
+      if (!done) return reply;
       return reply.send(ok({ deleted: true as const }));
     },
   );

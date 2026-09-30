@@ -89,12 +89,16 @@ function parseAutomation(row: typeof automations.$inferSelect): Automation | nul
   }
 }
 
-/** Timezone per workspace, so a photoperiod follows the tent's clock. */
+/**
+ * Timezone per live workspace, so a photoperiod follows the tent's clock. An
+ * archived or deleted workspace is left out: the controller does nothing for
+ * one that has been put away.
+ */
 async function workspaceTimezones(): Promise<Map<string, string>> {
   const rows = await db
-    .select({ id: workspaces.id, timezone: workspaces.timezone })
+    .select({ id: workspaces.id, timezone: workspaces.timezone, archivedAt: workspaces.archivedAt, deletedAt: workspaces.deletedAt })
     .from(workspaces);
-  return new Map(rows.map((r) => [r.id, r.timezone]));
+  return new Map(rows.filter((r) => !r.archivedAt && !r.deletedAt).map((r) => [r.id, r.timezone]));
 }
 
 /**
@@ -125,6 +129,9 @@ export async function evaluateAutomations(now: Date = new Date()): Promise<Autom
     const trigger = automation.trigger;
     if (trigger.kind === "rule") continue; // Phase 6 evaluates these.
 
+    // Archived or deleted: not in the timezone map, and not acted for.
+    if (!timezones.has(automation.workspaceId)) continue;
+
     // A manual override holds the automation off until it expires.
     if (automation.overrideUntil && automation.overrideUntil > now.toISOString()) {
       outcome.skipped++;
@@ -140,7 +147,7 @@ export async function evaluateAutomations(now: Date = new Date()): Promise<Autom
     }
 
     outcome.evaluated++;
-    const timeZone = timezones.get(automation.workspaceId) ?? "UTC";
+    const timeZone = timezones.get(automation.workspaceId)!;
 
     if (trigger.kind === "window") {
       const inside = isWithinWindow(trigger.on, trigger.off, now, timeZone);

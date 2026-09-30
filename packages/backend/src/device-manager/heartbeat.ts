@@ -7,9 +7,9 @@
  *
  * Runs as a background interval started by startDeviceManager().
  */
-import { eq, lt, and, inArray } from "drizzle-orm";
+import { eq, lt, and, inArray, isNull } from "drizzle-orm";
 import { db } from "../store/index.js";
-import { devices } from "../store/schema.js";
+import { devices, workspaces } from "../store/schema.js";
 import { broadcast } from "../ws/index.js";
 import { recordEvent } from "../automation/apply.js";
 
@@ -85,7 +85,15 @@ async function checkOfflineDevices(): Promise<void> {
       inArray(devices.id, stale.map(({ id }) => id)),
     );
 
+    // An archived or deleted workspace's devices go quiet by design; marking
+    // them offline is accurate, but it is not news.
+    const live = new Set((await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(and(isNull(workspaces.archivedAt), isNull(workspaces.deletedAt)))).map((w) => w.id));
+
     for (const { id, workspaceId, name } of stale) {
+      if (!live.has(workspaceId)) continue;
       // A sensor going quiet is the most common cause of a chart that stops
       // moving, so it belongs in the timeline rather than only in the log.
       await recordEvent({
