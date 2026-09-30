@@ -30,6 +30,17 @@ export async function devicesForRole(
 }
 
 /**
+ * Targets whose failure has already been recorded, by automation, role and
+ * device, until that target next succeeds.
+ *
+ * A window automation whose command fails retries on every scheduler tick, so
+ * recording each attempt would write one event a minute for as long as the
+ * device stays broken, which is the flood Phase 7.5 A cleaned up after. In
+ * memory, so a restart records a still-failing target once more.
+ */
+const failing = new Set<string>();
+
+/**
  * Drive every role an automation targets.
  *
  * Returns whether anything was actually sent. A role nobody holds, or a device
@@ -41,7 +52,7 @@ export async function devicesForRole(
  * controller convinced it was right.
  */
 export async function applyActions(
-  automation: Pick<Automation, "workspaceId" | "name">,
+  automation: Pick<Automation, "id" | "workspaceId" | "name">,
   actions: AutomationAction[],
   source: string,
 ): Promise<boolean> {
@@ -53,12 +64,18 @@ export async function applyActions(
 
     for (const target of targets) {
       const result = await actuateDevice(target.deviceId, action.command, target.channel);
+      const key = `${automation.id}:${action.role}:${target.deviceId}`;
       if (result.ok) {
         sentAnything = true;
+        failing.delete(key);
       } else {
         console.warn(
           `[${source}] ${automation.name}: ${action.role} -> ${result.code}: ${result.message}`,
         );
+        if (!failing.has(key)) {
+          failing.add(key);
+          await recordFailure(automation, action.role, result.message);
+        }
       }
     }
   }
@@ -95,6 +112,35 @@ export async function recordEvent(event: EventRecord): Promise<void> {
     ...(event.sourceLabel ? { sourceLabel: event.sourceLabel } : {}),
     ...(event.severity ? { severity: event.severity } : {}),
   });
+}
+
+/**
+ * Record a failed run: an automation tried to act and a device refused or
+ * could not be reached. A notification for the Automation page.
+ */
+async function recordFailure(
+  automation: Pick<Automation, "id" | "workspaceId" | "name">,
+  role: RoleKind,
+  message: string,
+): Promise<void> {
+  try {
+    await recordEvent({
+      workspaceId: automation.workspaceId,
+      type: "automation_failed",
+      severity: "err",
+      sourceId: automation.id,
+      sourceLabel: automation.name,
+      description: `${role}: ${message}`,
+    });
+  } catch (err) {
+    // Losing the record must not stop the remaining actions from being driven.
+    console.error("[automation] failed to record a failed run:", err);
+  }
+}
+
+/** Forget which targets are failing. Tests only. */
+export function resetFailureState(): void {
+  failing.clear();
 }
 
 /** Record an automation firing and push the live notification for it. */

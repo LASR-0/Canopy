@@ -63,6 +63,8 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   addColumnIfMissing(db, "readings_daily",  "max_value", "REAL");
   // Event retention. Events had none, and a flapping alert wrote 13k rows a day.
   addColumnIfMissing(db, "app_settings", "event_retention_days", "INTEGER NOT NULL DEFAULT 90");
+  // The due date a task's "due" notification was last recorded for.
+  addColumnIfMissing(db, "maintenance_tasks", "due_notified_at", "TEXT");
 }
 
 export function addColumnIfMissing(
@@ -350,6 +352,16 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
     CREATE INDEX IF NOT EXISTS idx_events_workspace_time
       ON events (workspace_id, occurred_at DESC);
 
+    /* ── notification_seen ────────────────────────────────────────────── */
+    /* How far each page's notifications have been seen: one timestamp per
+       page, not a flag per event. */
+    CREATE TABLE IF NOT EXISTS notification_seen (
+      workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      channel       TEXT NOT NULL,
+      seen_at       TEXT NOT NULL,
+      PRIMARY KEY (workspace_id, channel)
+    );
+
     /* ── automations ──────────────────────────────────────────────────── */
     CREATE TABLE IF NOT EXISTS automations (
       id              TEXT PRIMARY KEY,
@@ -384,7 +396,8 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       notifications           INTEGER NOT NULL DEFAULT 1,
       next_due_at             TEXT,
       last_done_at            TEXT,
-      created_at              TEXT NOT NULL
+      created_at              TEXT NOT NULL,
+      due_notified_at         TEXT
     );
 
     /* ── maintenance_completions ──────────────────────────────────────── */

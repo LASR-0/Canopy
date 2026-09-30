@@ -5,6 +5,7 @@ import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon } from "@/components/Icon";
+import { Tip } from "@/components/Tip";
 import { api } from "@/lib/http";
 import { METRIC_META, formatMetricValue, unitLabel } from "@/lib/metrics";
 import { calcGrowStage } from "@/lib/growStage";
@@ -276,6 +277,7 @@ type EventGroup = "automations" | "alerts" | "devices" | "grow";
 
 const EVENT_GROUP: Record<AppEvent["type"], EventGroup> = {
   automation_fired: "automations",
+  automation_failed: "automations",
   failsafe_trip: "automations",
   threshold_alert: "alerts",
   device_online: "devices",
@@ -284,6 +286,7 @@ const EVENT_GROUP: Record<AppEvent["type"], EventGroup> = {
   mode_changed: "grow",
   milestone_reached: "grow",
   maintenance_done: "grow",
+  maintenance_due: "grow",
 };
 
 const EVENT_GROUPS: { key: EventGroup; label: string }[] = [
@@ -455,41 +458,44 @@ function ChartPanel({
           )}
         </div>
         <div className="chart-opts">
-          <button
-            className={`copt${opts.night ? " on" : ""}`}
-            onClick={() => onToggleOpt("night")}
-            disabled={night.length === 0}
-            title={night.length === 0
+          <Tip content={night.length === 0
               ? "Needs a photoperiod automation to know when the lights are off"
-              : "Shade lights-off periods"}
-          >
-            <span className="swatch-sq cf-hatch" /> Night
-          </button>
-          <button
-            className={`copt${opts.targets ? " on" : ""}`}
-            onClick={() => onToggleOpt("targets")}
-            title="Draw target bands from your thresholds"
-          >
-            <Icon name="target" size={12} /> Targets
-          </button>
-          <button
-            className={`copt${opts.oor ? " on" : ""}`}
-            onClick={() => onToggleOpt("oor")}
-            title="Mark readings outside their target"
-          >
-            Out-of-range
-          </button>
+              : "Shade lights-off periods"}>
+            <button
+              className={`copt${opts.night ? " on" : ""}`}
+              onClick={() => onToggleOpt("night")}
+              disabled={night.length === 0}
+            >
+              <span className="swatch-sq cf-hatch" /> Night
+            </button>
+          </Tip>
+          <Tip content="Draw target bands from your thresholds">
+            <button
+              className={`copt${opts.targets ? " on" : ""}`}
+              onClick={() => onToggleOpt("targets")}
+            >
+              <Icon name="target" size={12} /> Targets
+            </button>
+          </Tip>
+          <Tip content="Mark readings outside their target">
+            <button
+              className={`copt${opts.oor ? " on" : ""}`}
+              onClick={() => onToggleOpt("oor")}
+            >
+              Out-of-range
+            </button>
+          </Tip>
           <span className="copt-sep" aria-hidden />
           {EVENT_GROUPS.map(({ key, label }) => (
-            <button
-              key={key}
-              className={`copt${eventGroups.has(key) ? " on" : ""}`}
-              onClick={() => onToggleEventGroup(key)}
-              aria-pressed={eventGroups.has(key)}
-              title={`${eventGroups.has(key) ? "Hide" : "Show"} ${label.toLowerCase()} on the timeline`}
-            >
-              <span className="copt-tick" /> {label}
-            </button>
+            <Tip key={key} content={`${eventGroups.has(key) ? "Hide" : "Show"} ${label.toLowerCase()} on the timeline`}>
+              <button
+                className={`copt${eventGroups.has(key) ? " on" : ""}`}
+                onClick={() => onToggleEventGroup(key)}
+                aria-pressed={eventGroups.has(key)}
+              >
+                <span className="copt-tick" /> {label}
+              </button>
+            </Tip>
           ))}
         </div>
       </div>
@@ -1031,13 +1037,14 @@ export function Logging() {
                     </span>
                   </button>
                 ))}
-                <button
-                  className="layout-add"
-                  title="Save the current selection as a layout"
-                  onClick={() => setSaving((v) => !v)}
-                >
-                  <Icon name="plus" size={13} />
-                </button>
+                <Tip content="Save the current selection as a layout">
+                  <button
+                    className="layout-add"
+                    onClick={() => setSaving((v) => !v)}
+                  >
+                    <Icon name="plus" size={13} />
+                  </button>
+                </Tip>
               </div>
             </div>
 
@@ -1092,9 +1099,11 @@ export function Logging() {
                             <div className="sc-stat" key={key}>
                               <span className="sc-k">{key}</span>
                               {/* Truncates only as a last resort; the full value is on hover. */}
-                              <span className="sc-v" style={{ color }} title={value != null ? `${text} ${unit}` : undefined}>
-                                {text}
-                              </span>
+                              <Tip content={value != null ? `${text} ${unit}` : undefined}>
+                                <span className="sc-v" style={{ color }}>
+                                  {text}
+                                </span>
+                              </Tip>
                             </div>
                           );
                         })}

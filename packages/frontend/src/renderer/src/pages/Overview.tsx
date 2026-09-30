@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Sparkline } from "@/components/Sparkline";
 import { Icon, type IconName } from "@/components/Icon";
+import { Tip } from "@/components/Tip";
+import { timeAgo } from "@/lib/utils";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useLiveReadings } from "@/hooks/useLiveReadings";
@@ -29,16 +31,6 @@ import { useNavigate } from "@/shell/navigation";
 // Units and decimals moved to lib/metrics.ts alongside the catalogue, now that
 // Logging formats the same values.
 const fmtValue = formatMetricValue;
-
-function relTime(iso: string): string {
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60)  return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60)  return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24)  return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
 type RangeKey = "1H" | "24H" | "7D" | "30D";
 const RANGES: RangeKey[] = ["1H", "24H", "7D", "30D"];
@@ -88,14 +80,14 @@ function GrowBanner({ grow }: { grow: GrowCycle }) {
       <div className="gb-right">
         <div className="gb-track" role="img" aria-label={`Day ${info.totalDay} of ${totalDays}, in ${STAGE_LABELS[info.stage]}`}>
           {segments.map((seg) => (
-            <div
-              key={seg.stage}
-              className={`gb-seg ${seg.state}`}
-              style={{ flexGrow: seg.weeks, "--stage": seg.color } as React.CSSProperties}
-              title={`${seg.label} · ${seg.weeks} week${seg.weeks === 1 ? "" : "s"}`}
-            >
-              <span>{seg.label}</span>
-            </div>
+            <Tip key={seg.stage} content={`${seg.label} · ${seg.weeks} week${seg.weeks === 1 ? "" : "s"}`}>
+              <div
+                className={`gb-seg ${seg.state}`}
+                style={{ flexGrow: seg.weeks, "--stage": seg.color } as React.CSSProperties}
+              >
+                <span>{seg.label}</span>
+              </div>
+            </Tip>
           ))}
           {totalDays > 0 && (
             <span className="gb-today" style={{ left: `${Math.min(100, ((info.totalDay - 0.5) / totalDays) * 100)}%` }} />
@@ -200,8 +192,10 @@ function FeedRow({ event }: { event: AppEvent }) {
     event.type === "device_online"    ? "plug"        :
     event.type === "device_offline"   ? "plug"        :
     event.type === "automation_fired" ? "automation"  :
+    event.type === "automation_failed" ? "automation" :
     event.type === "stage_changed"    ? "cycle"       :
     event.type === "maintenance_done" ? "maintenance" :
+    event.type === "maintenance_due"  ? "maintenance" :
     "info";
 
   const iconColor =
@@ -227,7 +221,7 @@ function FeedRow({ event }: { event: AppEvent }) {
           </div>
         )}
       </div>
-      <div className="feed-time">{relTime(event.occurredAt)}</div>
+      <div className="feed-time">{timeAgo(event.occurredAt)}</div>
     </div>
   );
 }
@@ -380,21 +374,23 @@ function ActivityFeed({ events }: { events: AppEvent[] }) {
         {/* Pinned right and adjacent, so the controls stay put when the feed
             switches and the title's width changes underneath them. */}
         <span className="feed-actions">
-          <button
-            className="feed-switch"
-            onClick={() => setViewIndex((i) => (i + 1) % FEED_VIEWS.length)}
-            title={`Show ${FEED_VIEWS[(viewIndex + 1) % FEED_VIEWS.length]!.label.toLowerCase()}`}
-          >
-            <Icon name="arrow-right" size={13} />
-          </button>
+          <Tip content={`Show ${FEED_VIEWS[(viewIndex + 1) % FEED_VIEWS.length]!.label.toLowerCase()}`}>
+            <button
+              className="feed-switch"
+              onClick={() => setViewIndex((i) => (i + 1) % FEED_VIEWS.length)}
+            >
+              <Icon name="arrow-right" size={13} />
+            </button>
+          </Tip>
 
-          <button
-            className="feed-limit"
-            onClick={() => setLimitIndex((i) => (i + 1) % FEED_LIMITS.length)}
-            title="Change how many are shown"
-          >
-            {limit === 0 ? "All" : limit}
-          </button>
+          <Tip content="Change how many are shown">
+            <button
+              className="feed-limit"
+              onClick={() => setLimitIndex((i) => (i + 1) % FEED_LIMITS.length)}
+            >
+              {limit === 0 ? "All" : limit}
+            </button>
+          </Tip>
         </span>
       </div>
 
@@ -438,7 +434,6 @@ function MaintenanceRow({ task, workspaceId }: { task: MaintenanceTask; workspac
 // ── Main page ────────────────────────────────────────────────────────────
 
 export function Overview() {
-  const qc       = useQueryClient();
   const workspace = useActiveWorkspace();
   const readings  = useLiveReadings(workspace?.id);
   const [range, setRange] = useState<RangeKey>("24H");
@@ -475,15 +470,6 @@ export function Overview() {
     </span>
   );
 
-  const handleRefresh = () => {
-    if (!workspace) return;
-    void qc.invalidateQueries({ queryKey: ["readings", workspace.id] });
-    void qc.invalidateQueries({ queryKey: ["series", workspace.id] });
-    void qc.invalidateQueries({ queryKey: ["events", workspace.id] });
-    void qc.invalidateQueries({ queryKey: ["devices", workspace.id] });
-    void qc.invalidateQueries({ queryKey: ["maintenance", workspace.id] });
-  };
-
   const headerActions = (
     <>
       <div className="segmented">
@@ -491,10 +477,7 @@ export function Overview() {
           <button key={r} className={range === r ? "on" : ""} onClick={() => setRange(r)}>{r}</button>
         ))}
       </div>
-      <button className="btn btn-icon" title="Refresh" onClick={handleRefresh}>
-        <Icon name="refresh" size={15} />
-      </button>
-      <button className="btn primary">
+      <button className="btn primary" onClick={() => navigate("automation")}>
         <Icon name="plus" size={14} /> New automation
       </button>
     </>

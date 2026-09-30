@@ -1,6 +1,67 @@
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/Icon";
+import { Tip } from "@/components/Tip";
+import { cn } from "@/lib/utils";
+import { SearchPalette } from "./SearchPalette";
+import { NotificationBell } from "./NotificationBell";
 
 const isMac = window.canopyWindow.platform === "darwin";
+
+/**
+ * Re-fetches what is on screen: the queries mounted now, which are the current
+ * page's and the shell's. The icon spins until they are back, and for at least
+ * a moment, so a fast refresh still shows that it happened.
+ */
+function RefreshButton() {
+  const qc = useQueryClient();
+  const [spinning, setSpinning] = useState(false);
+
+  const refresh = async () => {
+    if (spinning) return;
+    setSpinning(true);
+    await Promise.all([
+      qc.refetchQueries({ type: "active" }),
+      new Promise((r) => setTimeout(r, 500)),
+    ]);
+    setSpinning(false);
+  };
+
+  return (
+    <Tip content="Refresh this page" side="bottom">
+      <button className="tb-icon-btn" onClick={() => void refresh()} aria-label="Refresh this page">
+        <span className={cn("tb-refresh", spinning && "spinning")}><Icon name="refresh" size={15} /></span>
+      </button>
+    </Tip>
+  );
+}
+
+/** The titlebar's search box opens the palette; so does Ctrl+K (⌘K on a Mac). */
+function SearchButton() {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key.toLowerCase() === "k" && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        setOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <>
+      <button className="cmdk" onClick={() => setOpen(true)} aria-label="Search" aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}>
+        <Icon name="search" size={13} />
+        <span style={{ flex: 1, textAlign: "left" }}>Search…</span>
+        <kbd className="kbd">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+      </button>
+      {open && <SearchPalette onClose={() => setOpen(false)} />}
+    </>
+  );
+}
 
 export function Titlebar() {
   return (
@@ -22,17 +83,12 @@ export function Titlebar() {
 
       <div className="tb-spacer" />
 
-      <div className="cmdk">
-        <Icon name="search" size={13} />
-        <span style={{ flex: 1 }}>Search…</span>
-        <kbd className="kbd">⌘K</kbd>
-      </div>
+      <SearchButton />
 
       <div className="tb-spacer" />
 
-      <button className="tb-icon-btn"><Icon name="bell" size={15} /></button>
-      <button className="tb-icon-btn"><Icon name="refresh" size={15} /></button>
-      <div className="tb-avatar">L</div>
+      <NotificationBell />
+      <RefreshButton />
 
       {!isMac && (
         <div className="win-controls">

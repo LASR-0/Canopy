@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Icon } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
 import { Toggle } from "@/components/Toggle";
+import { Tip } from "@/components/Tip";
 import {
   Select,
   SelectContent,
@@ -249,29 +250,31 @@ function RangesView({ workspaceId, rows, thresholds, currentStage }: {
                     key={scope || "default"}
                     className={`tr-cell${band ? " set" : ""}${now ? " tr-now" : ""}${applies ? " applies" : ""}`}
                   >
-                    <button
-                      className="tr-value"
-                      onClick={() => setEditing({ metric, scope })}
-                      title={band ? "Edit" : scope ? "Override the default for this stage" : "Set a default range"}
-                    >
-                      {band ? (
-                        <>{fmt(metric, band.minValue)}–{fmt(metric, band.maxValue)} <small>{unit}</small></>
-                      ) : scope && fallback ? (
-                        <span className="tr-inherit">↳ default</span>
-                      ) : (
-                        <span className="tr-unset">{scope ? "—" : "not set"}</span>
-                      )}
-                    </button>
-                    {band && (
+                    <Tip content={band ? "Edit" : scope ? "Override the default for this stage" : "Set a default range"}>
                       <button
-                        className="tr-clear"
-                        disabled={remove.isPending}
-                        onClick={() => remove.mutate(band.id)}
-                        title={scope ? "Clear override — this stage uses the default again" : "Remove the default range"}
-                        aria-label={scope ? `Clear ${meta.label} ${scope} override` : `Remove ${meta.label} default range`}
+                        className="tr-value"
+                        onClick={() => setEditing({ metric, scope })}
                       >
-                        <Icon name="x" size={11} />
+                        {band ? (
+                          <>{fmt(metric, band.minValue)}–{fmt(metric, band.maxValue)} <small>{unit}</small></>
+                        ) : scope && fallback ? (
+                          <span className="tr-inherit">↳ default</span>
+                        ) : (
+                          <span className="tr-unset">{scope ? "—" : "not set"}</span>
+                        )}
                       </button>
+                    </Tip>
+                    {band && (
+                      <Tip content={scope ? "Clear override — this stage uses the default again" : "Remove the default range"}>
+                        <button
+                          className="tr-clear"
+                          disabled={remove.isPending}
+                          onClick={() => remove.mutate(band.id)}
+                          aria-label={scope ? `Clear ${meta.label} ${scope} override` : `Remove ${meta.label} default range`}
+                        >
+                          <Icon name="x" size={11} />
+                        </button>
+                      </Tip>
                     )}
                   </span>
                 );

@@ -14,6 +14,8 @@
  */
 import { evaluateAutomations } from "./automations.js";
 import { recoverStaleJobs, tickJobs } from "./runner.js";
+import { sqliteConnection } from "../store/index.js";
+import { announceDueTasks } from "../notifications/index.js";
 
 export { runDueJobs, tickJobs } from "./runner.js";
 export { evaluateAutomations, resetAutomationState } from "./automations.js";
@@ -36,6 +38,10 @@ async function tick(): Promise<void> {
 
   try {
     await evaluateAutomations();
+    // Every tick rather than a daily job: a task falls due at its own time of
+    // day, and the check is one indexed query that usually finds nothing.
+    // Runs while paused, like the jobs: a reminder is not acting on hardware.
+    announceDueTasks(sqliteConnection);
     await tickJobs();
   } catch (err) {
     // The loop must survive anything a single pass throws, or the controller

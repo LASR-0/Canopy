@@ -30,9 +30,9 @@ export function useAutomations(workspaceId: string | undefined) {
  * saved change visible — there is nothing worth patching in locally that the
  * server would not immediately contradict.
  */
-function useAutomationMutation<TArgs>(
+function useAutomationMutation<TArgs, TResult>(
   workspaceId: string,
-  mutationFn: (args: TArgs) => Promise<unknown>,
+  mutationFn: (args: TArgs) => Promise<TResult>,
 ) {
   const qc = useQueryClient();
   return useMutation({

@@ -15,6 +15,8 @@ import type {
   ThresholdAlertSetting,
   AlertBehaviour,
   AppEvent,
+  NotificationChannel,
+  NotificationSummary,
   AppSettings,
   ChartLayout,
   Reading,
@@ -149,6 +151,11 @@ export interface ApiRoutes {
 
   // ── Events ────────────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/events":    { res: AppEvent[] };
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  "GET /workspaces/:workspaceId/notifications":       { res: NotificationSummary };
+  /** Marks the given channels seen up to now; every channel when none are given. */
+  "POST /workspaces/:workspaceId/notifications/seen": { body: { channels?: NotificationChannel[] }; res: NotificationSummary };
 
   // ── Chart layouts ─────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/chart-layouts":         { res: ChartLayout[] };

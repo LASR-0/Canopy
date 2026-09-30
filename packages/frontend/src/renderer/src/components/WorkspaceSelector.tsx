@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Icon } from "@/components/Icon";
+import { Tip } from "@/components/Tip";
 import {
   useWorkspaces,
   useActiveWorkspace,
@@ -104,14 +105,15 @@ export function WorkspaceSelector() {
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
           />
-          <button
-            className="btn primary sm btn-icon"
-            onClick={handleCreate}
-            disabled={!newName.trim() || createWs.isPending}
-            title="Create workspace"
-          >
-            <Icon name="plus" size={13} />
-          </button>
+          <Tip content="Create workspace">
+            <button
+              className="btn primary sm btn-icon"
+              onClick={handleCreate}
+              disabled={!newName.trim() || createWs.isPending}
+            >
+              <Icon name="plus" size={13} />
+            </button>
+          </Tip>
         </div>
       </PopoverContent>
     </Popover>

@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { Icon } from "@/components/Icon";
+import { DeleteButton } from "@/components/DeleteButton";
 import { Switch } from "@/components/ui/switch";
 import { Tag } from "@/components/Tag";
 import { SignalBars } from "@/components/SignalBars";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ProvisionModal } from "@/components/ProvisionModal";
+import { Tip } from "@/components/Tip";
 import {
   useWorkspaces,
   useActiveWorkspace,
@@ -38,7 +40,7 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
   const controls = device.capabilities.filter((c) => c.kind === "actuator");
 
   return (
-    <div className={cn("dev-card", !device.online && "off")}>
+    <div className={cn("dev-card", !device.online && "off")} data-search-id={device.id}>
       <div className="dev-head">
         <span className={cn("online-dot", !device.online && "off")} />
         <div className="dev-id">
@@ -58,9 +60,7 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
         <SignalBars
           strength={device.signalPct != null ? (Math.min(4, Math.max(0, Math.round(device.signalPct / 25))) as 0|1|2|3|4) : 0}
         />
-        <button className="icon-ghost" onClick={() => onRemove(device.id)} title="Remove device">
-          <Icon name="trash" size={14} />
-        </button>
+        <DeleteButton onDelete={() => onRemove(device.id)} confirmLabel="Remove?" ariaLabel={`Remove ${device.name}`} />
       </div>
       <div className="dev-caps">
         {metrics.length > 0 && (
@@ -231,8 +231,6 @@ function RoleRow({ device, roles, onAssign }: {
 }
 
 // ── Workspace management row ──────────────────────────────────────────────────
-type WsDeleteState = "idle" | "confirm" | "deleting";
-
 function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive }: {
   workspace: import("@canopy/shared-types").Workspace;
   isActive: boolean;
@@ -243,70 +241,28 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
 }) {
   const [name, setName] = useState(workspace.name);
   const [tz, setTz] = useState(workspace.timezone);
-  const [deleteState, setDeleteState] = useState<WsDeleteState>("idle");
+  // The form locks while the delete counts down, so nothing is saved to a workspace about to go.
+  const [deleting, setDeleting] = useState(false);
   const patch = usePatchWorkspace(workspace.id);
-
-  // Keep refs so timeout closures always have the latest callbacks + id
-  const onDeleteRef = useRef(onDelete);
-  onDeleteRef.current = onDelete;
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setName(workspace.name);
     setTz(workspace.timezone);
   }, [workspace.name, workspace.timezone]);
 
-  // Clear all timers on unmount to prevent state updates on dead component
-  useEffect(() => {
-    return () => {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
-    };
-  }, []);
-
-  const handleDeleteClick = () => {
-    if (deleteState === "idle") {
-      setDeleteState("confirm");
-      confirmTimerRef.current = setTimeout(() => setDeleteState("idle"), 5000);
-    } else if (deleteState === "confirm") {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-      setDeleteState("deleting");
-      deleteTimerRef.current = setTimeout(() => {
-        onDeleteRef.current(workspace.id);
-      }, 3000);
-    } else if (deleteState === "deleting") {
-      // Cancel — clear the pending delete timer and return to idle
-      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
-      setDeleteState("idle");
-    }
-  };
-
-  const handleDeleteBlur = () => {
-    // If focus leaves while in confirm state, cancel back to idle
-    if (deleteState === "confirm") {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-      setDeleteState("idle");
-    }
-  };
-
-  const deleteLabel =
-    deleteState === "idle" ? "Delete"
-    : deleteState === "confirm" ? "Are you sure?"
-    : "Deleting…";
-
   return (
     <div className="ws-mgmt-row" style={{ borderBottom: isLast ? "none" : "1px solid var(--border-muted)" }}>
-      <div className="ws-mgmt-header">
-        <span className="ws-mgmt-name">{workspace.name}</span>
-        {isActive && <span className="tag b-ok" style={{ fontSize: 10 }}>active</span>}
-      </div>
-      {/* The three buttons set the width, and both fields match it, so the
-          form reads as one block rather than two inputs of unrelated sizes. */}
+      {/* The three buttons set the width, and the header and both fields match
+          it, so the form reads as one block rather than two inputs of unrelated
+          sizes. The block centres in the row. */}
       <div className="ws-mgmt-form">
+        <div className="ws-mgmt-header">
+          <span className="ws-mgmt-name">{workspace.name}</span>
+          {isActive && <span className="tag b-ok" style={{ fontSize: 10 }}>active</span>}
+        </div>
         <div className="gc-field">
           <label>Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} disabled={deleteState === "deleting"} />
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={deleting} />
         </div>
         <div className="gc-field">
           <label>Timezone</label>
@@ -314,47 +270,38 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
             value={tz}
             placeholder="e.g. Australia/Sydney"
             onChange={(e) => setTz(e.target.value)}
-            disabled={deleteState === "deleting"}
+            disabled={deleting}
           />
         </div>
-      <div className="ws-mgmt-actions">
-
-        {/* Delete — 3-step confirmation with border trace timer */}
-        <span
-          style={{ position: "relative", display: "inline-flex", borderRadius: 6 }}
-          className={deleteState === "deleting" ? "ws-delete-tracing" : undefined}
-        >
-          <button
-            className="btn sm ghost-danger"
-            style={deleteState === "deleting" ? { color: "var(--danger-fg)" } : undefined}
-            onClick={handleDeleteClick}
-            onBlur={handleDeleteBlur}
+        <div className="ws-mgmt-actions">
+          <DeleteButton
+            label="Delete"
+            countdown
+            onDelete={() => onDelete(workspace.id)}
+            onPendingChange={setDeleting}
             disabled={isOnly}
             title={isOnly ? "Cannot delete the only workspace" : undefined}
+          />
+
+          {/* Archive — single click, no confirmation (reversible action) */}
+          <Tip content="Archive workspace">
+            <button
+              className="btn archive sm"
+              onClick={() => onArchive(workspace.id)}
+              disabled={isOnly || deleting}
+            >
+              <Icon name="archive" size={13} /> Archive
+            </button>
+          </Tip>
+
+          <button
+            className="btn primary sm"
+            onClick={() => patch.mutate({ name, timezone: tz })}
+            disabled={patch.isPending || deleting}
           >
-            <Icon name="trash" size={13} />
-            {deleteLabel}
+            <Icon name="check" size={13} /> Save
           </button>
-        </span>
-
-                {/* Archive — single click, no confirmation (reversible action) */}
-        <button
-          className="btn archive sm"
-          onClick={() => onArchive(workspace.id)}
-          disabled={isOnly || deleteState === "deleting"}
-          title="Archive workspace"
-        >
-          <Icon name="archive" size={13} /> Archive
-        </button>
-
-        <button
-          className="btn primary sm"
-          onClick={() => patch.mutate({ name, timezone: tz })}
-          disabled={patch.isPending || deleteState === "deleting"}
-        >
-          <Icon name="check" size={13} /> Save
-        </button>
-      </div>
+        </div>
       </div>
     </div>
   );
@@ -529,9 +476,13 @@ export function Settings() {
                       <Icon name="radar" size={14} /> {hasDevices ? "Re-scan network" : "Scan network"}
                     </button>
                     {hasDevices && (
-                      <button className="btn ghost-danger" onClick={() => forgetAll.mutate()} disabled={forgetAll.isPending}>
-                        <Icon name="trash" size={13} /> Forget all
-                      </button>
+                      <DeleteButton
+                        label="Forget all"
+                        countdown
+                        size="md"
+                        onDelete={() => forgetAll.mutate()}
+                        disabled={forgetAll.isPending}
+                      />
                     )}
                   </div>
                 )}

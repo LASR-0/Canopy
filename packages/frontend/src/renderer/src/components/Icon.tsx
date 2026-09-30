@@ -40,6 +40,7 @@ export type IconName =
   | "lock"
   | "map"
   | "minus"
+  | "moon"
   | "move"
   | "pencil"
   | "pin"
@@ -128,10 +129,8 @@ export function Icon({ name, size = 16, className }: IconProps) {
         <path d="M5 4.25h5M5 6.5h5"/>
       </>);
     case "maintenance":
-      return S(1.5, <>
-        <circle cx="8" cy="8" r="2.4"/>
-        <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1"/>
-      </>);
+      // A wrench. The old drawing was a circle with rays, too close to "sun".
+      return S(1.5, <path d="M9.8 4.2a.667.667 0 0 0 0 .933l1.067 1.067a.667.667 0 0 0 .933 0l2.513-2.513a4 4 0 0 1-5.293 5.293l-4.607 4.607a1.413 1.413 0 0 1-2-2l4.607-4.607a4 4 0 0 1 5.293-5.293z"/>);
     case "logging":
       return S(1.5, <>
         <path d="M1.75 14.25V1.75"/>
@@ -140,7 +139,7 @@ export function Icon({ name, size = 16, className }: IconProps) {
         <rect x="7.4" y="5" width="2.2" height="7.5"/>
         <rect x="11.05" y="3" width="2.2" height="9.5"/>
       </>);
-    case "setup":
+    case "settings":
       return S(1.5, <>
         <circle cx="5.25" cy="4.5" r="1.6"/>
         <path d="M1.75 4.5h1.9M6.85 4.5h7.4"/>
@@ -187,7 +186,6 @@ export function Icon({ name, size = 16, className }: IconProps) {
     case "chevron":
       return S(1.6, <path d="m4.5 6 3.5 3.5L11.5 6"/>);
     case "gear":
-    case "settings":
       return S(1.5, <>
         <circle cx="8" cy="8" r="2"/>
         <path d="M8 1.6v1.4M8 13v1.4M2.1 4.5l1.2.7M12.7 10.8l1.2.7M2.1 11.5l1.2-.7M12.7 5.2l1.2-.7"/>
@@ -246,6 +244,7 @@ export function Icon({ name, size = 16, className }: IconProps) {
         <path d="M5.4 7V4.9a2.6 2.6 0 0 1 5.2 0V7"/>
       </>);
     case "cube":
+    case "setup":
       return S(1.4, <>
         <path d="M8 1.7 14 5v6l-6 3.3L2 11V5z"/>
         <path d="M2 5l6 3.3L14 5M8 8.3V14.3"/>
@@ -355,6 +354,8 @@ export function Icon({ name, size = 16, className }: IconProps) {
         <path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 1.5A4.5 4.5 0 1 1 8 12.5 4.5 4.5 0 0 1 8 3.5Z"/>
         <circle cx="8" cy="8" r="2"/>
       </>);
+    case "moon":
+      return S(1.5, <path d="M8 2a4 4 0 0 0 6 6 6 6 0 1 1-6-6Z"/>);
     case "sun":
       return S(1.5, <>
         <circle cx="8" cy="8" r="2.6"/>

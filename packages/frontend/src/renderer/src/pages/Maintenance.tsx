@@ -3,7 +3,9 @@ import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon, type IconName } from "@/components/Icon";
+import { DeleteButton } from "@/components/DeleteButton";
 import { Toggle } from "@/components/Toggle";
+import { Tip } from "@/components/Tip";
 import { useActiveWorkspace } from "@/hooks/useWorkspace";
 import { useDevices } from "@/hooks/useDevices";
 import {
@@ -195,15 +197,16 @@ function TaskRow({
 
   return (
     <>
-      <div className={`task-row${done ? " done" : ""}`}>
-        <button
-          className={`tcheck${done ? " on" : ""}`}
-          onClick={() => onToggleDone(task)}
-          disabled={busy || done}
-          title={done ? "Completed today" : "Mark done"}
-        >
-          <Icon name="check" size={13} />
-        </button>
+      <div className={`task-row${done ? " done" : ""}`} data-search-id={task.id}>
+        <Tip content={done ? "Completed today" : "Mark done"}>
+          <button
+            className={`tcheck${done ? " on" : ""}`}
+            onClick={() => onToggleDone(task)}
+            disabled={busy || done}
+          >
+            <Icon name="check" size={13} />
+          </button>
+        </Tip>
 
         <span className="t-ico" style={{ color: done ? "var(--success-fg)" : "var(--fg-muted)" }}>
           <Icon name={taskIcon(task.name)} size={15} />
@@ -227,32 +230,34 @@ function TaskRow({
           <span className="t-done-at"><Icon name="check" size={12} /> {timeOfDay(task.lastDoneAt)}</span>
         )}
 
-        <span
-          className={`cadence-tag ${cadence.cls}`}
-          onClick={() => onEdit(task.id)}
-          title="Edit cadence"
-        >
-          <Icon name="clock" size={11} />{cadence.label}
-        </span>
+        <Tip content="Edit cadence">
+          <span
+            className={`cadence-tag ${cadence.cls}`}
+            onClick={() => onEdit(task.id)}
+          >
+            <Icon name="clock" size={11} />{cadence.label}
+          </span>
+        </Tip>
 
         {!done && (
-          <button className="btn sm" onClick={() => onSkip(task)} disabled={busy} title="Skip today">
-            Skip
-          </button>
+          <Tip content="Skip today">
+            <button className="btn sm" onClick={() => onSkip(task)} disabled={busy}>
+              Skip
+            </button>
+          </Tip>
         )}
 
-        <button
-          className={`t-bell${task.notifications ? " on" : ""}`}
-          onClick={() => onToggleBell(task)}
-          title={task.notifications ? "Notifications on" : "Notifications off"}
-          style={{ opacity: task.notifications ? 1 : 0.45 }}
-        >
-          <Icon name="bell" size={15} />
-        </button>
+        <Tip content={task.notifications ? "Notifications on" : "Notifications off"}>
+          <button
+            className={`t-bell${task.notifications ? " on" : ""}`}
+            onClick={() => onToggleBell(task)}
+            style={{ opacity: task.notifications ? 1 : 0.45 }}
+          >
+            <Icon name="bell" size={15} />
+          </button>
+        </Tip>
 
-        <button className="t-del" onClick={() => onDelete(task)} title="Remove task">
-          <Icon name="trash" size={14} />
-        </button>
+        <DeleteButton onDelete={() => onDelete(task)} confirmLabel="Remove?" ariaLabel={`Remove ${task.name}`} />
       </div>
 
       {editing && (
@@ -450,9 +455,11 @@ function TodayView({
         <div className="tf-card" onKeyDown={(e) => { if (e.key === "Escape") resetForm(); }}>
           <div className="tf-head">
             <span className="tf-title"><Icon name="plus" size={12} /> New task</span>
-            <button className="tf-close" onClick={resetForm} title="Cancel (Esc)" aria-label="Cancel">
-              <Icon name="x" size={13} />
-            </button>
+            <Tip content="Cancel (Esc)">
+              <button className="tf-close" onClick={resetForm} aria-label="Cancel">
+                <Icon name="x" size={13} />
+              </button>
+            </Tip>
           </div>
 
           <div className="tf-body">

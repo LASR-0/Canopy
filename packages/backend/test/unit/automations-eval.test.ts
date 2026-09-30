@@ -37,6 +37,7 @@ const { evaluateAutomations, resetAutomationState, windowActions, stateKey } = a
 const { setControllerState, resetControllerState } = await import(
   "../../src/controller/state.js"
 );
+const { resetFailureState } = await import("../../src/automation/apply.js");
 
 /** An automations-table row as the store would return it. */
 function automationRow(overrides: Record<string, unknown> = {}) {
@@ -68,6 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetAutomationState();
   resetControllerState();
+  resetFailureState();
   mockActuate.mockResolvedValue({ ok: true, sent: { topic: "t", payload: "p" }, channel: "ch" });
 
   tableRows.set(automations, [automationRow()]);
@@ -230,6 +232,42 @@ describe("evaluateAutomations — window triggers", () => {
     await evaluateAutomations(NOON);
 
     expect(mockActuate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("evaluateAutomations — failed runs", () => {
+  const REFUSED = { ok: false, code: "device_unreachable", message: "down" } as never;
+  const SENT = { ok: true, sent: { topic: "t", payload: "p" }, channel: "ch" };
+  const failures = () =>
+    (mockInsertValues.mock.calls as unknown as [{ type: string }][]).filter(([row]) => row.type === "automation_failed");
+
+  it("records a failed run as an error, naming the automation", async () => {
+    mockActuate.mockResolvedValue(REFUSED);
+    await evaluateAutomations(NOON);
+
+    expect(failures()).toHaveLength(1);
+    expect(failures()[0]![0]).toMatchObject({ severity: "err", sourceId: "auto-1", sourceLabel: "Photoperiod" });
+  });
+
+  it("records it once, not on every tick the window retries", async () => {
+    mockActuate.mockResolvedValue(REFUSED);
+    await evaluateAutomations(NOON);
+    await evaluateAutomations(new Date("2026-09-26T12:01:00Z"));
+    await evaluateAutomations(new Date("2026-09-26T12:02:00Z"));
+
+    expect(mockActuate).toHaveBeenCalledTimes(3);
+    expect(failures()).toHaveLength(1);
+  });
+
+  it("records it again when the device fails after having recovered", async () => {
+    mockActuate.mockResolvedValue(REFUSED);
+    await evaluateAutomations(NOON);
+    mockActuate.mockResolvedValue(SENT);
+    await evaluateAutomations(new Date("2026-09-26T12:01:00Z"));
+    mockActuate.mockResolvedValue(REFUSED);
+    await evaluateAutomations(new Date("2026-09-26T18:30:00Z"));
+
+    expect(failures()).toHaveLength(2);
   });
 });
 

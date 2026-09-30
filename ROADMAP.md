@@ -938,36 +938,122 @@ only, so it could not stop an ok ⇄ warn flap.
      the chart short and wide, with wide empty margins either side.
    - **The Settings workspace form is one width.** The three buttons set it,
      and Name and Timezone match exactly (`width: 0; min-width: 100%`), with
-     space above the section.
+     space above the section. The form, with its name and "active" header,
+     centres in the side column rather than sitting at its left edge.
 7. **Also fixed**: the Logging metric panel dropped under the chart below
    1100 px, which is now the minimum, so it stays beside the chart and
    narrows. Long MQTT topics in Settings' device cards run into the badges
    no longer.
 
-#### C. Consistency
+#### C. Consistency ✅ built — awaiting a hands-on check
 
-1. **One delete-button style everywhere**, modelled on the workspace delete in
-   Settings, including its red hover.
-2. **Tooltips**: a Canopy tooltip component to replace the browser's native
-   `title` popups (about 66 of them across the app).
-3. **A better time input** for Automation schedules, replacing the native
-   `<input type="time">`.
-4. **Sidebar icons**: Settings takes the sliders icon Setup View uses now,
-   Maintenance becomes a wrench, and Setup View becomes a cube or 3D-object
-   icon.
-5. **Theme toggle**: the gear in the sidebar footer, which duplicates the
-   Settings nav item, becomes a light / dark toggle with a sun icon.
-6. **Titlebar controls**, decided 2026-09-29. All of them are dead today.
-   - **Refresh** re-fetches the current page's data.
-   - **Bell** opens a dropdown of recent notifications: alerts, device
-     up/down, failsafe trips.
-   - **Search** gets wired up. Its scope is devices, automations, pages and
-     journal entries; settle it when built, alongside F (keyboard use), since
-     a search box is half a command palette.
-   - **The profile avatar ("L") goes.** Profiles are not planned for this
-     version.
-7. **Automation page**: collapsible sections per category, as in the
-   prototype.
+1. **One delete-button style everywhere** ✅, modelled on the workspace delete
+   in Settings, including its red hover. `components/DeleteButton.tsx` is a
+   ghost button that turns red on hover, and it now **confirms before it
+   deletes**: the first click arms it (it stays red and asks "Are you sure?"),
+   and a second click deletes. Moving focus away, or five seconds, disarms it.
+   Deleting an automation, a maintenance task or a device used to take one
+   click. `countdown` adds the workspace delete's three-second traced ring,
+   which a third click cancels. It is used for the workspace delete and
+   Settings' "Forget all", which had no confirmation at all. Without a label
+   the button is a trash icon that widens to "Delete?" when armed. It replaced
+   the icon buttons on device cards, automations, maintenance tasks and journal
+   entries (the Journal's own Delete entry / Keep pair went with it). The
+   small "×" clears inside chips and cells (milestones, target-range cells, an
+   automation's action rows) are left as they are. They remove one value
+   rather than a record, and already turn red on hover. The Automation card's
+   edit button is now the Journal's pencil. The gear it used drew like a sun.
+2. **Tooltips** ✅: `components/Tip.tsx`, on Radix Tooltip, replaces the
+   browser's native `title` popups. Those waited about a second, ignored the
+   theme and could not be styled. It uses the Logging chart tooltip's surface
+   at label size, opens after 400 ms, and skips the delay when moving between
+   tips. 44 were converted; the other `title=` props in the app are page
+   headings and empty states. Empty `content` renders the child alone, so
+   conditional tips need no branch. A disabled button gets no pointer events,
+   so `Tip` wraps it in a span that carries the tip. Those are often the tips
+   that say why the button is disabled ("Cannot delete the only workspace").
+   Watch for layout rules that target the button itself (see `.au-action`).
+3. **A better time input** ✅: `components/TimeField.tsx` replaces the native
+   `<input type="time">` in the Automation form (window on and off, and a
+   daily schedule's time). The native one's look and picker come from the OS.
+   Hours and minutes are separate segments. You type into them ("0730" fills
+   both and moves across on its own) or step them with the arrow keys. A
+   click opens a grid of the 24 hours and five-minute steps, and picking a
+   minute closes it. Other minutes are typed. The value is still `"HH:MM"`,
+   24-hour.
+4. **Sidebar icons** ✅: Settings takes the sliders icon Setup View used,
+   Maintenance is a wrench (its old circle-with-rays was nearly the sun), and
+   Setup View is the cube its page already uses for the enclosure.
+5. **Theme toggle** ✅: the gear in the sidebar footer, which duplicated the
+   Settings nav item, is now a light / dark toggle. It shows where a click
+   goes: a sun in dark mode, and a moon (new) in light mode. A click sets an
+   explicit theme, so a "System" preference becomes Light or Dark. The theme
+   provider now re-renders when the OS theme changes, which it did not before,
+   so the icon stays correct under "System".
+6. **Titlebar controls** ✅, decided 2026-09-29. All of them were dead.
+   - **Refresh** re-fetches the queries mounted now, which are the current
+     page's and the shell's (`refetchQueries({ type: "active" })`). The icon
+     spins until they are back. The Overview's own refresh button, which
+     duplicated it, is gone.
+   - **Bell** opens the recent notifications from every page (see 7), with
+     the unseen total on the bell. Opening it marks everything seen, but the
+     items that were new stay dotted until it closes. Clicking one opens its
+     page, and lands on the automation, task or device it is about.
+   - **Search** is a palette (`shell/SearchPalette.tsx`) opened from the box
+     or with Ctrl+K (⌘K on a Mac). Its scope is pages, devices, automations,
+     maintenance tasks, and the active grow's journal entries. Matching is
+     plain substring, ranked start, then word start, then anywhere. Empty, it
+     is a page switcher. Picking a result opens the page and scrolls to the
+     item with a brief outline. The navigation context now takes an optional
+     `focusId`, and the Shell brings `[data-search-id]` into view once it
+     renders. The keyboard-first side stays with H.
+   - **The profile avatar ("L") is gone.**
+   - **Also**: the Overview's "New automation" button had no handler. It
+     opens the Automation page now.
+7. **Sidebar badges count what you have not seen** ✅. The hard-coded numbers
+   (6, 28, 2, 8) are gone. A page shows a badge only while it has unseen
+   notifications. Decided 2026-09-30: **alerts only**. Routine activity never
+   counts, because a badge that climbs daily while nothing is wrong teaches
+   the grower to ignore it.
+   - **Which page owns what** (`backend/src/notifications`): *Logging* takes
+     threshold alerts at warn or err (a recovery is not news). *Automation*
+     takes failed runs and failsafe trips. *Maintenance* takes tasks falling
+     due. *Settings* takes devices going offline. Grow Cycle and Journal
+     have none.
+   - **Two new event types.** `automation_failed` is recorded when a device
+     refuses or cannot be reached. It is recorded once per automation, role
+     and device until that target next succeeds, because a failing window
+     automation retries every tick and would otherwise write one event a
+     minute. `maintenance_due` is recorded once per due date, only for tasks
+     with their bell on (`due_notified_at` holds the due date announced). The
+     scheduler checks every tick, because a task falls due at its own time of
+     day.
+   - **Failsafe trips have no source yet.** `failsafe_trip` has been a
+     declared type all along, but no automation can have the failsafe
+     subsystem and nothing writes one. The channel counts them once they
+     exist.
+   - **"Seen" is one timestamp per workspace and page** (`notification_seen`),
+     not a flag per event. A page never marked seen counts back 7 days, so an
+     upgrade does not open on months of history. `GET /notifications` returns
+     the counts and the 30 most recent; `POST /notifications/seen` takes the
+     channels, or none for all, and answers with the new summary. The frontend
+     polls every 15 s and clears badges optimistically.
+   - **Marking seen**: resting on a nav item for half a second, being on the
+     page (including what arrives while you are there), or opening the bell.
+   - **Seen in the live data**: soil moisture still moves between warn and
+     err every minute or two. A's hysteresis delays recoveries only, and
+     moves between warn and err are escalations and de-escalations it does
+     not hold back, so they fill the Logging badge. Worth a look before
+     Phase 8.
+8. **Automation page** ✅: collapsible sections per subsystem, as in the
+   prototype, whose `.auto-sec` styles were already in `index.css`. Each
+   header has the subsystem's tinted icon, how many automations it holds, and
+   how many are on or held. Sections are open by default, and the ones a
+   viewer closes are remembered in browser storage. That is a per-viewer
+   convenience, and the page works without it. A new automation opens the
+   section it lands in. A closed section's cards stay rendered, only hidden,
+   so search can still reach one: the Shell sends the closed ancestor
+   (`[data-collapsed]`) a `reveal` event, and it opens before the scroll.
 
 #### D. Logging becomes the record
 
@@ -988,10 +1074,25 @@ only, so it could not stop an ok ⇄ warn flap.
 
 #### E. Journal
 
-1. **Photos on every entry type**, not only "Photo". This needs what Phase 7
-   deferred: attachment storage in the data directory, a way to serve the
-   files to the renderer, and cleanup when an entry is deleted.
-2. **PDF export** of a grow's journal as it appears in the UI. Electron's
+1. **Step through the days.** The Notebook header gets a day stepper,
+   ‹ Day 12 · Sep 18 ›, that moves back through previous days and forward to
+   today, and never past it: › is disabled on today. Stepping shows that
+   day's entries, and a day with none says so. Picking a day on the activity
+   graph moves the stepper there, and any past day can be picked, not only
+   days with entries. "All days" returns to the full notebook.
+2. **Photos on every entry type**, not only "Photo". Every entry form gets an
+   "Add photos" button, and an entry can hold one photo or several.
+   - **One photo is shown on its own. Several are shown in a carousel**
+     (arrows, dots, and a count such as 2 / 5).
+   - **Each photo can have a caption**, shown beneath it like a Polaroid: the
+     photo in a light frame with a deeper bottom edge, and the caption written
+     in that bottom band. The caption belongs to the photo and moves with it
+     in the carousel.
+   - Photos can be reordered and removed while the entry is edited.
+   - This needs what Phase 7 deferred: attachment storage in the data
+     directory, a way to serve the files to the renderer, and cleanup when an
+     entry is deleted.
+3. **PDF export** of a grow's journal as it appears in the UI. Electron's
    `webContents.printToPDF` renders the page itself, so the PDF matches the
    screen without a second layout.
 
@@ -1008,10 +1109,37 @@ tent's history. Questions to settle when it is built:
   merging two tents' histories is a project of its own.
 - **Import must not brick the controller:** validate the file and its schema
   first, and apply the column-additions path to an older export.
-- **Attachments:** once journal photos exist (E.1), an export is the database
+- **Attachments:** once journal photos exist (E.2), an export is the database
   *plus* the attachment files, not the database alone.
 
-#### G. Keyboard-only use *(low priority)*
+#### G. Workspaces: archive and recently deleted
+
+Today a workspace's **Delete and Archive buttons do the same thing**: both
+call `DELETE /workspaces/:id`, which sets `archived`, and nothing in the app
+shows an archived workspace or brings one back. The two should be different
+things:
+
+1. **Archive** puts a workspace away indefinitely, and it can always be
+   restored. The controller stops acting for it: its automations do not run
+   and its alerts are not raised. Its history is kept whole.
+2. **Delete** moves a workspace to **Recently deleted**, where it can be
+   restored for **7 days**. After that it is removed permanently, with
+   everything under it (readings, events, journal entries and their photos).
+   The 7 days are fixed, not a setting. A daily job does the purge, next to
+   `prune_events`.
+3. **Settings → Workspaces** gets two collapsed lists under the live ones:
+   *Archived (n)*, each with Restore, and *Recently deleted (n)*, each with
+   Restore, the days left, and a "Delete now" that uses the countdown delete
+   button.
+4. **Schema**: the `archived` flag becomes two timestamps, `archived_at` and
+   `deleted_at`. They are timestamps so that the purge knows when the 7 days
+   began, and so that each list can say when a workspace went there.
+5. **To settle when built**: what happens to devices assigned to an archived
+   or deleted workspace (released for another workspace, or held until a
+   restore), and whether restoring a workspace whose devices have moved on
+   restores it without them.
+
+#### H. Keyboard-only use *(low priority)*
 
 Navigate, open menus and trigger actions without a mouse. Do this last,
 because it touches every page, and it is easier once B and C have settled

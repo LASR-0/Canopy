@@ -268,7 +268,7 @@ export const events = sqliteTable("events", {
   /**
    * automation_fired | threshold_alert | failsafe_trip | device_online |
    * device_offline | stage_changed | mode_changed | milestone_reached |
-   * maintenance_done
+   * maintenance_done | automation_failed | maintenance_due
    */
   type:         text("type").notNull(),
   sourceId:     text("source_id"),
@@ -278,6 +278,15 @@ export const events = sqliteTable("events", {
   severity:     text("severity"),
   occurredAt:   text("occurred_at").notNull(),
 });
+
+// ── notification_seen ─────────────────────────────────────────────────────────
+/** How far each page's notifications have been seen, per workspace. */
+export const notificationSeen = sqliteTable("notification_seen", {
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  /** A NotificationChannel: logging | automation | maintenance | settings */
+  channel:     text("channel").notNull(),
+  seenAt:      text("seen_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.channel] })]);
 
 // ── automations ───────────────────────────────────────────────────────────────
 export const automations = sqliteTable("automations", {
@@ -323,6 +332,11 @@ export const maintenanceTasks = sqliteTable("maintenance_tasks", {
   nextDueAt:   text("next_due_at"),
   lastDoneAt:  text("last_done_at"),
   createdAt:   text("created_at").notNull(),
+  /**
+   * The `next_due_at` a "due" notification was recorded for. Recorded once per
+   * due date: completing or skipping moves `next_due_at` on, which re-arms it.
+   */
+  dueNotifiedAt: text("due_notified_at"),
 });
 
 // ── maintenance_completions ───────────────────────────────────────────────────

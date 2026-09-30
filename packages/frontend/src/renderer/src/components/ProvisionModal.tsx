@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "@/components/Icon";
+import { Tip } from "@/components/Tip";
 import { cn } from "@/lib/utils";
 
 interface WifiNetwork {
@@ -329,14 +330,15 @@ export function ProvisionModal({
                   onChange={(e) => setHomePassword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSendCredentials()}
                 />
-                <button
-                  className="icon-ghost prov-pw-toggle"
-                  onClick={() => setShowPassword((v) => !v)}
-                  title={showPassword ? "Hide password" : "Show password"}
-                  tabIndex={-1}
-                >
-                  <Icon name="eye" size={14} />
-                </button>
+                <Tip content={showPassword ? "Hide password" : "Show password"}>
+                  <button
+                    className="icon-ghost prov-pw-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    tabIndex={-1}
+                  >
+                    <Icon name="eye" size={14} />
+                  </button>
+                </Tip>
               </div>
             </div>
           </div>

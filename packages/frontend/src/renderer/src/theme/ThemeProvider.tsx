@@ -38,6 +38,8 @@ export function ThemeProvider({
   defaultTheme?: Theme;
 }) {
   const [theme, setThemeState] = useState<Theme>(() => readInitial(defaultTheme));
+  // Bumped when the OS switches theme, so `resolved` re-reads it in "system" mode.
+  const [, setSystemTick] = useState(0);
   const resolved = resolveTheme(theme);
 
   useEffect(() => {
@@ -49,9 +51,7 @@ export function ThemeProvider({
   useEffect(() => {
     if (theme !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      document.documentElement.setAttribute("data-theme", resolveTheme("system"));
-    };
+    const handler = () => setSystemTick((n) => n + 1);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, [theme]);

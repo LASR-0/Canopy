@@ -3,6 +3,7 @@ import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { Icon } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
+import { Tip } from "@/components/Tip";
 import { STAGE_DEFS, calcGrowStage } from "@/lib/growStage";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useAutomations } from "@/hooks/useAutomations";
@@ -309,14 +310,15 @@ export function GrowCycle() {
         badge={badge}
         actions={
           isSetup ? (
-            <button
-              className="btn primary"
-              onClick={startGrow}
-              disabled={busy || totalWeeks === 0}
-              title={totalWeeks === 0 ? "Give at least one stage a length first" : undefined}
-            >
-              <Icon name="check" size={14} /> Start grow
-            </button>
+            <Tip content={totalWeeks === 0 ? "Give at least one stage a length first" : undefined}>
+              <button
+                className="btn primary"
+                onClick={startGrow}
+                disabled={busy || totalWeeks === 0}
+              >
+                <Icon name="check" size={14} /> Start grow
+              </button>
+            </Tip>
           ) : (
             <>
               <button className="btn ghost-danger" onClick={() => setAborting((v) => !v)}>
@@ -501,22 +503,22 @@ export function GrowCycle() {
             <div className="gc-track">
               <div className="gc-bar">
                 {ranges.filter((r) => r.weeks > 0).map((r) => (
-                  <div
-                    key={r.stage}
-                    className="gc-seg"
-                    style={{
-                      width: `${(r.weeks / totalWeeks) * 100}%`,
-                      ...(r.status === "active"
-                        ? { background: r.color, color: "#fff" }
-                        : r.status === "complete"
-                          ? { background: `${r.color}59`, color: "var(--fg-default)" }
-                          : { background: `${r.color}24`, color: "var(--fg-muted)" }),
-                    }}
-                    title={`${r.label} · ${r.weeks}w`}
-                  >
-                    <span className="gc-seg-label">{r.label}</span>
-                    <span className="gc-seg-wk">{r.weeks}w</span>
-                  </div>
+                  <Tip key={r.stage} content={`${r.label} · ${r.weeks}w`}>
+                    <div
+                      className="gc-seg"
+                      style={{
+                        width: `${(r.weeks / totalWeeks) * 100}%`,
+                        ...(r.status === "active"
+                          ? { background: r.color, color: "#fff" }
+                          : r.status === "complete"
+                            ? { background: `${r.color}59`, color: "var(--fg-default)" }
+                            : { background: `${r.color}24`, color: "var(--fg-muted)" }),
+                      }}
+                    >
+                      <span className="gc-seg-label">{r.label}</span>
+                      <span className="gc-seg-wk">{r.weeks}w</span>
+                    </div>
+                  </Tip>
                 ))}
                 {currentDay !== null && totalDays > 0 && (
                   <div
@@ -585,9 +587,11 @@ export function GrowCycle() {
                   <div className="gc-row-main">
                     <div className="gc-stage-name">
                       {r.label}
-                      <span className="gc-mode-chip" title="Automations scoped to this stage">
-                        {r.stage}
-                      </span>
+                      <Tip content="Automations scoped to this stage">
+                        <span className="gc-mode-chip">
+                          {r.stage}
+                        </span>
+                      </Tip>
                     </div>
                     <div className="gc-range">
                       {r.weeks > 0
@@ -597,21 +601,23 @@ export function GrowCycle() {
                   </div>
                   <StageStatus status={r.weeks === 0 ? "upcoming" : r.status} />
                   <div className="gc-stepper">
-                    <button
-                      onClick={() => bumpWeeks(r.weeksKey, -1)}
-                      disabled={r.weeks <= 0 || busy}
-                      title="Fewer weeks"
-                    >
-                      <Icon name="minus" size={14} />
-                    </button>
+                    <Tip content="Fewer weeks">
+                      <button
+                        onClick={() => bumpWeeks(r.weeksKey, -1)}
+                        disabled={r.weeks <= 0 || busy}
+                      >
+                        <Icon name="minus" size={14} />
+                      </button>
+                    </Tip>
                     <span className="gc-wk">{r.weeks}<small>wk</small></span>
-                    <button
-                      onClick={() => bumpWeeks(r.weeksKey, 1)}
-                      disabled={r.weeks >= MAX_WEEKS || busy}
-                      title="More weeks"
-                    >
-                      <Icon name="plus" size={14} />
-                    </button>
+                    <Tip content="More weeks">
+                      <button
+                        onClick={() => bumpWeeks(r.weeksKey, 1)}
+                        disabled={r.weeks >= MAX_WEEKS || busy}
+                      >
+                        <Icon name="plus" size={14} />
+                      </button>
+                    </Tip>
                   </div>
                 </div>
               ))}

@@ -1,10 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon, type IconName } from "@/components/Icon";
+import { DeleteButton } from "@/components/DeleteButton";
 import { Tag } from "@/components/Tag";
 import { Toggle } from "@/components/Toggle";
+import { Tip } from "@/components/Tip";
+import { TimeField } from "@/components/TimeField";
 import {
   Select,
   SelectContent,
@@ -35,14 +38,100 @@ import type {
 
 // ── Display catalogues ────────────────────────────────────────────────────────
 
-const SUBSYSTEMS: { id: AutomationSubsystem; label: string; icon: IconName }[] = [
-  { id: "lighting",   label: "Lighting",   icon: "sun"        },
-  { id: "climate",    label: "Climate",    icon: "temp"       },
-  { id: "airflow",    label: "Airflow",    icon: "fan"        },
-  { id: "co2",        label: "CO₂",        icon: "co2"        },
-  { id: "irrigation", label: "Irrigation", icon: "drop"       },
-  { id: "failsafe",   label: "Failsafe",   icon: "alert"      },
+/** Tints follow the metric each subsystem mostly acts on (lib/metrics.ts). */
+const SUBSYSTEMS: { id: AutomationSubsystem; label: string; icon: IconName; tint: string }[] = [
+  { id: "lighting",   label: "Lighting",   icon: "sun",   tint: "#ffa657" },
+  { id: "climate",    label: "Climate",    icon: "temp",  tint: "#f78166" },
+  { id: "airflow",    label: "Airflow",    icon: "fan",   tint: "#a371f7" },
+  { id: "co2",        label: "CO₂",        icon: "co2",   tint: "#3fb950" },
+  { id: "irrigation", label: "Irrigation", icon: "drop",  tint: "#39c5cf" },
+  { id: "failsafe",   label: "Failsafe",   icon: "alert", tint: "#f85149" },
 ];
+
+// ── Collapsible sections ──────────────────────────────────────────────────────
+
+const CLOSED_KEY = "canopy.automation.closed";
+
+/**
+ * Which sections this viewer has closed. Open is the default, so a new
+ * subsystem's first automation is never hidden. A per-viewer convenience, so
+ * browser storage, and the page works the same without it.
+ */
+function useClosedSections() {
+  const [closed, setClosed] = useState<ReadonlySet<string>>(() => {
+    try {
+      const raw = localStorage.getItem(CLOSED_KEY);
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const write = (next: ReadonlySet<string>) => {
+    setClosed(next);
+    try { localStorage.setItem(CLOSED_KEY, JSON.stringify([...next])); } catch { /* storage unavailable */ }
+  };
+  const toggle = (id: string) => {
+    const next = new Set(closed);
+    if (!next.delete(id)) next.add(id);
+    write(next);
+  };
+  const open = (id: string) => {
+    if (!closed.has(id)) return;
+    const next = new Set(closed);
+    next.delete(id);
+    write(next);
+  };
+  return { closed, toggle, open };
+}
+
+/**
+ * One subsystem's automations, collapsible, as in the prototype.
+ *
+ * A closed body stays rendered, only hidden, so search can still find a card
+ * in it: the Shell sends a `reveal` event to the closed section, which opens.
+ */
+function AutomationSection({ subsystem, items, isOpen, onToggle, onReveal, children }: {
+  subsystem: (typeof SUBSYSTEMS)[number];
+  items: AutomationRecord[];
+  isOpen: boolean;
+  onToggle: () => void;
+  onReveal: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const revealRef = useRef(onReveal);
+  revealRef.current = onReveal;
+  useEffect(() => {
+    const el = ref.current;
+    const reveal = () => revealRef.current();
+    el?.addEventListener("reveal", reveal);
+    return () => el?.removeEventListener("reveal", reveal);
+  }, []);
+
+  const on = items.filter((a) => a.enabled).length;
+  const now = new Date().toISOString();
+  const held = items.filter((a) => a.overrideUntil && a.overrideUntil > now).length;
+
+  return (
+    <div className="auto-sec" ref={ref} data-collapsed={isOpen ? undefined : ""}>
+      <button className="auto-sec-head" onClick={onToggle} aria-expanded={isOpen}>
+        <span className="ash-chev" style={{ transform: isOpen ? "none" : "rotate(-90deg)" }}>
+          <Icon name="chevron" size={14} />
+        </span>
+        <span className="ash-ico" style={{ background: `${subsystem.tint}26`, color: subsystem.tint }}>
+          <Icon name={subsystem.icon} size={15} />
+        </span>
+        <span className="ash-title">{subsystem.label}</span>
+        <span className="ash-read">{items.length} automation{items.length === 1 ? "" : "s"}</span>
+        <span className="ash-sum">
+          <span className={`tag ${on > 0 ? "b-ok" : "b-idle"}`} style={{ fontSize: 11 }}>{on} on</span>
+          {held > 0 && <span className="tag b-warn" style={{ fontSize: 11 }}>{held} held</span>}
+        </span>
+      </button>
+      <div className="auto-sec-body" hidden={!isOpen}>{children}</div>
+    </div>
+  );
+}
 
 type TriggerKind = AutomationTrigger["kind"];
 
@@ -320,15 +409,16 @@ function ActionRow({ action, canRemove, onChange, onRemove }: {
         </span>
       )}
 
-      <button
-        className="tf-close"
-        onClick={onRemove}
-        disabled={!canRemove}
-        title={canRemove ? "Remove this action" : "An automation needs at least one action"}
-        aria-label="Remove action"
-      >
-        <Icon name="x" size={13} />
-      </button>
+      <Tip content={canRemove ? "Remove this action" : "An automation needs at least one action"}>
+        <button
+          className="tf-close"
+          onClick={onRemove}
+          disabled={!canRemove}
+          aria-label="Remove action"
+        >
+          <Icon name="x" size={13} />
+        </button>
+      </Tip>
     </div>
   );
 }
@@ -353,9 +443,11 @@ function AutomationEditor({ initial, busy, onCancel, onSave }: {
           <Icon name={initial ? "gear" : "plus"} size={12} />
           {initial ? "Edit automation" : "New automation"}
         </span>
-        <button className="tf-close" onClick={onCancel} title="Cancel (Esc)" aria-label="Cancel">
-          <Icon name="x" size={13} />
-        </button>
+        <Tip content="Cancel (Esc)">
+          <button className="tf-close" onClick={onCancel} aria-label="Cancel">
+            <Icon name="x" size={13} />
+          </button>
+        </Tip>
       </div>
 
       <div className="tf-body">
@@ -388,21 +480,11 @@ function AutomationEditor({ initial, busy, onCancel, onSave }: {
           <div className="tf-grid">
             <div className="tf-group">
               <span className="tf-label">On at</span>
-              <input
-                className="au-time"
-                type="time"
-                value={draft.on}
-                onChange={(e) => patch({ on: e.target.value })}
-              />
+              <TimeField ariaLabel="On at" value={draft.on} onChange={(on) => patch({ on })} />
             </div>
             <div className="tf-group">
               <span className="tf-label">Off at</span>
-              <input
-                className="au-time"
-                type="time"
-                value={draft.off}
-                onChange={(e) => patch({ off: e.target.value })}
-              />
+              <TimeField ariaLabel="Off at" value={draft.off} onChange={(off) => patch({ off })} />
             </div>
           </div>
         )}
@@ -428,12 +510,7 @@ function AutomationEditor({ initial, busy, onCancel, onSave }: {
             </div>
             <div className="au-inline">
               {draft.cronMode === "daily" ? (
-                <input
-                  className="au-time"
-                  type="time"
-                  value={draft.cronTime}
-                  onChange={(e) => patch({ cronTime: e.target.value })}
-                />
+                <TimeField ariaLabel="Run at" value={draft.cronTime} onChange={(cronTime) => patch({ cronTime })} />
               ) : (
                 <>
                   <span className="au-inline-label">every</span>
@@ -591,7 +668,7 @@ function AutomationCard({ automation, unassigned, busy, onToggle, onEdit, onDele
   const held = !!automation.overrideUntil && automation.overrideUntil > new Date().toISOString();
 
   return (
-    <div className={`au-card${automation.enabled ? "" : " off"}`}>
+    <div className={`au-card${automation.enabled ? "" : " off"}`} data-search-id={automation.id}>
       <div className="au-card-main">
         <div className="au-card-head">
           <span className="au-name">{automation.name}</span>
@@ -628,12 +705,12 @@ function AutomationCard({ automation, unassigned, busy, onToggle, onEdit, onDele
           <button className="btn sm" onClick={onRelease} disabled={busy}>Release</button>
         )}
         <Toggle on={automation.enabled} disabled={busy} onChange={onToggle} />
-        <button className="tf-close" onClick={onEdit} title="Edit" aria-label="Edit automation">
-          <Icon name="gear" size={13} />
-        </button>
-        <button className="tf-close" onClick={onDelete} title="Delete" aria-label="Delete automation">
-          <Icon name="trash" size={13} />
-        </button>
+        <Tip content="Edit">
+          <button className="icon-ghost2" onClick={onEdit} aria-label="Edit automation">
+            <Icon name="pencil" size={13} />
+          </button>
+        </Tip>
+        <DeleteButton onDelete={onDelete} ariaLabel={`Delete ${automation.name}`} />
       </div>
     </div>
   );
@@ -660,6 +737,8 @@ export function Automation() {
   );
 
   const enabledCount = automations.filter((a) => a.enabled).length;
+
+  const sections = useClosedSections();
 
   /** Grouped by the subsystem the controller stored, in catalogue order. */
   const groups = useMemo(
@@ -705,7 +784,13 @@ export function Automation() {
                 busy={busy}
                 onCancel={() => setEditing(null)}
                 onSave={(fields) => {
-                  create.mutate(fields, { onSuccess: () => setEditing(null) });
+                  create.mutate(fields, {
+                    onSuccess: (created) => {
+                      setEditing(null);
+                      // Its section may be closed; a new automation should be seen.
+                      sections.open(created.subsystem);
+                    },
+                  });
                 }}
               />
             )}
@@ -719,15 +804,14 @@ export function Automation() {
             )}
 
             {groups.map((group) => (
-              <div className="mt-group" key={group.id}>
-                <div className="mt-group-h">
-                  <h4><Icon name={group.icon} size={12} /> {group.label}</h4>
-                  <span className="gh-sub">
-                    {group.items.filter((a) => a.enabled).length}/{group.items.length} on
-                  </span>
-                  <span className="rule" />
-                </div>
-
+              <AutomationSection
+                key={group.id}
+                subsystem={group}
+                items={group.items}
+                isOpen={!sections.closed.has(group.id)}
+                onToggle={() => sections.toggle(group.id)}
+                onReveal={() => sections.open(group.id)}
+              >
                 <div className="au-list">
                   {group.items.map((automation) =>
                     editingRecord?.id === automation.id ? (
@@ -767,7 +851,7 @@ export function Automation() {
                     ),
                   )}
                 </div>
-              </div>
+              </AutomationSection>
             ))}
           </>
         )}

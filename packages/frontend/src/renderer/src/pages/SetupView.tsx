@@ -3,6 +3,7 @@ import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { Icon, type IconName } from "@/components/Icon";
 import { Tag } from "@/components/Tag";
+import { Tip } from "@/components/Tip";
 import {
   Select,
   SelectContent,
@@ -177,9 +178,11 @@ function DimBar({ dims, busy, error, onCommit }: {
         {problem || error ? (
           <span className="dim-error">{problem ?? error}</span>
         ) : (
-          <span title="Resizing moves everything in the tent proportionally">
-            max {maxFootprintCm}×{maxFootprintCm}×{maxHeightCm}
-          </span>
+          <Tip content="Resizing moves everything in the tent proportionally">
+            <span>
+              max {maxFootprintCm}×{maxFootprintCm}×{maxHeightCm}
+            </span>
+          </Tip>
         )}
         <span>footprint <b>{((dims.widthCm * dims.depthCm) / 1e4).toFixed(2)} m²</b></span>
         <span>volume <b>{((dims.widthCm * dims.depthCm * dims.heightCm) / 1e6).toFixed(2)} m³</b></span>
@@ -468,9 +471,11 @@ function PinEditor({ pin, dims, role, roleBusy, onChange, onRole, onRemove, onCl
           <Icon name={roleIcon(role, device)} size={13} />
         </span>
         <span className="pe-name">{device.name}</span>
-        <button className="icon-ghost2" onClick={onClose} title="Close" aria-label="Close editor">
-          <Icon name="x" size={13} />
-        </button>
+        <Tip content="Close">
+          <button className="icon-ghost2" onClick={onClose} aria-label="Close editor">
+            <Icon name="x" size={13} />
+          </button>
+        </Tip>
       </div>
       <div className="pe-grid">
         <CmField label="X · width" value={placement.xCm} max={dims.widthCm} onCommit={(xCm) => onChange({ xCm })} />
@@ -552,9 +557,11 @@ function PlantEditor({ plant, name, dims, onChange, onRemove, onClose }: {
       <div className="pe-head">
         <span className="pe-dot" style={{ background: PLANT_COLOR }}><Icon name="leaf" size={13} /></span>
         <span className="pe-name">{name}</span>
-        <button className="icon-ghost2" onClick={onClose} title="Close" aria-label="Close editor">
-          <Icon name="x" size={13} />
-        </button>
+        <Tip content="Close">
+          <button className="icon-ghost2" onClick={onClose} aria-label="Close editor">
+            <Icon name="x" size={13} />
+          </button>
+        </Tip>
       </div>
       <div className="pe-role">
         <label htmlFor={`plant-label-${plant.id}`}>Label</label>
@@ -843,24 +850,27 @@ export function SetupView() {
                         </div>
                       );
                     })}
-                    <div
-                      className="avail-row plant-add"
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData(DRAG_PLANT, String(newPot));
-                        e.dataTransfer.effectAllowed = "copy";
-                      }}
-                      title="Drag onto the plan, or press + to add mid-floor"
-                    >
-                      <span className="ar-grip"><Icon name="dots" size={13} /></span>
-                      <span className="ar-kind" style={{ background: PLANT_COLOR }}><Icon name="leaf" size={12} /></span>
-                      <div className="ar-i" onPointerDown={(e) => e.stopPropagation()} draggable={false} onDragStart={(e) => e.preventDefault()}>
-                        <PotSelect value={newPot} onChange={setNewPot} />
+                    <Tip content="Drag onto the plan, or press + to add mid-floor">
+                      <div
+                        className="avail-row plant-add"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(DRAG_PLANT, String(newPot));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                      >
+                        <span className="ar-grip"><Icon name="dots" size={13} /></span>
+                        <span className="ar-kind" style={{ background: PLANT_COLOR }}><Icon name="leaf" size={12} /></span>
+                        <div className="ar-i" onPointerDown={(e) => e.stopPropagation()} draggable={false} onDragStart={(e) => e.preventDefault()}>
+                          <PotSelect value={newPot} onChange={setNewPot} />
+                        </div>
+                        <Tip content="Add a plant">
+                          <button className="ar-add" aria-label="Add a plant" disabled={addPlant.isPending} onClick={() => plant(newPot)}>
+                            <Icon name="plus" size={13} />
+                          </button>
+                        </Tip>
                       </div>
-                      <button className="ar-add" title="Add a plant" aria-label="Add a plant" disabled={addPlant.isPending} onClick={() => plant(newPot)}>
-                        <Icon name="plus" size={13} />
-                      </button>
-                    </div>
+                    </Tip>
                     {addPlant.error && <div className="avail-empty dim-error">{errorText(addPlant.error)}</div>}
                   </Panel>
 
@@ -893,9 +903,11 @@ export function SetupView() {
                             </div>
                             <div className="ar-m">{role ? ROLE_META[role].name : d.model ?? d.family}</div>
                           </div>
-                          <button className="ar-add" title="Place on plan" aria-label={`Place ${d.name}`} onClick={() => place(d.id)}>
-                            <Icon name="plus" size={13} />
-                          </button>
+                          <Tip content="Place on plan">
+                            <button className="ar-add" aria-label={`Place ${d.name}`} onClick={() => place(d.id)}>
+                              <Icon name="plus" size={13} />
+                            </button>
+                          </Tip>
                         </div>
                       );
                     })}

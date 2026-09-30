@@ -3,7 +3,9 @@ import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { EmptyState } from "@/components/EmptyState";
 import { Icon, type IconName } from "@/components/Icon";
+import { DeleteButton } from "@/components/DeleteButton";
 import { Tag } from "@/components/Tag";
+import { Tip } from "@/components/Tip";
 import { STAGE_DEFS, calcGrowStage, growTotalPlannedDays } from "@/lib/growStage";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { useRoles } from "@/hooks/useDevices";
@@ -183,14 +185,14 @@ function ActivityGraph({ days, today, entries, milestones, selected, onPick }: {
                 : reached.has(day) ? "milestone"
                 : "no activity";
             return (
-              <button
-                key={day}
-                className={`jcell${selected === day ? " sel" : ""}`}
-                style={{ ...cellStyle(level), cursor: onDay.length ? "pointer" : "default" }}
-                title={`Day ${day} · ${what}`}
-                aria-label={`Day ${day}: ${what}`}
-                onClick={() => onDay.length && onPick(day)}
-              />
+              <Tip key={day} content={`Day ${day} · ${what}`}>
+                <button
+                  className={`jcell${selected === day ? " sel" : ""}`}
+                  style={{ ...cellStyle(level), cursor: onDay.length ? "pointer" : "default" }}
+                  aria-label={`Day ${day}: ${what}`}
+                  onClick={() => onDay.length && onPick(day)}
+                />
+              </Tip>
             );
           })}
         </div>
@@ -239,30 +241,32 @@ function Milestones({ workspaceId, grow, milestones, today, editable }: {
         )}
         {milestones.map((m) => (
           <div key={m.id} className={`j-mile${m.done ? " done" : ""}`}>
-            <button
-              className="j-mile-toggle"
-              disabled={!editable || update.isPending}
-              onClick={() => update.mutate({ id: m.id, done: !m.done })}
-              title={editable ? (m.done ? "Mark as not reached" : "Mark as reached") : undefined}
-            >
-              <Icon name="pin" size={11} />
-              <b>Day {m.day}</b>
-              {m.label}
-              {m.done ? (
-                <Icon name="check" size={11} />
-              ) : (
-                <span className="up">{m.day < today ? "not reached" : "upcoming"}</span>
-              )}
-            </button>
-            {editable && (
+            <Tip content={editable ? (m.done ? "Mark as not reached" : "Mark as reached") : undefined}>
               <button
-                className="j-mile-del"
-                onClick={() => remove.mutate(m.id)}
-                title="Remove milestone"
-                aria-label={`Remove milestone ${m.label}`}
+                className="j-mile-toggle"
+                disabled={!editable || update.isPending}
+                onClick={() => update.mutate({ id: m.id, done: !m.done })}
               >
-                <Icon name="x" size={10} />
+                <Icon name="pin" size={11} />
+                <b>Day {m.day}</b>
+                {m.label}
+                {m.done ? (
+                  <Icon name="check" size={11} />
+                ) : (
+                  <span className="up">{m.day < today ? "not reached" : "upcoming"}</span>
+                )}
               </button>
+            </Tip>
+            {editable && (
+              <Tip content="Remove milestone">
+                <button
+                  className="j-mile-del"
+                  onClick={() => remove.mutate(m.id)}
+                  aria-label={`Remove milestone ${m.label}`}
+                >
+                  <Icon name="x" size={10} />
+                </button>
+              </Tip>
             )}
           </div>
         ))}
@@ -432,15 +436,16 @@ function Composer({ entry, stamp, busy, error, onSubmit, onCancel }: {
             <div className="jc-pair" key={i}>
               <input className="jc-input" value={k} placeholder="pH" aria-label="Measurement name" onChange={(e) => setPair(i, 0, e.target.value)} />
               <input className="jc-input" value={v} placeholder="6.2" aria-label="Measurement value" onChange={(e) => setPair(i, 1, e.target.value)} />
-              <button
-                className="icon-ghost2"
-                title="Remove"
-                aria-label="Remove measurement"
-                disabled={draft.measurements.length === 1}
-                onClick={() => set("measurements", draft.measurements.filter((_, j) => j !== i))}
-              >
-                <Icon name="x" size={12} />
-              </button>
+              <Tip content="Remove">
+                <button
+                  className="icon-ghost2"
+                  aria-label="Remove measurement"
+                  disabled={draft.measurements.length === 1}
+                  onClick={() => set("measurements", draft.measurements.filter((_, j) => j !== i))}
+                >
+                  <Icon name="x" size={12} />
+                </button>
+              </Tip>
             </div>
           ))}
           <button className="btn sm" onClick={() => set("measurements", [...draft.measurements, ["", ""]])}>
@@ -495,17 +500,18 @@ function EntryCard({ entry, selected, editable, onEdit, onDelete }: {
   onDelete: () => void;
 }) {
   const T = J_TYPE[entry.type];
-  const [confirming, setConfirming] = useState(false);
   const body = bodyBelowTitle(entry);
 
   return (
-    <div className={`j-entry${selected ? " sel" : ""}`} data-day={entry.growDay}>
+    <div className={`j-entry${selected ? " sel" : ""}`} data-day={entry.growDay} data-search-id={entry.id}>
       <div className="je-rail">
         <div className="je-day">Day {entry.growDay}</div>
         <div className="je-wk">Week {entry.growWeek}</div>
-        <div className="je-env" title="Canopy conditions when this was written">
-          <EnvValues tempC={entry.envTempC} rhPct={entry.envRhPct} vpdKpa={entry.envVpdKpa} />
-        </div>
+        <Tip content="Canopy conditions when this was written">
+          <div className="je-env">
+            <EnvValues tempC={entry.envTempC} rhPct={entry.envRhPct} vpdKpa={entry.envVpdKpa} />
+          </div>
+        </Tip>
       </div>
       <div className="je-body">
         <div className="je-head">
@@ -515,21 +521,12 @@ function EntryCard({ entry, selected, editable, onEdit, onDelete }: {
           <span className="je-title">{entry.title}</span>
           {editable && (
             <span className="je-actions">
-              {confirming ? (
-                <>
-                  <button className="btn sm danger" onClick={onDelete}>Delete entry</button>
-                  <button className="btn sm" onClick={() => setConfirming(false)}>Keep</button>
-                </>
-              ) : (
-                <>
-                  <button className="icon-ghost2" onClick={onEdit} title="Edit" aria-label="Edit entry">
-                    <Icon name="pencil" size={13} />
-                  </button>
-                  <button className="icon-ghost2" onClick={() => setConfirming(true)} title="Delete" aria-label="Delete entry">
-                    <Icon name="trash" size={13} />
-                  </button>
-                </>
-              )}
+              <Tip content="Edit">
+                <button className="icon-ghost2" onClick={onEdit} aria-label="Edit entry">
+                  <Icon name="pencil" size={13} />
+                </button>
+              </Tip>
+              <DeleteButton onDelete={onDelete} ariaLabel="Delete entry" />
             </span>
           )}
         </div>
@@ -717,7 +714,9 @@ function MiniStages({ weeks }: { weeks: number[] }) {
     <span className="mini-stages">
       {weeks.map((w, i) =>
         w > 0 ? (
-          <span key={i} style={{ width: `${(w / total) * 100}%`, background: STAGE_COLORS[i] }} title={`${STAGE_NAMES[i]} ${w}w`} />
+          <Tip key={i} content={`${STAGE_NAMES[i]} ${w}w`}>
+            <span style={{ width: `${(w / total) * 100}%`, background: STAGE_COLORS[i] }} />
+          </Tip>
         ) : null,
       )}
     </span>
@@ -740,7 +739,9 @@ function ArchiveRow({ grow, checked, onToggle, onOpen }: {
         {done ? (
           <input type="checkbox" checked={checked} onChange={onToggle} aria-label={`Compare ${grow.name}`} />
         ) : (
-          <span className="ar-nocmp" title="Aborted grows can't be compared">–</span>
+          <Tip content="Aborted grows can't be compared">
+            <span className="ar-nocmp">–</span>
+          </Tip>
         )}
       </label>
       <span className={`ar-badge ${done ? "done" : "abort"}`}>
