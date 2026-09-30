@@ -849,7 +849,7 @@ In dependency order:
 Phase 7 is complete, apart from the small follow-ups noted under items 4, 5
 and 6. Those, and a walk through the running app, feed Phase 7.5.
 
-### Phase 7.5 — Polish & additions *(next)*
+### Phase 7.5 — Polish & additions ✅ done, apart from I
 
 Everything needed before Canopy becomes a service. Most of it is polish or
 builds on pages that already work. Numbered 7.5 rather than renumbering, so
@@ -1371,21 +1371,135 @@ Navigate, open menus and trigger actions without a mouse. Do this last,
 because it touches every page, and it is easier once B and C have settled
 the layout and controls.
 
-### Phase 8 — Service install & packaging
+Set aside on 2026-10-01 so Phase 8 can start. Pick it up either before
+Phase 9 or after it.
 
-The real cross-platform push, with everything else working:
+### Phase 8 — Service install & packaging *(next)*
 
-- **Linux** — systemd system service (develop at home, verify under WSL2
-  systemd at work).
-- **Windows** — Windows service, registered by the NSIS installer with one-time
-  elevation.
-- **macOS** — launchd LaunchDaemon.
+The real cross-platform push, with everything else working. Planned
+2026-10-01, with 7.5 I (keyboard-only use) set aside to pick up before or
+after Phase 9.
 
 The rule from the original architecture still holds: **the service is never
 spawned or owned by the UI.** Closing the window must never stop the controller.
 
-**Tier 2 MQTT authentication** belongs here, because this is the phase where
-Canopy stops being a dev box and becomes a service that boots unattended.
+Decided 2026-10-01:
+
+- **The controller ships with its own Node runtime.** One artifact per
+  platform and architecture: a pinned Node binary, the controller bundled to
+  a single file, and better-sqlite3's prebuilt binary for that Node. The
+  desktop installers carry it, and the same artifact is the headless build.
+  That costs about 100 MB and a second native-module ABI next to Electron's.
+  In return, headless works from day one, and the service does not depend on
+  the UI's runtime or its GUI libraries.
+- **Linux: cover the most distros reliably.** Native packages for the three
+  big families, **.deb, .rpm and pacman**, each with install scripts that
+  create the service user and enable the unit. For everything else there is a
+  **controller-only tarball** with an install script. The bundled Node makes
+  it independent of the distro, and it needs systemd and glibc, nothing more.
+  **AppImage is dropped**, because it has no install step and cannot register
+  a system service. Flatpak and Snap cannot either. Distros without systemd
+  (OpenRC, runit) and musl distros (Alpine) are out of scope for v1, and that
+  is stated rather than left to fail.
+- **macOS is deferred** until there is a Mac to test on. The launchd notes
+  are kept below so they are not lost.
+- **The simulator gets a dev credential** when Tier 2 lands. It connects the
+  way a real device does, so nothing is exempt and `pnpm dev` exercises the
+  real auth path.
+
+#### A. The controller as a deployable
+
+Today it only runs as `tsx watch src/index.ts` inside the repo.
+
+1. **Bundle.** esbuild bundles `src/index.ts` into one ESM file, with
+   better-sqlite3 left external because it is native. Everything else is
+   pure JS.
+2. **Stage.** A script assembles `canopy-controller/<platform>-<arch>/`: the
+   Node binary from nodejs.org (pinned, checksum verified), the bundle, and
+   better-sqlite3 with the prebuilt binary for that Node's ABI. It runs with
+   no pnpm, tsx or repo present.
+3. **Data directory.** The dev default (`packages/data`) stays. The service
+   sets `DATA_DIR`: `/var/lib/canopy` on Linux, `%ProgramData%\Canopy` on
+   Windows. The existing dev data moves in through 7.5 F's export/import.
+   Nothing is migrated automatically.
+4. **Graceful shutdown.** There is no SIGTERM handling today, so a
+   `systemctl stop` kills the process mid-write. On SIGTERM/SIGINT the
+   controller should stop the scheduler, close the HTTP server and the broker,
+   checkpoint the WAL, close the database and exit 0.
+5. **Version.** `/health` and `/controller` read `npm_package_version`, which
+   only pnpm sets. Under systemd it would report 0.0.0, so the bundle bakes
+   the version in at build time.
+6. **Logs** go to stdout/stderr as they do now, so journald picks them up.
+   Windows handles them in D.
+
+#### B. Linux: systemd service
+
+1. **`canopy.service`**: `User=canopy`, `StateDirectory=canopy` (which
+   creates `/var/lib/canopy` and owns it), `Restart=on-failure`,
+   `After=network-online.target`, and hardening (`ProtectSystem=strict`,
+   `ProtectHome`, `PrivateTmp`, `NoNewPrivileges`). None of it needs root:
+   1883 and 7001 are unprivileged ports, and mDNS is plain multicast UDP.
+2. **The service user comes from `sysusers.d`**, not `useradd` in a script.
+   It is the one mechanism every systemd distro shares.
+3. **Package scripts** (deb, rpm and pacman each call them differently, but
+   they do the same things): after install, run `systemd-sysusers`,
+   `daemon-reload` and `enable --now`. On upgrade, restart. Before removal,
+   `disable --now`. Removal leaves `/var/lib/canopy` in place. Grow history
+   is never deleted by an uninstall.
+4. **The controller-only tarball** has an `install.sh` and an
+   `uninstall.sh` that do the same: the unit, sysusers, enable. This is the
+   headless build, and linux-arm64 is built as well for a Pi.
+5. **Verify** the .deb under WSL2 systemd at work (it is enabled on this box
+   already) and pacman at home. There is no Fedora box, so the .rpm is
+   checked for contents and scriptlets in a container, and recorded as such.
+6. **Firewall** is left to the user and documented. ufw and firewalld are not
+   touched by the packages.
+
+#### C. The UI as a client of an installed service
+
+1. **Offline state.** When `/health` does not answer, say the controller
+   service is not running and how to check it on this platform
+   (`systemctl status canopy`, or Services on Windows). There is no start
+   button: the UI does not own the service.
+2. **One controller URL.** `ProvisionModal.tsx` hardcodes
+   `http://localhost:7001`, apart from `lib/http.ts`. It should use the same
+   constant. A configurable address for the headless shape is noted here and
+   not built yet.
+3. **Settings → Controller** shows the version and data directory that the
+   controller reports, rather than fixed strings.
+
+#### D. Windows service
+
+1. **Service wrapper: WinSW.** `node.exe` cannot answer the Service Control
+   Manager itself, so `sc create` on it alone does not work. WinSW is a
+   single MIT-licensed executable with an XML config. NSSM is unmaintained,
+   and node-windows is WinSW with a wrapper around it.
+2. **Registered by the NSIS installer** with one-time elevation
+   (`perMachine: true`, and `customInstall` / `customUnInstall` in
+   `build/installer.nsh`). It runs as a virtual account (`NT SERVICE\Canopy`),
+   not LocalSystem, with write access granted on `%ProgramData%\Canopy` only.
+   It also adds an inbound firewall rule for 1883.
+3. **Logs** go to WinSW's rolling log files under the data directory.
+4. **Build in CI (E), not at work.** The corporate proxy blocks downloads
+   that carry Windows executables (see WSL2 below), and `node.exe` and WinSW
+   are exactly that. Not tested against them, but not worth finding out. Verify the installer by hand on the work Windows host.
+
+#### E. CI
+
+The roadmap has said "keep it green in CI" since Phase 1, but there is no
+CI. GitHub Actions:
+
+1. **Checks** on every push: typecheck and the backend tests, on Ubuntu and
+   Windows.
+2. **Packages** on demand and on tags: the controller artifacts (linux x64 and
+   arm64, windows x64), the Linux packages and the NSIS installer, uploaded
+   as workflow artifacts. Signing and publishing releases are not part of
+   this phase.
+
+#### F. Tier 2 MQTT authentication
+
+This belongs here, because this is the phase where Canopy stops being a dev
+box and becomes a service that boots unattended.
 
 The chicken-and-egg: devices are discovered *over MQTT itself* — retained
 `homeassistant/+/+/config` and `shellies/announce` — so requiring credentials at
@@ -1407,18 +1521,43 @@ This keeps the "press scan, devices appear" flow exactly as it is, and shrinks
 the anonymous surface from *always, everything* to *20 seconds, discovery
 topics only, while a human is watching the screen*.
 
-Three things to settle when it is built, none of which have an obvious default:
+Settled 2026-10-01:
 
-- **The simulator** connects to `mqtt://127.0.0.1:1883` with no credentials, so
-  Tier 2 breaks `pnpm dev` unless loopback is exempted via `preConnect` or the
-  simulator is issued a dev credential. Exempting loopback also exempts anything
-  else running on the host.
+- **The simulator** gets a dev credential, the same as a real device. It reads
+  the credential from the controller's HTTP API, which is loopback-only, as
+  the UI is.
+
+Still to settle when it is built:
+
+- **Where a device's credential comes from.** Tier 3 is the per-device
+  credential, so Tier 2 is one broker credential, generated on first start.
+  Settings shows it for the user to type into Tasmota or ESPHome, and it is
+  pushed to Shelly over its HTTP API. A device found anonymously appears, but
+  sends no readings until it has the credential, and Settings has to say so.
+- **Upgrading.** Devices that connect anonymously today stop working the
+  moment Tier 2 is enforced. An upgraded install may need to start with
+  enforcement off and a prompt to turn it on.
 - **TLS, or not.** Without it, credentials cross the LAN in cleartext inside the
   CONNECT packet. Cheap-device TLS support is patchy and cert distribution is its
   own project. Accepting plaintext credentials on a trusted segment is
   defensible for v1 — but decide it rather than drift into it.
 - **The bind address.** If devices live on one interface or VLAN, narrowing off
   `0.0.0.0` is free defence in depth.
+
+#### Suggested order
+
+A → B → C → E → D → F. A and B make the dev box a real install. C follows
+once the controller can be absent. E comes before D because the Windows
+artifacts have to be built in CI. F is independent of packaging and can move
+if it becomes urgent.
+
+#### Deferred: macOS
+
+A launchd LaunchDaemon in `/Library/LaunchDaemons`, installed by a `.pkg`
+rather than the `.dmg`, because a disk image cannot run install scripts. The
+bundled Node runtime from A already covers darwin, so this is mostly the
+plist and the installer. Pick it up when there is a Mac to verify it on.
+Until then `mac:` stays in `electron-builder.yml`, but nothing is built for it.
 
 ### Phase 9 — Setup View 3D render *(last)*
 
@@ -1555,6 +1694,13 @@ re-resolve.
 
   Never commit the certificate to this repo — it is site-specific, and a public
   repo is the wrong home for it.
+
+  **The proxy also scans content, and drops Windows executables.** Seen
+  2026-09-25 with `electron-winstaller`: every download died at the same byte
+  offset (~5.15 MB), while an ordinary tarball and Electron's 118 MB Linux zip
+  came through fine. A download that stalls at a byte-exact point is this
+  scanner, not the network, so don't retry it. It is why the Squirrel target
+  was dropped, and why Phase 8 builds the Windows artifacts in CI.
 
 ---
 
