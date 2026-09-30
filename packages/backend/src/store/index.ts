@@ -35,3 +35,13 @@ export function initSchema(): void {
   applyColumnAdditions(sqlite);
   seedData(sqlite);
 }
+
+/**
+ * Close the live database at shutdown. The checkpoint folds the WAL back into
+ * the main file first, so what is left on disk is one self-contained
+ * `canopy.db` rather than a database and a log to be replayed on next open.
+ */
+export function closeStore(): void {
+  sqlite.pragma("wal_checkpoint(TRUNCATE)");
+  sqlite.close();
+}

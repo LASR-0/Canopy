@@ -8,6 +8,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "bundle": "node scripts/bundle.mjs",
+    "stage": "node scripts/bundle.mjs && node scripts/stage.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -27,9 +29,9 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@vitest/coverage-v8": "^4.1.8",
+    "esbuild": "^0.28.0",
     "tsx": "^4.22.4",
     "typescript": "^5",
     "vitest": "^4.1.8"
-  },
-  "//deps_note": "Runtime deps (drizzle-orm, better-sqlite3, aedes, bonjour-service, fastify, ws) are added when we wire the service. Versions resolved/verified at install."
+  }
 }

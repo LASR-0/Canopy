@@ -304,12 +304,32 @@ function buildIdMap(db: SqliteDatabase): void {
 
 const nextTick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+/** Imports being applied. They run detached from the request that started them. */
+const applying = new Set<Promise<ImportStatus>>();
+
 /**
  * Copy the chosen workspaces in. Updates the session's status as it goes, for
  * the UI to poll. `onLoaded` is called once the rows are in, to load the new
  * workspaces into the controller's caches (rules, thresholds, device topics…).
  */
-export async function applyImport(
+export function applyImport(...args: Parameters<typeof copyIn>): Promise<ImportStatus> {
+  const run = copyIn(...args);
+  applying.add(run);
+  const done = () => { applying.delete(run); };
+  run.then(done, done);
+  return run;
+}
+
+/**
+ * Resolves once no import is being applied. For shutdown: an import stopped
+ * halfway would leave some of its rows behind, because removing them needs the
+ * database that shutdown is about to close.
+ */
+export async function importsSettled(): Promise<void> {
+  await Promise.allSettled([...applying]);
+}
+
+async function copyIn(
   live: SqliteDatabase,
   token: string,
   workspaceIds: readonly string[],

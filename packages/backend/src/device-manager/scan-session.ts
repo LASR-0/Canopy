@@ -79,6 +79,11 @@ function cancelScan(scanId: string): void {
   activeSessions.delete(scanId);
 }
 
+/** Cancel every scan in progress, closing its mDNS browsers. For shutdown. */
+export function cancelAllScans(): void {
+  for (const scanId of [...activeSessions.keys()]) cancelScan(scanId);
+}
+
 function finishScan(scanId: string): void {
   const session = activeSessions.get(scanId);
   if (!session) return;

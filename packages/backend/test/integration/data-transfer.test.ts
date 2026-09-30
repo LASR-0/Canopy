@@ -16,7 +16,7 @@ import { createGzip } from "node:zlib";
 import { Readable } from "node:stream";
 import { createTestDb, type TestDb } from "../helpers/db.js";
 import { exportArchive } from "../../src/data/export.js";
-import { ImportError, applyImport, resetImportSessions, stageImport } from "../../src/data/import.js";
+import { ImportError, applyImport, importsSettled, resetImportSessions, stageImport } from "../../src/data/import.js";
 import { tarStream } from "../../src/data/tar.js";
 
 let dir: string;
@@ -133,6 +133,24 @@ describe("export, then import", () => {
     }
     const names = (live.sqlite.prepare(`SELECT name FROM workspaces ORDER BY name`).all() as { name: string }[]).map((r) => r.name);
     expect(names).toEqual(["Tent 1", "Tent 1 (imported 2)", "Tent 1 (imported)"]);
+  });
+});
+
+describe("importsSettled", () => {
+  it("waits for an import running detached, as the apply route starts one", async () => {
+    const preview = await stageImport(read(await exportSource()), join(dir, "staging"), live.sqlite);
+    let finished = false;
+    void applyImport(live.sqlite, preview.token, ["ws-a"], join(dir, "live-photos"), async () => { finished = true; });
+
+    // The readings are copied in batches with yields between, so the copy is
+    // still running here, and shutdown must not close the database under it.
+    expect(finished).toBe(false);
+    await importsSettled();
+    expect(finished).toBe(true);
+  });
+
+  it("resolves straight away when nothing is importing", async () => {
+    await expect(importsSettled()).resolves.toBeUndefined();
   });
 });
 

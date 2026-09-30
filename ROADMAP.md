@@ -1407,30 +1407,55 @@ Decided 2026-10-01:
   way a real device does, so nothing is exempt and `pnpm dev` exercises the
   real auth path.
 
-#### A. The controller as a deployable
+#### A. The controller as a deployable ✅ done
 
-Today it only runs as `tsx watch src/index.ts` inside the repo.
+Before this it only ran as `tsx watch src/index.ts` inside the repo.
+`pnpm build:controller` now produces an install that runs on its own.
 
-1. **Bundle.** esbuild bundles `src/index.ts` into one ESM file, with
-   better-sqlite3 left external because it is native. Everything else is
-   pure JS.
-2. **Stage.** A script assembles `canopy-controller/<platform>-<arch>/`: the
-   Node binary from nodejs.org (pinned, checksum verified), the bundle, and
-   better-sqlite3 with the prebuilt binary for that Node's ABI. It runs with
-   no pnpm, tsx or repo present.
-3. **Data directory.** The dev default (`packages/data`) stays. The service
-   sets `DATA_DIR`: `/var/lib/canopy` on Linux, `%ProgramData%\Canopy` on
-   Windows. The existing dev data moves in through 7.5 F's export/import.
-   Nothing is migrated automatically.
-4. **Graceful shutdown.** There is no SIGTERM handling today, so a
-   `systemctl stop` kills the process mid-write. On SIGTERM/SIGINT the
-   controller should stop the scheduler, close the HTTP server and the broker,
-   checkpoint the WAL, close the database and exit 0.
-5. **Version.** `/health` and `/controller` read `npm_package_version`, which
-   only pnpm sets. Under systemd it would report 0.0.0, so the bundle bakes
-   the version in at build time.
-6. **Logs** go to stdout/stderr as they do now, so journald picks them up.
-   Windows handles them in D.
+1. **Bundle** (`scripts/bundle.mjs`): esbuild inlines everything into one ESM
+   file, `release/controller.mjs` (2.9 MB, with a source map). better-sqlite3
+   is left external because it is native. A banner gives the CommonJS
+   dependencies the `require` and `__dirname` an ESM file lacks.
+2. **Stage** (`scripts/stage.mjs [--platform] [--arch]`): puts together
+   `release/canopy-controller-<version>-<platform>-<arch>/`. It holds Node
+   24.20.0 from nodejs.org, checked against the published SHASUMS, the
+   bundle, and better-sqlite3 with the project's own prebuilt binary for
+   that Node's ABI (137). The ABI is read from nodejs.org's release index
+   rather than hardcoded. It stages linux and win32, x64 and arm64, from any
+   host, and caches the downloads in `.cache/`. It is 131 MB unpacked, most
+   of it the Node binary. Start it with
+   `DATA_DIR=<dir> ./node --enable-source-maps controller.mjs`.
+3. **Data directory.** The installed controller **refuses to start without
+   `DATA_DIR`**: relative to the bundle, the default would land in the
+   install directory, which an upgrade replaces. `pnpm dev` keeps
+   `packages/data`. Dev data moves into an install through 7.5 F's
+   export/import. Nothing is migrated automatically.
+4. **Graceful shutdown** on SIGTERM (systemd) and SIGINT (Ctrl+C, and what
+   WinSW sends), in reverse order of starting. It stops the heartbeat and any
+   scan, then lets a scheduler pass in progress finish, so a backup or rollup
+   is not cut off. Next it closes HTTP, which lets requests in flight, such
+   as an export download, complete. It waits for an import being applied,
+   which runs detached from its request, then closes the broker. Last, it
+   checkpoints the WAL and closes the database, leaving one self-contained
+   `canopy.db`. A second signal, or 30 s without finishing, forces the exit.
+   Nothing touches hardware on the way down.
+5. **Version** is baked in at bundle time from the root `package.json`
+   (`build-info.ts`), because a service has no pnpm above it to set
+   `npm_package_version`. The root is the one version for the product. It is
+   still 0.0.0: the first real number comes with E.
+6. **Logs** go to stdout/stderr as before, for journald.
+7. **Verified**: the staged linux-x64 build was copied out of the repo and
+   run with a bare `PATH`, on its own Node, against a copy of the real dev
+   data (1.1 GB). It loaded the tent's 13 device topics, 4 closed command
+   topics, a rule and derived roles, then stopped cleanly. A stop with the
+   simulator and a WebSocket client connected took 238 ms, and the client
+   got a close frame. The linux-arm64 build stages with aarch64 binaries,
+   but it has not been run, because there is no ARM machine yet. win32 is
+   staged in CI (E), because of the proxy.
+8. **Found on the way**: `.gitignore`'s bare `build/` rule also matches
+   `packages/frontend/build/`, which is electron-builder's resources folder,
+   where B and D put their install scripts. It needs the same anchoring
+   that `data/` got in 7.5 F.
 
 #### B. Linux: systemd service
 

@@ -15,6 +15,7 @@
     "dev:backend": "pnpm build:types && pnpm --filter @canopy/backend dev",
     "dev:sim": "pnpm --filter @canopy/simulator dev",
     "build:ui": "pnpm build:types && pnpm --filter @canopy/frontend build",
+    "build:controller": "pnpm build:types && pnpm --filter @canopy/backend stage",
     "typecheck": "pnpm build:types && pnpm -r typecheck",
     "test": "pnpm build:types && pnpm --filter @canopy/backend test",
     "test:watch": "pnpm build:types && pnpm --filter @canopy/backend test:watch",

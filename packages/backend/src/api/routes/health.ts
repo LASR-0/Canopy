@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ok } from "../reply.js";
+import { VERSION } from "../../build-info.js";
 
-const VERSION = process.env["npm_package_version"] ?? "0.0.0";
 const startedAt = Date.now();
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {

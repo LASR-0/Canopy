@@ -6,12 +6,13 @@
  * devices without requiring manual configuration.
  */
 import { Aedes, type AedesPublishPacket, type Client } from "aedes";
-import { createServer } from "node:net";
+import { createServer, type Server } from "node:net";
 import { authorizeClientPublish, commandTopicCount, refreshCommandTopics } from "./acl.js";
 
 export const MQTT_PORT = Number(process.env["MQTT_PORT"] ?? 1883);
 
 let _broker: Aedes | null = null;
+let _server: Server | null = null;
 let _listening = false;
 
 export function getBroker(): Aedes {
@@ -104,6 +105,7 @@ export async function startBroker(): Promise<void> {
   await refreshCommandTopics();
 
   const server = createServer(_broker.handle.bind(_broker));
+  _server = server;
 
   return new Promise<void>((resolve, reject) => {
     server.on("error", reject);
@@ -117,4 +119,21 @@ export async function startBroker(): Promise<void> {
       resolve();
     });
   });
+}
+
+/**
+ * Stop accepting connections and disconnect every client. Devices reconnect
+ * on their own when the controller comes back, and anything they publish in
+ * between is lost rather than half-ingested.
+ */
+export async function stopBroker(): Promise<void> {
+  const server = _server;
+  const broker = _broker;
+  _server = null;
+  // The server's close callback waits for every open connection to end, and
+  // those only end when aedes closes its clients. So: stop accepting, close
+  // the clients, and only then wait for the server.
+  const closed = server ? new Promise<void>((resolve) => server.close(() => resolve())) : Promise.resolve();
+  if (broker) await new Promise<void>((resolve) => broker.close(() => resolve()));
+  await closed;
 }

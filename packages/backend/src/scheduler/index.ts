@@ -30,12 +30,19 @@ const TICK_MS = 60_000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticking = false;
+/** The pass in progress, so shutdown can let it finish. */
+let current: Promise<void> | null = null;
 
-async function tick(): Promise<void> {
+function tick(): Promise<void> {
   // A slow tick must not overlap the next one: two passes at once would double
   // up job claims and race the applied-state map.
-  if (ticking) return;
+  if (ticking) return current ?? Promise.resolve();
   ticking = true;
+  current = pass().finally(() => { ticking = false; current = null; });
+  return current;
+}
+
+async function pass(): Promise<void> {
 
   try {
     await evaluateAutomations();
@@ -49,8 +56,6 @@ async function tick(): Promise<void> {
     // The loop must survive anything a single pass throws, or the controller
     // silently stops scheduling for the rest of its life.
     console.error("[scheduler] tick failed:", err);
-  } finally {
-    ticking = false;
   }
 }
 
@@ -74,4 +79,14 @@ export function stopScheduler(): void {
   if (!timer) return;
   clearInterval(timer);
   timer = null;
+}
+
+/**
+ * Stop, and wait for a pass already running to finish. A job cut off halfway
+ * is recovered on the next start, but a backup or rollup that is allowed to
+ * complete does not have to be redone.
+ */
+export async function drainScheduler(): Promise<void> {
+  stopScheduler();
+  await current;
 }

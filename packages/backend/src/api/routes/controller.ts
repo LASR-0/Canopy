@@ -7,9 +7,9 @@ import { getControllerState, setControllerState } from "../../controller/state.j
 import { broadcast } from "../../ws/index.js";
 import { ok, err } from "../reply.js";
 import type { ControllerCommand, ControllerState, ControllerStatus } from "@canopy/shared-types";
+import { VERSION } from "../../build-info.js";
 
 const startedAt = Date.now();
-const VERSION = process.env["npm_package_version"] ?? "0.0.0";
 
 /**
  * Count paired devices across every workspace.

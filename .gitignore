@@ -23,3 +23,7 @@ Thumbs.db
 # a bare "data/" also ignored source folders such as backend/src/data.
 /packages/data/
 /archive/
+# The installable controller (scripts/bundle.mjs, scripts/stage.mjs) and the
+# Node and better-sqlite3 downloads it is staged from.
+/packages/backend/release/
+/packages/backend/.cache/

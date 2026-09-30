@@ -14,7 +14,8 @@ import { activeRuleCount, refreshRules } from "../rules/index.js";
 import { refreshThresholds } from "../rules/thresholds.js";
 import { refreshActiveGrows } from "../grow/stage.js";
 
-export { startScan } from "./scan-session.js";
+export { cancelAllScans, startScan } from "./scan-session.js";
+export { stopHeartbeatMonitor } from "./heartbeat.js";
 export { refreshDeviceTopics } from "./topics.js";
 
 export async function startDeviceManager(): Promise<void> {
