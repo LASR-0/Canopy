@@ -28,6 +28,7 @@ export type IconName =
   | "check"
   | "chevron"
   | "clock"
+  | "copy"
   | "cube"
   | "dots"
   | "external"
@@ -181,6 +182,11 @@ export function Icon({ name, size = 16, className }: IconProps) {
       return S(1.7, <path d="M4 4 12 12M12 4 4 12"/>);
     case "check":
       return S(1.8, <path d="m3.5 8.5 2.8 2.8L12.5 5"/>);
+    case "copy":
+      return S(1.5, <>
+        <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>
+        <path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/>
+      </>);
     case "leaf":
       return F(<path d="M13.5 2.5C8 2 3 4.5 3 9.5c0 1 .2 1.9.6 2.7L2 13.8l.9.9 1.6-1.6c.8.4 1.7.6 2.7.6 5 0 7.5-5 7-10.5-.1-.4-.3-.6-.7-.7ZM6.5 10.5C7.7 8 9.6 6.6 11.5 6c-1.5 1.3-3 3.2-4 5.5-.3-.3-.7-.7-1-1Z"/>);
     case "chevron":

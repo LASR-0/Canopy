@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "@/components/Icon";
 import { Tip } from "@/components/Tip";
 import { cn } from "@/lib/utils";
+import { BACKEND_URL } from "@/lib/http";
 
 interface WifiNetwork {
   ssid: string;
@@ -25,7 +26,6 @@ type StepId =
   | "connect_error"
   | "success";
 
-const BACKEND = "http://localhost:7001";
 const SCAN_TIMEOUT_MS = 10_000;
 const CONNECT_TIMEOUT_MS = 30_000;
 const SOFTAP_DEVICE_IP = "192.168.4.1";
@@ -117,7 +117,7 @@ export function ProvisionModal({
 
     // SoftAP: ask the backend to scan OS Wi-Fi networks
     try {
-      const res = await fetch(`${BACKEND}/provision/wifi-scan`);
+      const res = await fetch(`${BACKEND_URL}/provision/wifi-scan`);
       if (res.ok) {
         const { networks } = (await res.json()) as { networks: WifiNetwork[] };
         const deviceNets = networks.filter((n) => n.isDeviceAp);
@@ -159,7 +159,7 @@ export function ProvisionModal({
 
     try {
       if (protocol === "softap") {
-        const res = await fetch(`${BACKEND}/provision/softap/credentials`, {
+        const res = await fetch(`${BACKEND_URL}/provision/softap/credentials`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ deviceIp: SOFTAP_DEVICE_IP, ssid: homeSsid, password: homePassword }),
@@ -180,7 +180,7 @@ export function ProvisionModal({
 
       // Trigger a network scan so the newly-joined device gets discovered
       if (workspaceId) {
-        await fetch(`${BACKEND}/workspaces/${workspaceId}/scan`, {
+        await fetch(`${BACKEND_URL}/workspaces/${workspaceId}/scan`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),

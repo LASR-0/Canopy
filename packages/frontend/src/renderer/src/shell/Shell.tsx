@@ -3,6 +3,8 @@ import { ThemeProvider } from "@/theme/ThemeProvider";
 import { TipProvider } from "@/components/Tip";
 import { Titlebar } from "./Titlebar";
 import { Sidebar, type PageId } from "./Sidebar";
+import { ControllerOffline } from "./ControllerOffline";
+import { useControllerConnection } from "@/hooks/useBackend";
 
 import { Overview }    from "@/pages/Overview";
 import { SetupView }   from "@/pages/SetupView";
@@ -77,6 +79,7 @@ export function Shell() {
   }, []);
   const clearFocus = useCallback(() => setFocus(null), []);
   useFocusTarget(focus, clearFocus);
+  const controller = useControllerConnection();
 
   return (
     <ThemeProvider>
@@ -88,7 +91,9 @@ export function Shell() {
               <div className="body">
                 <Sidebar active={page} onNavigate={navigate} />
                 <div className="main">
-                  <Page />
+                  {controller.offline
+                    ? <ControllerOffline checking={controller.checking} onRecheck={controller.recheck} />
+                    : <Page />}
                 </div>
               </div>
             </div>

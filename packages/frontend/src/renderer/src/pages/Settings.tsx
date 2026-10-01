@@ -31,9 +31,8 @@ import {
 } from "@/hooks/useWorkspace";
 import { useDevices, useRoles, useAssignRole, useScan } from "@/hooks/useDevices";
 import { ROLE_META, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
-import { useHealthStatus } from "@/hooks/useBackend";
+import { useControllerStatus, useHealthStatus } from "@/hooks/useBackend";
 import { api, BACKEND_URL } from "@/lib/http";
-import { wsManager } from "@/lib/ws";
 import { cn } from "@/lib/utils";
 import type { Device, RoleAssignment, AppSettings } from "@canopy/shared-types";
 
@@ -393,6 +392,9 @@ export function Settings() {
   const { data: deviceList = [] } = useDevices(workspace?.id);
   const { data: roleList = [] } = useRoles(workspace?.id);
   const { online, version, uptimeSec } = useHealthStatus();
+  // What the controller says about itself, rather than what this window assumes.
+  const { data: controller } = useControllerStatus();
+  const mqttPort = controller?.mqttPort ?? "—";
   const { state: scanState, found: scanFound, startScan, resetScan } = useScan(workspace?.id);
   const assignRole = useAssignRole(workspace?.id ?? "");
   const deleteWorkspace = useDeleteWorkspace();
@@ -400,9 +402,6 @@ export function Settings() {
   const qc = useQueryClient();
   const [showProvision, setShowProvision] = useState(false);
   const [showImport, setShowImport] = useState(false);
-
-  // Connect WS when Settings page is mounted
-  useEffect(() => { wsManager.connect(); }, []);
 
   const handleScan = () => {
     resetScan();
@@ -517,9 +516,9 @@ export function Settings() {
               <span className="count">local network</span>
               {online && (
                 <span className="net-meta">
-                  <Icon name="wifi" size={13} /> controller 127.0.0.1
+                  <Icon name="wifi" size={13} /> controller {new URL(BACKEND_URL).hostname}
                   <span className="sep">·</span>
-                  MQTT :1883
+                  MQTT :{mqttPort}
                 </span>
               )}
             </div>
@@ -545,7 +544,7 @@ export function Settings() {
                     </div>
                     <div className="scan-protos">
                       <span className="scan-proto"><span className="sp-dot" />mDNS<span className="sp-tip">zeroconf</span></span>
-                      <span className="scan-proto"><span className="sp-dot" />MQTT<span className="sp-tip">broker :1883</span></span>
+                      <span className="scan-proto"><span className="sp-dot" />MQTT<span className="sp-tip">broker :{mqttPort}</span></span>
                     </div>
                     <div className="scan-bar"><i /></div>
                   </div>
@@ -862,8 +861,13 @@ export function Settings() {
               <div className="env-summary">
                 <div className="env-cell">
                   <div className="env-k">Controller</div>
-                  <div className="env-v" style={{ fontSize: 14 }}>{online ? "Running" : "Offline"}</div>
-                  <div className="env-s">{version ? `v${version}` : "—"}</div>
+                  <div className="env-v" style={{ fontSize: 14, textTransform: "capitalize" }}>
+                    {online ? controller?.state ?? "running" : "offline"}
+                  </div>
+                  <div className="env-s">
+                    {version ? `v${version}` : "—"}
+                    {controller && (controller.installed ? " · service" : " · from the repo")}
+                  </div>
                 </div>
                 <div className="env-cell">
                   <div className="env-k">Uptime</div>
@@ -874,13 +878,21 @@ export function Settings() {
                 </div>
                 <div className="env-cell">
                   <div className="env-k">MQTT broker</div>
-                  <div className="env-v" style={{ fontSize: 14 }}>:{1883}</div>
-                  <div className="env-s">local only · 127.0.0.1</div>
+                  <div className="env-v" style={{ fontSize: 14 }}>:{mqttPort}</div>
+                  {/* Every interface, not loopback: devices on the LAN connect to it. */}
+                  <div className="env-s">all interfaces · for devices</div>
                 </div>
                 <div className="env-cell">
                   <div className="env-k">API</div>
-                  <div className="env-v" style={{ fontSize: 14 }}>:{7001}</div>
-                  <div className="env-s">HTTP + WebSocket</div>
+                  <div className="env-v" style={{ fontSize: 14 }}>:{controller?.httpPort ?? "—"}</div>
+                  <div className="env-s">this computer only · HTTP + WebSocket</div>
+                </div>
+                <div className="env-cell" style={{ gridColumn: "1 / -1" }}>
+                  <div className="env-k">Data</div>
+                  <div className="env-v" style={{ fontSize: 13, fontFamily: "var(--mono)", fontWeight: 400, wordBreak: "break-all" }}>
+                    {controller?.dataDir ?? "—"}
+                  </div>
+                  <div className="env-s">database, journal photos and backups</div>
                 </div>
               </div>
             </div>

@@ -2,12 +2,13 @@ import type { FastifyInstance } from "fastify";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../store/index.js";
 import { devices } from "../../store/schema.js";
-import { isBrokerOnline } from "../../broker/index.js";
+import { isBrokerOnline, MQTT_PORT } from "../../broker/index.js";
+import { DATA_DIR } from "../../store/paths.js";
 import { getControllerState, setControllerState } from "../../controller/state.js";
 import { broadcast } from "../../ws/index.js";
 import { ok, err } from "../reply.js";
 import type { ControllerCommand, ControllerState, ControllerStatus } from "@canopy/shared-types";
-import { VERSION } from "../../build-info.js";
+import { BUNDLED, VERSION } from "../../build-info.js";
 
 const startedAt = Date.now();
 
@@ -26,7 +27,11 @@ async function pairedDeviceCount(): Promise<number> {
   return row?.count ?? 0;
 }
 
-async function currentStatus(): Promise<ControllerStatus> {
+/**
+ * `httpPort` is the port the request came in on, which is the one that
+ * matters to whoever asked, without importing the server's own constant.
+ */
+async function currentStatus(httpPort: number): Promise<ControllerStatus> {
   return {
     state: getControllerState(),
     version: VERSION,
@@ -34,6 +39,10 @@ async function currentStatus(): Promise<ControllerStatus> {
     brokerOnline: isBrokerOnline(),
     deviceCount: await pairedDeviceCount(),
     ts: new Date().toISOString(),
+    installed: BUNDLED,
+    dataDir: DATA_DIR,
+    httpPort,
+    mqttPort: MQTT_PORT,
   };
 }
 
@@ -50,8 +59,8 @@ function isControllerCommand(body: unknown): body is ControllerCommand {
 }
 
 export async function controllerRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/controller/status", async (_req, reply) => {
-    return reply.send(ok(await currentStatus()));
+  app.get("/controller/status", async (req, reply) => {
+    return reply.send(ok(await currentStatus(req.socket.localPort ?? 0)));
   });
 
   app.post<{ Body: ControllerCommand }>("/controller/command", async (req, reply) => {
@@ -62,7 +71,7 @@ export async function controllerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     setControllerState(STATE_FOR_OP[req.body.op]);
-    const status = await currentStatus();
+    const status = await currentStatus(req.socket.localPort ?? 0);
 
     // Every open window shares one controller, so they all need to learn that
     // it is no longer acting — otherwise a second window keeps offering

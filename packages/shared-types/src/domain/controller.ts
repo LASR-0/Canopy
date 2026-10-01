@@ -15,6 +15,14 @@ export interface ControllerStatus {
   deviceCount: number;
   activeGrowId?: Id;
   ts: Timestamp;
+  /** True for an installed controller (a service), false for one run from the repo. */
+  installed: boolean;
+  /** Where it keeps its database, journal photos and backups. */
+  dataDir: string;
+  /** The HTTP + WebSocket API, which listens on loopback only. */
+  httpPort: number;
+  /** The MQTT broker, which listens on every interface so devices can reach it. */
+  mqttPort: number;
 }
 
 /** Lightweight liveness probe the UI hits to decide online/offline. */

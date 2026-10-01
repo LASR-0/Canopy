@@ -565,6 +565,17 @@ body {
 .empty h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; color: var(--fg-default); }
 .empty p { font-size: 14px; color: var(--fg-muted); margin-bottom: 18px; }
 .empty .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-family: var(--mono); color: var(--fg-muted); border: 1px solid var(--border-default); border-radius: 20px; padding: 4px 12px; }
+/* The controller-offline state (shell/ControllerOffline.tsx): the empty state,
+   wider, with the commands to check on the service. */
+.empty-inner.offline { max-width: 520px; }
+.empty-inner.offline p { margin-bottom: 12px; }
+.offline-intro { font-size: 13px; }
+.offline-addr { font-family: var(--mono); font-size: 13px; color: var(--fg-default); }
+.offline-steps { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 20px; text-align: left; }
+.offline-step { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 10px; }
+.offline-label { font-size: 12.5px; color: var(--fg-muted); }
+.offline-step code { font-family: var(--mono); font-size: 12.5px; color: var(--fg-default); background: var(--canvas-subtle); border: 1px solid var(--border-default); border-radius: 6px; padding: 6px 10px; user-select: all; overflow-x: auto; white-space: nowrap; }
+.offline-foot { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 12.5px; color: var(--fg-subtle); }
 .se-steps { display: flex; align-items: center; gap: 12px; margin-top: 22px; flex-wrap: wrap; justify-content: center; }
 .se-step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg-muted); border: 1px solid var(--border-default); border-radius: 20px; padding: 5px 13px; background: var(--canvas-default); }
 .ses-n { width: 18px; height: 18px; border-radius: 50%; background: var(--canvas-subtle); border: 1px solid var(--border-default); display: grid; place-items: center; font-size: 10.5px; font-family: var(--mono); color: var(--fg-muted); flex: 0 0 18px; }

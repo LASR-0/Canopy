@@ -3,10 +3,12 @@ import { WS_PROTOCOL_VERSION } from "@canopy/shared-types";
 import { BACKEND_URL } from "./http.js";
 
 type MessageHandler = (msg: ServerMessage) => void;
+type ConnectionHandler = (connected: boolean) => void;
 
 class WsManager {
   private socket: WebSocket | null = null;
   private handlers = new Set<MessageHandler>();
+  private connectionHandlers = new Set<ConnectionHandler>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private _connected = false;
 
@@ -21,7 +23,7 @@ class WsManager {
     this.socket = socket;
 
     socket.onopen = () => {
-      this._connected = true;
+      this.setConnected(true);
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
@@ -39,7 +41,7 @@ class WsManager {
     };
 
     socket.onclose = () => {
-      this._connected = false;
+      this.setConnected(false);
       this.scheduleReconnect();
     };
 
@@ -61,6 +63,21 @@ class WsManager {
   subscribe(handler: MessageHandler): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  /**
+   * Called when the socket connects or drops. A drop is the quickest sign the
+   * controller has gone, well before the next health poll.
+   */
+  onConnectionChange(handler: ConnectionHandler): () => void {
+    this.connectionHandlers.add(handler);
+    return () => this.connectionHandlers.delete(handler);
+  }
+
+  private setConnected(connected: boolean): void {
+    if (this._connected === connected) return;
+    this._connected = connected;
+    for (const handler of this.connectionHandlers) handler(connected);
   }
 
   private scheduleReconnect(): void {
