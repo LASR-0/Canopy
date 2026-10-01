@@ -1465,7 +1465,7 @@ Before this it only ran as `tsx watch src/index.ts` inside the repo.
    11 treats as its own built-in command, so `pnpm build:controller` failed.
    It is `build:controller` in both places now.
 
-#### B. Linux: systemd service ✅ built — awaiting a hands-on install (item 9)
+#### B. Linux: systemd service ✅ done — pacman installed on Omarchy, .deb in CI (item 9)
 
 `pnpm package:linux` builds the controller, the controller tarball and the
 desktop packages. Everything for Linux is in `packaging/linux/`.
@@ -1534,15 +1534,23 @@ desktop packages. Everything for Linux is in `packaging/linux/`.
    could reach a test copy under `/tmp`. Under that sandbox, a scan found
    the simulator's 12 devices, an export ran, a `kill -9` was restarted in
    5 s, and `systemctl stop` shut down cleanly.
-9. **Still to check by hand** (noted 2026-10-01; none of it needs a code
-   change first):
-   - **pacman, at home on Omarchy.** Build it with `pnpm build:controller`,
-     then in `packages/frontend` run
-     `npx electron-vite build && npx electron-builder --linux pacman`.
-     `pnpm package:linux` stops at the rpm step without `rpmbuild`. Then
-     run `packaging/linux/test-install.sh packages/frontend/dist-build/canopy-*.pacman`
-     (E), which installs, stops, crashes, upgrades and removes it. Last,
-     launch Canopy from the menu and check that it connects to the service.
+9. **Checked by hand** (noted 2026-10-01):
+   - **pacman on Omarchy ✅ install test passed, 2026-10-01.** Built with
+     `pnpm build:controller`, then in `packages/frontend`
+     `npx electron-vite build && npx electron-builder --linux pacman`
+     (`pnpm package:linux` stops at the rpm step without `rpmbuild`).
+     The first build would not have installed: electron-builder's default
+     pacman depends include `http-parser` and `libappindicator-gtk3`, which
+     have both left Arch's repos for the AUR, so `pacman -U` refuses them.
+     `electron-builder.cjs` now gives pacman its own list without the two.
+     There is no tray icon to need an indicator. Then
+     `packaging/linux/test-install.sh` passed every check: starts, enabled,
+     runs as the `canopy` DynamicUser, clean stop, restart after `kill -9`,
+     an upgrade restarts a running controller and leaves a stopped one
+     stopped (so `post_upgrade` works), and removal keeps the data.
+     Then installed again and launched from the menu: the app connected
+     to the installed controller, and a scan found the dev simulator's
+     devices through it.
    - **.deb**: now automated in CI (E), by `packaging/linux/test-install.sh`
      on a fresh Ubuntu runner.
    - **.rpm** is built in CI (E) and never installed on a real Fedora.
@@ -1676,7 +1684,7 @@ Everything for Windows is in `packaging/windows/`.
    `node.exe` (signed by the OpenJS Foundation) and WinSW. Exclude them
    when signing arrives.
 
-#### E. CI ✅ built — CI green, packages fixed after the first run, rerun pending
+#### E. CI ✅ done — all green since the second run
 
 The roadmap had said "keep it green in CI" since Phase 1, with no CI. There
 are two workflows in `.github/workflows/` now. Both pin Node to the repo's
@@ -1747,6 +1755,9 @@ the installed controller now run one version, from one file.
    - Not yet run at all: `linux-install`, which waits on the Linux build.
    - GitHub warns that `pnpm/action-setup@v4` targets Node 20 and is being
      run on Node 24. It still works. Move to its next major when one ships.
+9. **Second run, 2026-10-01** (commit eb29fe1, run 36827750689): all three
+   Packages jobs passed, so the fpm fix holds, and `linux-install` ran
+   `test-install.sh` on the .deb and the tarball on a fresh Ubuntu runner.
 
 #### F. Tier 2 MQTT authentication ✅ done
 
