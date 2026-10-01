@@ -1,0 +1,38 @@
+# Typecheck and test on every push and pull request, on Linux and on Windows.
+# Development happens on Linux; Windows is a release target that must not
+# quietly break (ROADMAP: "Primary platform: Linux").
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      # The pnpm version comes from package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+      # The Node the controller ships with, so tests run on what is installed.
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test

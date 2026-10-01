@@ -24,10 +24,10 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
 /**
- * The Node the controller ships with. An LTS line, and the one development
- * runs on, so what is tested is what is installed.
+ * The Node the controller ships with: the repo's .node-version, which CI also
+ * tests on, so what is tested is what is installed. An LTS line.
  */
-const NODE_VERSION = "24.20.0";
+const NODE_VERSION = (await readFile(join(dirname(fileURLToPath(import.meta.url)), "../../../.node-version"), "utf8")).trim();
 
 /**
  * WinSW, which lets node.exe run as a Windows service (packaging/windows).
@@ -48,6 +48,12 @@ const platform = values.platform;
 const arch = values.arch;
 if (!["linux", "win32"].includes(platform)) throw new Error(`Unsupported platform: ${platform}`);
 if (!["x64", "arm64"].includes(arch)) throw new Error(`Unsupported arch: ${arch}`);
+
+/**
+ * Windows' own tar, by full path: on a CI runner Git's GNU tar can come first
+ * on the PATH, and it reads no zip and takes "C:" for a remote host.
+ */
+const TAR = process.platform === "win32" ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cacheDir = join(root, ".cache");
@@ -105,12 +111,12 @@ await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
 if (platform === "win32") {
-  // Windows' own tar is bsdtar, which reads zip; Linux's GNU tar does not.
+  // Windows' tar is bsdtar, which reads zip; Linux's GNU tar does not.
   const entries = [`${nodeBase}/node.exe`, `${nodeBase}/LICENSE`];
-  if (process.platform === "win32") execFileSync("tar", ["-xf", archivePath, "-C", out, "--strip-components=1", ...entries]);
+  if (process.platform === "win32") execFileSync(TAR, ["-xf", archivePath, "-C", out, "--strip-components=1", ...entries]);
   else execFileSync("unzip", ["-q", "-j", archivePath, ...entries, "-d", out]);
 } else {
-  execFileSync("tar", ["-xJf", archivePath, "-C", out, "--strip-components=1", `${nodeBase}/bin/node`, `${nodeBase}/LICENSE`]);
+  execFileSync(TAR, ["-xJf", archivePath, "-C", out, "--strip-components=1", `${nodeBase}/bin/node`, `${nodeBase}/LICENSE`]);
   await cp(join(out, "bin/node"), join(out, "node"));
   await rm(join(out, "bin"), { recursive: true });
 }
@@ -132,7 +138,7 @@ const prebuildPath = await fetchCached(
   `https://github.com/WiseLibs/better-sqlite3/releases/download/v${sqliteVersion}/${prebuild}`,
   prebuild,
 );
-execFileSync("tar", ["-xzf", prebuildPath, "-C", out, "--strip-components=2", "build/Release/better_sqlite3.node"]);
+execFileSync(TAR, ["-xzf", prebuildPath, "-C", out, "--strip-components=2", "build/Release/better_sqlite3.node"]);
 await cp(join(sqliteDir, "LICENSE"), join(out, "LICENSE.better-sqlite3"));
 
 // ── WinSW (Windows) ───────────────────────────────────────────────────────────

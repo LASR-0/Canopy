@@ -1,0 +1,109 @@
+# Build every package and install each one for real (ROADMAP Phase 8 E).
+#
+# The install tests are why this is in CI at all: they need root or admin, and
+# a GitHub runner is the one place with both. The work machine has neither,
+# and there is no Windows machine at home.
+name: Packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    # Path filters do not apply to tag pushes: a tag always builds.
+    paths:
+      - "packaging/**"
+      - "packages/backend/scripts/**"
+      - "packages/frontend/electron-builder.cjs"
+      - ".github/workflows/package.yml"
+      - ".node-version"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Build Linux packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Check a tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="v$(node -p 'require("./package.json").version')"
+          [ "$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match package.json ($version)"; exit 1; }
+      # fpm needs rpmbuild for the .rpm and bsdtar for the pacman package.
+      - run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:linux
+      - name: Controller tarball for linux-arm64 (a Pi by the tent)
+        run: |
+          node packages/backend/scripts/stage.mjs --platform linux --arch arm64
+          node packages/backend/scripts/tarball.mjs --arch arm64
+      # Not installed anywhere (no Fedora runner), so at least show that the
+      # scriptlets are in it.
+      - name: The .rpm's scriptlets
+        run: rpm -qp --scripts packages/frontend/dist-build/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            packages/frontend/dist-build/*.deb
+            packages/frontend/dist-build/*.rpm
+            packages/frontend/dist-build/*.pacman
+            packages/backend/release/*.tar.gz
+
+  linux-install:
+    name: Install on Linux
+    needs: linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: linux
+          path: artifacts
+      - name: The .deb
+        run: packaging/linux/test-install.sh artifacts/frontend/dist-build/*.deb
+      # After the .deb is removed, which the tarball's install.sh requires.
+      - name: The controller tarball
+        run: packaging/linux/test-install.sh artifacts/backend/release/canopy-controller-*-linux-x64.tar.gz
+
+  windows:
+    name: Build and install on Windows
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Only on Windows: making the NSIS uninstaller runs an .exe (Wine elsewhere).
+      - run: pnpm package:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          retention-days: 14
+          if-no-files-found: error
+          path: packages/frontend/dist-build/*.exe
+      - name: Install, upgrade and uninstall
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "packages/frontend/dist-build" -Filter "Canopy Setup *.exe" | Select-Object -First 1
+          ./packaging/windows/test-install.ps1 -Installer $installer.FullName
