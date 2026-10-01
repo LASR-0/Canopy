@@ -29,6 +29,7 @@ const {
   resetAclForTesting,
   setCommandTopicsForTesting,
 } = await import("../../src/broker/acl.js");
+const { setClientAuthForTesting } = await import("../../src/broker/auth.js");
 
 /** The hook's callback, reduced to the only question asked of it. */
 function authorize(topic: string, clientId: string | null = "sim-1"): Error | null {
@@ -225,5 +226,31 @@ describe("refreshCommandTopics", () => {
     await refreshCommandTopics();
     expect(commandTopicCount()).toBe(1);
     expect(isCommandTopic("tent/fan/command")).toBe(true);
+  });
+});
+
+describe("a client let in only to announce itself (Tier 2)", () => {
+  /** Run the hook for a client that connected without the credential during a scan. */
+  function publishAsNewcomer(topic: string): { error: Error | null; retain: boolean } {
+    const client = { id: "newcomer" } as never;
+    setClientAuthForTesting(client, { auth: "anonymous", provisioned: false });
+    const packet = { topic, retain: true } as { topic: string; retain: boolean };
+    let error: Error | null = null;
+    authorizeClientPublish(client, packet as never, (e) => { error = e ?? null; });
+    return { error: error as Error | null, retain: packet.retain };
+  }
+
+  it("is not refused its other publishes, which would disconnect it before it announced", () => {
+    expect(publishAsNewcomer("esphome-node/status").error).toBeNull();
+  });
+
+  it("leaves nothing retained except its announcement", () => {
+    expect(publishAsNewcomer("esphome-node/status").retain).toBe(false);
+    expect(publishAsNewcomer("homeassistant/sensor/node/config").retain).toBe(true);
+  });
+
+  it("is still refused a command topic", () => {
+    setCommandTopicsForTesting([{ capabilities: [switchCap] }]);
+    expect(publishAsNewcomer("tent/fan/command").error).toBeInstanceOf(Error);
   });
 });

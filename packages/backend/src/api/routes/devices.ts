@@ -7,7 +7,7 @@ import { ok, err } from "../reply.js";
 import { startScan, refreshDeviceTopics } from "../../device-manager/index.js";
 import { refreshDerivedRoles } from "../../device-manager/derived.js";
 import { actuateDevice, validateCommand } from "../../device-manager/actuate.js";
-import type { ActuateBody, ApiErrorCode, Device, RoleAssignment } from "@canopy/shared-types";
+import type { ActuateBody, ApiErrorCode, Device, MqttAuth, RoleAssignment } from "@canopy/shared-types";
 
 /**
  * How an actuation failure reaches the client.
@@ -43,6 +43,7 @@ function rowToDevice(row: typeof devices.$inferSelect): Device {
   if (row.model)             device.model = row.model;
   if (row.firmware)          device.firmware = row.firmware;
   if (row.lastSeen)          device.lastSeen = row.lastSeen;
+  if (row.mqttAuth)          device.mqttAuth = row.mqttAuth as MqttAuth;
   if (row.signalPct != null) device.signalPct = row.signalPct;
   if (row.detachedAt)        device.detachedAt = row.detachedAt;
   return device;

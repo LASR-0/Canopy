@@ -21,6 +21,11 @@
   <arguments>--enable-source-maps "%BASE%\controller.mjs"</arguments>
   <env name="DATA_DIR" value="%ProgramData%\Canopy" />
   <env name="NODE_ENV" value="production" />
+  <!--
+    The MQTT broker listens on every interface. To pin it to the one your
+    devices are on, overriding Settings, uncomment this and restart Canopy:
+    <env name="MQTT_HOST" value="192.168.1.20" />
+  -->
 
   <startmode>Automatic</startmode>
   <!-- A crash restarts it. A deliberate stop does not, because it exits 0. -->

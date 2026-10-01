@@ -10,6 +10,8 @@
  *
  * Env:
  *   SIM_BROKER_URL    default mqtt://127.0.0.1:1883
+ *   SIM_CONTROLLER_URL default http://127.0.0.1:7001 — where the broker
+ *                                      credential is read from (GET /mqtt)
  *   SIM_SEED          default 1      — same seed, same telemetry
  *   SIM_ANNOUNCE_MS   default 5000   — must stay well under the backend's
  *                                      20s scan window, or a scan started
@@ -26,6 +28,7 @@ import { FLEET, topics, componentOf, MANUFACTURER, SW_VERSION } from "./fleet.js
 import type { DeviceSpec, SensorSpec } from "./fleet.js";
 
 const BROKER_URL = process.env["SIM_BROKER_URL"] ?? "mqtt://127.0.0.1:1883";
+const CONTROLLER_URL = process.env["SIM_CONTROLLER_URL"] ?? "http://127.0.0.1:7001";
 const SEED = Number(process.env["SIM_SEED"] ?? 1);
 const ANNOUNCE_MS = Number(process.env["SIM_ANNOUNCE_MS"] ?? 5000);
 const TELEMETRY_MS = Number(process.env["SIM_TELEMETRY_MS"] ?? 5000);
@@ -33,6 +36,32 @@ const LOCK_PORT = Number(process.env["SIM_LOCK_PORT"] ?? 47_653);
 const ALLOW_MULTIPLE = process.env["SIM_ALLOW_MULTIPLE"] === "1";
 
 const rng = mulberry32(SEED);
+
+/** How long to wait for the controller, which `pnpm dev` may still be starting. */
+const CREDENTIAL_WAIT_MS = 30_000;
+
+/**
+ * The broker credential, read from the controller the way the UI reads it.
+ * The simulator connects as a real device would once it has been given the
+ * credential, so `pnpm dev` exercises the same authentication as a device
+ * (ROADMAP Phase 8 F). Without a controller to ask, it connects without one,
+ * which a controller not requiring credentials still accepts.
+ */
+async function fetchCredential(): Promise<{ username: string; password: string } | null> {
+  const until = Date.now() + CREDENTIAL_WAIT_MS;
+  while (Date.now() < until) {
+    try {
+      const res = await fetch(`${CONTROLLER_URL}/mqtt`);
+      const body = (await res.json()) as { data?: { username: string; password: string } };
+      if (body.data) return { username: body.data.username, password: body.data.password };
+    } catch {
+      // Not up yet.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  console.warn(`[sim] no controller at ${CONTROLLER_URL} to read the broker credential from; connecting without one`);
+  return null;
+}
 
 /** Mean-reverting random walk — drifts plausibly instead of jittering. */
 function createWalk(spec: SensorSpec): () => number {
@@ -195,11 +224,12 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`[sim] connecting to ${BROKER_URL}`);
+  const credential = await fetchCredential();
+  console.log(`[sim] connecting to ${BROKER_URL}${credential ? ` as ${credential.username}` : " without a credential"}`);
   // Fixed unless multiples are explicitly allowed: a stable id lets the broker
   // drop a session left behind by a process that died without disconnecting.
   const clientId = ALLOW_MULTIPLE ? `canopy-sim-${process.pid}` : "canopy-simulator";
-  const client = mqtt.connect(BROKER_URL, { clientId, clean: true });
+  const client = mqtt.connect(BROKER_URL, { clientId, clean: true, ...(credential ?? {}) });
 
   let announceTimer: ReturnType<typeof setInterval> | null = null;
   let telemetryTimer: ReturnType<typeof setInterval> | null = null;

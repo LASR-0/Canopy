@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
-import { addColumnIfMissing, applyColumnAdditions } from "../../src/store/index.js";
+import { addColumnIfMissing, applyColumnAdditions, applyDDL, seedData } from "../../src/store/ddl.js";
 
 let sqlite: Database.Database;
 
@@ -125,5 +125,45 @@ describe("applyColumnAdditions", () => {
         )
         .run(),
     ).not.toThrow();
+  });
+});
+
+describe("MQTT credentials (Phase 8 F)", () => {
+  /** app_settings and devices as they were before Phase 8 F. */
+  function createLegacyTables(withDevice: boolean): void {
+    sqlite.exec(`
+      CREATE TABLE app_settings (id INTEGER PRIMARY KEY DEFAULT 1, theme TEXT NOT NULL DEFAULT 'dark');
+      INSERT INTO app_settings (id) VALUES (1);
+      CREATE TABLE devices (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+    `);
+    if (withDevice) sqlite.exec(`INSERT INTO devices (id, name) VALUES ('d1', 'Fan')`);
+  }
+
+  const required = () =>
+    (sqlite.prepare(`SELECT mqtt_require_credentials r FROM app_settings`).get() as { r: number }).r;
+
+  it("leaves an upgraded install with devices open: they connect without a credential today", () => {
+    createLegacyTables(true);
+    applyColumnAdditions(sqlite);
+    expect(required()).toBe(0);
+  });
+
+  it("requires credentials on an upgraded install with no devices yet", () => {
+    createLegacyTables(false);
+    applyColumnAdditions(sqlite);
+    expect(required()).toBe(1);
+  });
+
+  it("requires credentials on a fresh install, and seeds one shared credential once", () => {
+    applyDDL(sqlite);
+    applyColumnAdditions(sqlite);
+    seedData(sqlite);
+    seedData(sqlite);
+    expect(required()).toBe(1);
+    const creds = sqlite.prepare(`SELECT username, password, device_id FROM mqtt_credentials`).all() as
+      { username: string; password: string; device_id: string | null }[];
+    expect(creds).toHaveLength(1);
+    expect(creds[0]).toMatchObject({ username: "canopy", device_id: null });
+    expect(creds[0]!.password).toMatch(/^[A-Za-z0-9_-]{24}$/);
   });
 });

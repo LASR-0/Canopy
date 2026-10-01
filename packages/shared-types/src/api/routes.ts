@@ -29,6 +29,8 @@ import type {
   ReadingSeries,
   ControllerStatus,
   ControllerCommand,
+  MqttBrokerSettings,
+  MqttBrokerPatch,
   ActuatorCommand,
   DevicePlacement,
   Plant,
@@ -108,6 +110,10 @@ export interface ApiRoutes {
   // ── Settings ──────────────────────────────────────────────────────────────
   "GET /settings":                  { res: AppSettings };
   "PATCH /settings":                { body: Partial<AppSettings>; res: AppSettings };
+  "GET /mqtt":                      { res: MqttBrokerSettings };
+  "PATCH /mqtt":                    { body: MqttBrokerPatch; res: MqttBrokerSettings };
+  /** A new broker password. Devices on the old one are disconnected. */
+  "POST /mqtt/password":            { res: MqttBrokerSettings };
 
   // ── Devices ───────────────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/devices":   { res: Device[] };

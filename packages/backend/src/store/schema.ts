@@ -45,6 +45,10 @@ export const appSettings = sqliteTable("app_settings", {
   backupEnabled:              integer("backup_enabled", { mode: "boolean" }).notNull().default(false),
   backupIntervalDays:         integer("backup_interval_days").notNull().default(7),
   backupPath:                 text("backup_path"),
+  /** Devices need the broker credential to connect, except while a scan is open. */
+  mqttRequireCredentials:     integer("mqtt_require_credentials", { mode: "boolean" }).notNull().default(true),
+  /** The address the broker listens on; null is every interface. MQTT_HOST overrides it. */
+  mqttBindHost:               text("mqtt_bind_host"),
 });
 
 // ── devices ──────────────────────────────────────────────────────────────────
@@ -77,6 +81,20 @@ export const devices = sqliteTable("devices", {
    * never go to two places. See data/import.ts.
    */
   detachedAt:         text("detached_at"),
+  /** How it last connected to the broker: "credential" or "anonymous". */
+  mqttAuth:           text("mqtt_auth"),
+});
+
+/**
+ * What devices present when they connect to the broker. One shared row
+ * (deviceId null) in Tier 2; Phase 8 G ties a credential to each device.
+ */
+export const mqttCredentials = sqliteTable("mqtt_credentials", {
+  id:        text("id").primaryKey(),
+  username:  text("username").notNull().unique(),
+  password:  text("password").notNull(),
+  deviceId:  text("device_id").references(() => devices.id, { onDelete: "cascade" }),
+  createdAt: text("created_at").notNull(),
 });
 
 // ── role_assignments ──────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@
  */
 import { parseHaDiscovery } from "./adapters/generic-mqtt.js";
 import { deviceFromShellyAnnounce } from "./adapters/shelly.js";
-import type { Device } from "@canopy/shared-types";
+import type { Device, MqttAuth } from "@canopy/shared-types";
 
 type DiscoveryCallback = (device: Omit<Device, "id">) => void;
 
@@ -26,21 +26,25 @@ export function unregisterMqttDiscovery(workspaceId: string): void {
  * Called for every MQTT message published to the broker.
  * Tries each adapter in order; first match wins.
  */
-export function handleMqttMessage(topic: string, payload: Buffer): void {
+export function handleMqttMessage(topic: string, payload: Buffer, auth?: MqttAuth): void {
   if (activeListeners.size === 0) return;
+
+  // A device found over a connection without the credential is recorded so,
+  // and Settings can tell the grower it still needs one.
+  const found = (onFound: DiscoveryCallback, device: Omit<Device, "id"> | null) => {
+    if (device) onFound(auth ? { ...device, mqttAuth: auth } : device);
+  };
 
   for (const [workspaceId, onFound] of activeListeners) {
     // Shelly Gen 1 announce
     if (topic === "shellies/announce") {
-      const device = deviceFromShellyAnnounce(payload, workspaceId);
-      if (device) onFound(device);
+      found(onFound, deviceFromShellyAnnounce(payload, workspaceId));
       continue;
     }
 
     // HA-style discovery
     if (topic.startsWith("homeassistant/") && topic.endsWith("/config")) {
-      const device = parseHaDiscovery(topic, payload, workspaceId);
-      if (device) onFound(device);
+      found(onFound, parseHaDiscovery(topic, payload, workspaceId));
     }
   }
 }

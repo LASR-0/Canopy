@@ -25,7 +25,7 @@ import { checkThresholds } from "../rules/thresholds.js";
 import { recordHeartbeat } from "./heartbeat.js";
 import { deriveFromReading } from "./derived.js";
 import { rememberReading } from "./latest.js";
-import type { Capability, Metric, Reading, Unit } from "@canopy/shared-types";
+import type { Capability, Metric, MqttAuth, Reading, Unit } from "@canopy/shared-types";
 
 /** A sensor channel, resolved from the topic it publishes on. */
 interface SensorBinding {
@@ -194,7 +194,7 @@ export function parseNumericPayload(payload: Buffer): number | null {
  * Registered for every published message, so the unknown-topic case must stay
  * the cheap one: a single Map lookup, then return.
  */
-export async function handleTelemetry(topic: string, payload: Buffer): Promise<void> {
+export async function handleTelemetry(topic: string, payload: Buffer, auth?: MqttAuth): Promise<void> {
   // A paused controller still monitors; only a stopped one stops recording.
   if (!canIngest()) return;
 
@@ -205,6 +205,7 @@ export async function handleTelemetry(topic: string, payload: Buffer): Promise<v
     // Any message on a known topic is proof the device is alive, whether or not
     // it parses as a reading.
     await touchDevice(deviceId);
+    if (auth) await noteDeviceAuth(deviceId, auth);
 
     const binding = index.sensors.get(topic);
     if (!binding) return;
@@ -263,6 +264,21 @@ export async function handleTelemetry(topic: string, payload: Buffer): Promise<v
  */
 const HEARTBEAT_MIN_INTERVAL_MS = 60_000;
 const lastHeartbeat = new Map<string, number>();
+
+/** How each device last connected, as written to the database. */
+const knownAuth = new Map<string, MqttAuth>();
+
+/**
+ * Record whether a device connects with the broker credential, written only
+ * when it changes (or first seen since a restart), not on every message.
+ * Settings lists the devices without one: they are what stop credentials
+ * being required.
+ */
+async function noteDeviceAuth(deviceId: string, auth: MqttAuth): Promise<void> {
+  if (knownAuth.get(deviceId) === auth) return;
+  knownAuth.set(deviceId, auth);
+  await db.update(devices).set({ mqttAuth: auth }).where(eq(devices.id, deviceId));
+}
 
 async function touchDevice(deviceId: string): Promise<void> {
   const now = Date.now();

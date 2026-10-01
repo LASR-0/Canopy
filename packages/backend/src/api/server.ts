@@ -19,6 +19,7 @@ import { journalPhotoRoutes } from "./routes/journal-photos.js";
 import { dataRoutes } from "./routes/data.js";
 import { chartLayoutRoutes }  from "./routes/chart-layouts.js";
 import { provisionRoutes }    from "./routes/provision.js";
+import { mqttRoutes }         from "./routes/mqtt.js";
 import { registerWs }         from "../ws/index.js";
 
 export const PORT = Number(process.env["PORT"] ?? 7001);
@@ -50,6 +51,7 @@ export async function buildServer() {
   await app.register(dataRoutes);
   await app.register(chartLayoutRoutes);
   await app.register(provisionRoutes);
+  await app.register(mqttRoutes);
 
   registerWs(app);
 

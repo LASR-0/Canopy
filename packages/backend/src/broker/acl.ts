@@ -18,15 +18,16 @@
  * not a silently dropped message — the client is disconnected and the existing
  * `clientError` handler logs it.
  *
- * Scope: this authorizes, it does not authenticate. A client may still connect
- * anonymously and publish telemetry on a state topic. Closing that needs
- * credential provisioning for devices that were adopted anonymously, which is
- * Tier 2 in Phase 8.
+ * Who may connect at all is auth.ts (Tier 2). One rule from it lands here: a
+ * client let in without the credential only to announce itself during a scan
+ * leaves nothing behind. Its other publishes are not refused, because a
+ * refusal disconnects it before it has announced, but they are not retained.
  */
 import { db } from "../store/index.js";
 import { devices } from "../store/schema.js";
 import type { Capability } from "@canopy/shared-types";
 import type { Client, PublishPacket } from "aedes";
+import { clientAuth, isDiscoveryTopic } from "./auth.js";
 
 /**
  * Aedes' own reserved tree. Overriding `authorizePublish` replaces the default
@@ -140,6 +141,12 @@ export function authorizeClientPublish(
         `from client ${client?.id ?? "<will>"} — commands are controller-only`,
     );
     return callback(new Error("command topics are controller-only"));
+  }
+
+  // A client without the credential, in only for the scan: a retained state
+  // message would outlive its 20 seconds and be replayed to every subscriber.
+  if (clientAuth(client)?.provisioned === false && !isDiscoveryTopic(packet.topic)) {
+    packet.retain = false;
   }
 
   callback(null);

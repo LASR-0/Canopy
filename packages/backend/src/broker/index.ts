@@ -7,13 +7,28 @@
  */
 import { Aedes, type AedesPublishPacket, type Client } from "aedes";
 import { createServer, type Server } from "node:net";
+import type { MqttAuth } from "@canopy/shared-types";
 import { authorizeClientPublish, commandTopicCount, refreshCommandTopics } from "./acl.js";
+import {
+  authenticateClient,
+  clientAuth,
+  configureAuth,
+  isDiscoveryTopic,
+  REFUSED,
+  setDiscoveryOpen,
+  type AuthConfig,
+  type ClientAuth,
+} from "./auth.js";
+import { chooseBindHost, loadAuthConfig, loadBindSetting, type BindChoice } from "./settings.js";
 
 export const MQTT_PORT = Number(process.env["MQTT_PORT"] ?? 1883);
 
 let _broker: Aedes | null = null;
 let _server: Server | null = null;
 let _listening = false;
+let _bind: BindChoice = { host: "0.0.0.0" };
+/** Clients connected now. aedes keeps its own registry, but does not type it. */
+const _clients = new Set<Client>();
 
 export function getBroker(): Aedes {
   if (!_broker) throw new Error("MQTT broker has not been started");
@@ -62,7 +77,8 @@ export async function publishToBroker(topic: string, payload: string): Promise<v
   });
 }
 
-type MessageHandler = (topic: string, payload: Buffer, packet: AedesPublishPacket) => void;
+/** `auth` is how the publishing client connected: with the broker credential or without. */
+type MessageHandler = (topic: string, payload: Buffer, packet: AedesPublishPacket, auth: MqttAuth) => void;
 const messageHandlers: MessageHandler[] = [];
 
 /** Register a handler called for every published MQTT message. */
@@ -77,26 +93,40 @@ export async function startBroker(): Promise<void> {
   // clients just hang until connack timeout.
   _broker = await Aedes.createBroker();
 
+  // Who may connect (auth.ts), loaded before the first one can.
+  configureAuth(await loadAuthConfig());
+  _broker.authenticate = authenticateClient;
+
   // Command topics are controller-only. Installed before the server accepts a
   // connection, so there is no window in which a client can drive a device.
   _broker.authorizePublish = authorizeClientPublish;
 
   _broker.on("publish", (packet: AedesPublishPacket, client: Client | null) => {
     if (!client) return;
+    const state = clientAuth(client);
+    // Let in only to announce itself: anything else it publishes is not read.
+    if (state && !state.provisioned && !isDiscoveryTopic(packet.topic)) return;
     for (const handler of messageHandlers) {
-      handler(packet.topic, packet.payload as Buffer, packet);
+      handler(packet.topic, packet.payload as Buffer, packet, state?.auth ?? "anonymous");
     }
   });
 
   _broker.on("client", (client: Client) => {
-    console.log(`[broker] connected: ${client.id}`);
+    _clients.add(client);
+    const state = clientAuth(client);
+    const how = !state ? "" : !state.provisioned ? " (no credential, scan open: discovery only)" : state.auth === "anonymous" ? " (no credential)" : "";
+    console.log(`[broker] connected: ${client.id}${how}`);
   });
 
   _broker.on("clientDisconnect", (client: Client) => {
+    _clients.delete(client);
     console.log(`[broker] disconnected: ${client.id}`);
   });
 
   _broker.on("clientError", (client: Client, err: Error) => {
+    // A refusal is logged once an hour by auth.ts; a device retrying every few
+    // seconds would otherwise fill the log.
+    if (err.message === REFUSED) return;
     console.error(`[broker] client error (${client.id}):`, err.message);
   });
 
@@ -104,21 +134,89 @@ export async function startBroker(): Promise<void> {
   // not from whenever the device manager finishes starting.
   await refreshCommandTopics();
 
-  const server = createServer(_broker.handle.bind(_broker));
+  await listen(chooseBindHost(await loadBindSetting()));
+}
+
+function listen(bind: BindChoice): Promise<void> {
+  const broker = getBroker();
+  const server = createServer(broker.handle.bind(broker));
   _server = server;
+  _bind = bind;
+  if (bind.unavailable) {
+    console.warn(`[broker] ${bind.unavailable} is not an address on this machine; listening on every interface instead`);
+  }
 
   return new Promise<void>((resolve, reject) => {
     server.on("error", reject);
     server.on("close", () => { _listening = false; });
-    server.listen(MQTT_PORT, "0.0.0.0", () => {
+    server.listen(MQTT_PORT, bind.host, () => {
       _listening = true;
       console.log(
-        `[broker] MQTT listening on port ${MQTT_PORT} — ` +
+        `[broker] MQTT listening on ${bind.host}:${MQTT_PORT} — ` +
           `${commandTopicCount()} command topic(s) closed to clients`,
       );
       resolve();
     });
   });
+}
+
+/** Where the broker listens now, and what it fell back from. */
+export function brokerBind(): BindChoice {
+  return _bind;
+}
+
+/**
+ * Listen somewhere else, after the setting changed. Every client is
+ * disconnected: one on an interface the broker no longer listens on would
+ * otherwise stay connected until it next dropped. Devices reconnect within
+ * seconds.
+ */
+export async function rebindBroker(bind: BindChoice): Promise<void> {
+  const server = _server;
+  if (server) {
+    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+    closeClients(() => true);
+    await closed;
+  }
+  await listen(bind);
+}
+
+/** Disconnect every client the predicate picks. They are free to reconnect, and are judged again. */
+function closeClients(pick: (state: ClientAuth | undefined) => boolean): number {
+  let closed = 0;
+  for (const client of [..._clients]) {
+    if (pick(clientAuth(client))) {
+      client.close();
+      closed++;
+    }
+  }
+  return closed;
+}
+
+/**
+ * Open or close the window in which a device without the credential may
+ * connect to announce itself (scan-session.ts). Closing it drops whatever
+ * came in that way.
+ */
+export function setDiscoveryWindow(open: boolean): void {
+  setDiscoveryOpen(open);
+  if (open) return;
+  const dropped = closeClients((state) => state?.provisioned === false);
+  if (dropped > 0) console.log(`[broker] scan closed: disconnected ${dropped} client(s) without the credential`);
+}
+
+/**
+ * Apply changed settings to the clients already connected, judging each
+ * again: switching enforcement on drops those without the credential, and a
+ * new password (`credentialChanged`) drops those that connected with the old
+ * one.
+ */
+export function applyAuthConfig(next: AuthConfig, credentialChanged = false): void {
+  configureAuth(next);
+  closeClients((state) =>
+    (credentialChanged && state?.auth === "credential") ||
+    (next.requireCredentials && state?.auth === "anonymous" && state.provisioned),
+  );
 }
 
 /**

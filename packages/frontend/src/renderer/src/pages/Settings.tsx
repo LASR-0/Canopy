@@ -7,6 +7,7 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { Switch } from "@/components/ui/switch";
 import { Tag } from "@/components/Tag";
 import { SignalBars } from "@/components/SignalBars";
+import { BrokerSettings } from "@/components/BrokerSettings";
 import {
   Select,
   SelectContent,
@@ -57,6 +58,13 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
             ) : !device.online && <span className="tag b-idle" style={{ fontSize: 10 }}>offline</span>}
           </div>
           <div className="dev-host">
+            {/* First, because the line is cut off at the end when it is long. */}
+            {device.mqttAuth === "anonymous" && (
+              <Tip content="Connects without the broker password. Enter the username and password from Device connections in its MQTT settings">
+                <span className="dev-nopass"><Icon name="alert" size={11} /> no password</span>
+              </Tip>
+            )}
+            {device.mqttAuth === "anonymous" && (device.model || device.address.host || device.address.mqttTopicPrefix) && <span className="sep">·</span>}
             {device.model && <span>{device.model}</span>}
             {device.model && device.address.host && <span className="sep">·</span>}
             {device.address.host && <span>{device.address.host}</span>}
@@ -768,6 +776,10 @@ export function Settings() {
               )}
             {settings && (
               <div>
+                <div className="sec-head" style={{ marginTop: 0 }}>
+                  <h2>Device connections</h2><span className="rule" />
+                </div>
+                <BrokerSettings />
                 <div className="sec-head" style={{ marginTop: 28 }}>
                   <h2>Data &amp; Storage</h2><span className="rule" />
                 </div>

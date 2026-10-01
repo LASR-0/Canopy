@@ -27,9 +27,9 @@ export async function startDeviceManager(): Promise<void> {
 
   // Route all MQTT messages to discovery and to telemetry ingestion. The two
   // are independent: discovery only listens during a scan, ingestion always.
-  onMqttMessage((topic, payload) => {
-    handleMqttMessage(topic, payload);
-    void handleTelemetry(topic, payload);
+  onMqttMessage((topic, payload, _packet, auth) => {
+    handleMqttMessage(topic, payload, auth);
+    void handleTelemetry(topic, payload, auth);
   });
 
   // Rules and thresholds are consulted on every reading, so both are cached.

@@ -4,6 +4,7 @@
  * database when imported, so code working on another database (a test's, or
  * a file being imported) can use these without touching the live one.
  */
+import { randomBytes, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
 /**
@@ -52,6 +53,14 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   // Maintenance: a stage scope, and the stage a "when a stage starts" task waits for.
   addColumnIfMissing(db, "maintenance_tasks", "stages_json", "TEXT");
   addColumnIfMissing(db, "maintenance_tasks", "start_stage", "TEXT");
+  // MQTT authentication (Phase 8 F). A fresh install requires credentials from
+  // the start. An install that already has devices starts with it off: they
+  // connect without one today, and switching it on would cut them all off.
+  if (addColumnIfMissing(db, "app_settings", "mqtt_require_credentials", "INTEGER NOT NULL DEFAULT 1")) {
+    db.exec(`UPDATE app_settings SET mqtt_require_credentials = 0 WHERE EXISTS (SELECT 1 FROM devices)`);
+  }
+  addColumnIfMissing(db, "app_settings", "mqtt_bind_host", "TEXT");
+  addColumnIfMissing(db, "devices", "mqtt_auth", "TEXT");
 }
 
 export function addColumnIfMissing(
@@ -116,7 +125,9 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       archive_after_days        INTEGER NOT NULL DEFAULT 30,
       backup_enabled            INTEGER NOT NULL DEFAULT 0,
       backup_interval_days      INTEGER NOT NULL DEFAULT 7,
-      backup_path               TEXT
+      backup_path               TEXT,
+      mqtt_require_credentials  INTEGER NOT NULL DEFAULT 1,
+      mqtt_bind_host            TEXT
     );
 
     /* ── devices ──────────────────────────────────────────────────────── */
@@ -138,7 +149,21 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       signal_pct          INTEGER,
       runtime_hours       REAL NOT NULL DEFAULT 0,
       forgotten           INTEGER NOT NULL DEFAULT 0,
-      detached_at         TEXT
+      detached_at         TEXT,
+      mqtt_auth           TEXT
+    );
+
+    /* ── mqtt_credentials ─────────────────────────────────────────────── */
+    /* What a device presents when it connects to the broker. One shared row
+       (device_id NULL) for now; Phase 8 G ties a credential to each device.
+       The password is stored as it is, because Settings shows it for typing
+       into a device. The database is readable by the service alone. */
+    CREATE TABLE IF NOT EXISTS mqtt_credentials (
+      id          TEXT PRIMARY KEY,
+      username    TEXT NOT NULL UNIQUE,
+      password    TEXT NOT NULL,
+      device_id   TEXT REFERENCES devices(id) ON DELETE CASCADE,
+      created_at  TEXT NOT NULL
     );
 
     /* ── role_assignments ─────────────────────────────────────────────── */
@@ -480,9 +505,28 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
  * Seeds initial rows that must always exist. Accepts the connection so both
  * the live DB and test in-memory DBs can be seeded identically.
  */
+/** The username of the credential every device shares (Tier 2). */
+export const SHARED_MQTT_USERNAME = "canopy";
+
+/**
+ * A broker password: 24 characters from 18 random bytes, base64url so it has
+ * nothing a device's settings form might mangle (no quotes, slashes or +).
+ */
+export function generateMqttPassword(): string {
+  return randomBytes(18).toString("base64url");
+}
+
 export function seedData(database: InstanceType<typeof Database>): void {
   /* ── app_settings: ensure a row exists ─────────────────────────────── */
   database.exec(`INSERT OR IGNORE INTO app_settings (id) VALUES (1);`);
+
+  /* ── mqtt_credentials: the shared device credential ────────────────── */
+  const shared = database.prepare(`SELECT 1 FROM mqtt_credentials WHERE device_id IS NULL`).get();
+  if (!shared) {
+    database
+      .prepare(`INSERT INTO mqtt_credentials (id, username, password, created_at) VALUES (?, ?, ?, ?)`)
+      .run(randomUUID(), SHARED_MQTT_USERNAME, generateMqttPassword(), new Date().toISOString());
+  }
 
   /* ── grow_templates: 4 standard templates ──────────────────────────── */
   const tplStmt = database.prepare(

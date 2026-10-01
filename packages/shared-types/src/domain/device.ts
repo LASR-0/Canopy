@@ -1,6 +1,7 @@
 import type { TransportProtocol, DeviceFamily, DiscoverySource } from "./protocol.js";
 import type { Capability } from "./capability.js";
 import type { Id } from "./common.js";
+import type { MqttAuth } from "./mqtt.js";
 
 /** Where a device lives on the network. */
 export interface DeviceAddress {
@@ -33,6 +34,12 @@ export interface Device {
    * workspace: kept for history, but not read from or driven.
    */
   detachedAt?: string;
+  /**
+   * How an MQTT device last connected to the broker: with the broker
+   * credential or without it. Unset for devices that have not connected over
+   * MQTT since this was recorded.
+   */
+  mqttAuth?: MqttAuth;
 }
 
 /**

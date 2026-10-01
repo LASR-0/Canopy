@@ -35,15 +35,20 @@ function electronDist({ platformName, arch, version }) {
   return null;
 }
 
-/** Shared by the three package formats, which all go through fpm. */
-const fpmPackage = {
+/**
+ * Shared by the three package formats, which all go through fpm. fpm takes
+ * every flag before the first file, so the two are kept apart: a flag after
+ * a file is taken for a file to package.
+ */
+const fpmPackage = (flags = []) => ({
   afterInstall: join(linux, "after-install.sh"),
   afterRemove: join(linux, "after-remove.sh"),
   fpm: [
     "--before-remove", join(linux, "before-remove.sh"),
+    ...flags,
     `${join(linux, "canopy.service")}=/usr/lib/systemd/system/canopy.service`,
   ],
-};
+});
 
 /** @type {import("electron-builder").Configuration} */
 module.exports = {
@@ -85,12 +90,9 @@ module.exports = {
     // Installed to /opt/Canopy/controller, which is where canopy.service runs it.
     extraFiles: [{ from: controller("linux"), to: "controller" }],
   },
-  deb: fpmPackage,
-  rpm: fpmPackage,
+  deb: fpmPackage(),
+  rpm: fpmPackage(),
   // pacman runs nothing on an upgrade unless it has a post_upgrade, which
   // would leave the old controller running on deleted files until a reboot.
-  pacman: {
-    ...fpmPackage,
-    fpm: [...fpmPackage.fpm, "--after-upgrade", join(linux, "after-upgrade.sh")],
-  },
+  pacman: fpmPackage(["--after-upgrade", join(linux, "after-upgrade.sh")]),
 };

@@ -13,7 +13,8 @@ import { broadcast } from "../ws/index.js";
 import { runMdnsScan } from "./mdns-scanner.js";
 import { registerMqttDiscovery, unregisterMqttDiscovery } from "./mqtt-discovery.js";
 import { refreshDeviceTopics } from "./topics.js";
-import type { Device } from "@canopy/shared-types";
+import { setDiscoveryWindow } from "../broker/index.js";
+import type { Device, MqttAuth } from "@canopy/shared-types";
 
 const SCAN_DURATION_MS = 20_000;
 
@@ -31,7 +32,8 @@ const activeSessions = new Map<string, ScanSession>();
 export async function startScan(workspaceId: string): Promise<string> {
   // Cancel any existing scan for this workspace
   const existing = [...activeSessions.values()].find((s) => s.workspaceId === workspaceId);
-  if (existing) cancelScan(existing.scanId);
+  // Replaced, not ended: the window stays open for the scan that follows.
+  if (existing) cancelScan(existing.scanId, false);
 
   const scanId = randomUUID();
 
@@ -66,17 +68,21 @@ export async function startScan(workspaceId: string): Promise<string> {
     cancel: cancelMdns,
     timer,
   });
+  // A device without the broker credential may now connect, to announce
+  // itself (broker/auth.ts), for as long as any scan is open.
+  setDiscoveryWindow(true);
 
   return scanId;
 }
 
-function cancelScan(scanId: string): void {
+function cancelScan(scanId: string, closeWindow = true): void {
   const session = activeSessions.get(scanId);
   if (!session) return;
   clearTimeout(session.timer);
   session.cancel();
   unregisterMqttDiscovery(session.workspaceId);
   activeSessions.delete(scanId);
+  if (closeWindow) closeWindowIfIdle();
 }
 
 /** Cancel every scan in progress, closing its mDNS browsers. For shutdown. */
@@ -91,6 +97,12 @@ function finishScan(scanId: string): void {
   unregisterMqttDiscovery(session.workspaceId);
   broadcast({ type: "scan.complete", payload: { scanId, found: session.found } });
   activeSessions.delete(scanId);
+  closeWindowIfIdle();
+}
+
+/** The last scan to finish closes the window, and drops what came in through it. */
+function closeWindowIfIdle(): void {
+  if (activeSessions.size === 0) setDiscoveryWindow(false);
 }
 
 /**
@@ -131,6 +143,7 @@ async function upsertDevice(raw: Omit<Device, "id">): Promise<Device | null> {
       forgotten: false,
       lastSeen: now,
       ...(raw.signalPct != null  ? { signalPct: raw.signalPct }                  : {}),
+      ...(raw.mqttAuth           ? { mqttAuth: raw.mqttAuth }                    : {}),
       runtimeHours: existing[0]?.runtimeHours ?? 0,
     };
 
@@ -169,5 +182,6 @@ function rowToDevice(row: typeof devices.$inferSelect): Device {
   if (row.firmware)         device.firmware = row.firmware;
   if (row.lastSeen)         device.lastSeen = row.lastSeen;
   if (row.signalPct != null) device.signalPct = row.signalPct;
+  if (row.mqttAuth)         device.mqttAuth = row.mqttAuth as MqttAuth;
   return device;
 }
