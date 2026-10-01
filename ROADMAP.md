@@ -1592,21 +1592,88 @@ desktop packages. Everything for Linux is in `packaging/linux/`.
    configurable address. `BACKEND_URL` reads `VITE_BACKEND_URL` at build
    time only. Not built yet.
 
-#### D. Windows service
+#### D. Windows service ✅ built — the installer awaits a Windows machine with admin (E)
 
-1. **Service wrapper: WinSW.** `node.exe` cannot answer the Service Control
-   Manager itself, so `sc create` on it alone does not work. WinSW is a
-   single MIT-licensed executable with an XML config. NSSM is unmaintained,
-   and node-windows is WinSW with a wrapper around it.
-2. **Registered by the NSIS installer** with one-time elevation
-   (`perMachine: true`, and `customInstall` / `customUnInstall` in
-   `build/installer.nsh`). It runs as a virtual account (`NT SERVICE\Canopy`),
-   not LocalSystem, with write access granted on `%ProgramData%\Canopy` only.
-   It also adds an inbound firewall rule for 1883.
-3. **Logs** go to WinSW's rolling log files under the data directory.
-4. **Build in CI (E), not at work.** The corporate proxy blocks downloads
-   that carry Windows executables (see WSL2 below), and `node.exe` and WinSW
-   are exactly that. Not tested against them, but not worth finding out. Verify the installer by hand on the work Windows host.
+Everything for Windows is in `packaging/windows/`.
+
+1. **WinSW 2.12 wraps `node.exe`** (`canopy-service.xml`), because node.exe
+   cannot answer the Service Control Manager itself. It is the .NET
+   Framework 4.6.1 build, 656 KB: every supported Windows ships .NET
+   Framework 4.8. WinSW publishes no checksums and does not sign its
+   releases, so `stage.mjs` pins the SHA-256 of the GitHub release, taken
+   2026-10-01. The service id is `Canopy`, matching the UI's
+   `Get-Service Canopy`. It starts automatically, restarts 5 s after a
+   crash, waits 45 s on stop, and keeps rolling logs (8 × 10 MB) in
+   `%ProgramData%\Canopy\logs`.
+2. **The installer** (`installer.nsh`, included in electron-builder's NSIS
+   installer, which is now per machine) does the following:
+   - **A first install** registers the service through WinSW and runs it as
+     the virtual account `NT SERVICE\Canopy`, not LocalSystem. It restricts
+     `%ProgramData%\Canopy` to SYSTEM, Administrators and that account,
+     using SIDs, because the names are localised. By default every user
+     could read ProgramData. It adds inbound firewall rules for 1883/TCP
+     and 5353/UDP, scoped to Canopy's `node.exe` and to private and domain
+     networks only, so a laptop on public Wi-Fi does not offer a broker that
+     can switch hardware. Then it starts the service.
+   - **An upgrade**: electron-builder first runs the *old* uninstaller with
+     `--updated`, whose `customUnInstall` runs before any file is removed.
+     That stops the service, so its locked `node.exe` can be replaced. The
+     new install keeps the registration and starts the service again. A
+     service an administrator set to Disabled refuses to start and stays
+     off.
+   - **Uninstall** stops the service, unregisters it and removes the firewall
+     rules. The data stays.
+3. **Ctrl+C is the stop signal, and it does reach Node.** WinSW stops the
+   child with `GenerateConsoleCtrlEvent(CTRL_C_EVENT)`, which Node raises as
+   SIGINT, and A's shutdown handles SIGINT. A first test said otherwise: the
+   signal never arrived. Reading WinSW's source showed why. It calls
+   `SetConsoleCtrlHandler(null, false)` before starting the child, to clear
+   an "ignore Ctrl+C" flag the child would otherwise inherit, and the test
+   harness had not. Done the way WinSW does it, the controller stopped
+   cleanly.
+4. **Staging is portable.** `stage.mjs` extracts Node's zip with `unzip` on
+   Linux and with Windows' own bsdtar `tar` on Windows, so CI can stage on
+   either. It now always rebundles first: staging a leftover bundle had
+   packed a 0.0.1 controller into a folder named 0.0.0.
+   `pnpm package:win` builds it on Windows.
+5. **The installer cannot be built on Linux.** electron-builder makes the
+   NSIS uninstaller by compiling a stub and running it, which takes Wine on
+   Linux. Stamping `Canopy.exe` (rcedit) does too, so that is switched off
+   off Windows. The installers are built on a Windows runner (E).
+6. **Verified**, from WSL2 through interop on the work machine's Windows 11,
+   unprivileged:
+   - The staged Windows controller ran on real Windows. Its `node.exe` and
+     better-sqlite3 binary loaded, nothing on the managed machine blocked
+     them, and it created its database and answered `/health`.
+   - Ctrl+C, sent the way WinSW sends it, gave exit 0 in 72 ms with the WAL
+     merged.
+   - `installer.nsh` compiles with electron-builder's own `makensis` under
+     `-WX` (warnings as errors), both macros.
+   - The proxy does **not** block these Windows binaries. Node's zip, the
+     better-sqlite3 prebuild, WinSW, Electron's win32 zip and the NSIS
+     tooling all came through with matching checksums. Only npm tarballs
+     carrying `.exe` files are cut off.
+7. **Not verified: anything that needs elevation.** WinSW's own `testwait`
+   asks for UAC, and the work machine has no admin rights (the prompt was
+   declined). There is no Windows machine at home, so E has to run the
+   install test on a GitHub Windows runner, which has admin. The test:
+   install silently, check that `Canopy` runs as `NT SERVICE\Canopy` and
+   `/health` answers, check the data folder's ACL, stop and start it,
+   upgrade, uninstall, and check that the data is kept. WinSW's `<log>`
+   settings, the virtual account and the firewall rules are only proven by
+   that run.
+8. **Risk to check with E: the Wi-Fi scan in provisioning** runs inside the
+   controller (`netsh wlan show networks`, or `nmcli` on Linux). As a
+   session-0 virtual account, or as B's sandboxed DynamicUser, it may get
+   no results. Recent Windows 11 gates Wi-Fi scan results behind location
+   permission, and NetworkManager's polkit gives a rescan only to active
+   sessions. The scan belongs in the window's own process anyway: the
+   computer joining the device's access point is the one running the UI,
+   which in the headless shape is not the controller's machine.
+9. **Code signing, for later:** with a certificate configured,
+   electron-builder signs every `.exe` it ships, so it would re-sign
+   `node.exe` (signed by the OpenJS Foundation) and WinSW. Exclude them
+   when signing arrives.
 
 #### E. CI
 
@@ -1617,8 +1684,11 @@ CI. GitHub Actions:
    Windows.
 2. **Packages** on demand and on tags: the controller artifacts (linux x64 and
    arm64, windows x64), the Linux packages and the NSIS installer, uploaded
-   as workflow artifacts. Signing and publishing releases are not part of
-   this phase.
+   as workflow artifacts. The installer is built on a Windows runner (D.5),
+   and so is the .rpm, on Ubuntu with `rpm` installed. Signing and
+   publishing releases are not part of this phase.
+3. **The Windows install test** from D.7, on the Windows runner: the only
+   place with admin rights.
 
 #### F. Tier 2 MQTT authentication
 
@@ -1671,9 +1741,10 @@ Still to settle when it is built:
 #### Suggested order
 
 A → B → C → E → D → F. A and B make the dev box a real install. C follows
-once the controller can be absent. E comes before D because the Windows
-artifacts have to be built in CI. F is independent of packaging and can move
-if it becomes urgent.
+once the controller can be absent. E was to come before D because the Windows
+artifacts have to be built in CI. In the end D was built first, as far as an
+unprivileged machine allows, and E finishes it. F is independent of packaging
+and can move if it becomes urgent.
 
 #### Deferred: macOS
 
@@ -1982,6 +2053,7 @@ pnpm test             # backend vitest suite
 pnpm build:ui         # electron-vite build
 pnpm build:controller # the installable controller for this machine (Phase 8 A)
 pnpm package:linux    # controller tarball + .deb/.rpm/pacman (Phase 8 B)
+pnpm package:win      # NSIS installer with the service; Windows only (Phase 8 D)
 ```
 
 Default ports: HTTP/WS `7001` (localhost), MQTT `1883` (all interfaces).
