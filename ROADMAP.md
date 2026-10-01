@@ -1535,16 +1535,11 @@ desktop packages. Everything for Linux is in `packaging/linux/`.
      then in `packages/frontend` run
      `npx electron-vite build && npx electron-builder --linux pacman`.
      `pnpm package:linux` stops at the rpm step without `rpmbuild`. Then
-     check that `sudo pacman -U` starts the service and `/health` answers.
-     Bump the root version, build again and `pacman -U` that, which should
-     restart the service on the new version. `sudo pacman -R canopy` should
-     remove the unit and keep `/var/lib/private/canopy`. Launch Canopy from
-     the menu and check that it connects to the service.
-   - **.deb, on the WSL2 box.** `canopy_0.0.0_amd64.deb` and
-     `canopy_0.0.1_amd64.deb` are in `packages/frontend/dist-build/`, and
-     need rebuilding after a fresh clone. Run the same sequence with
-     `sudo apt install ./canopy_0.0.0_amd64.deb`, then the 0.0.1 one, then
-     `sudo apt remove canopy`.
+     run `packaging/linux/test-install.sh packages/frontend/dist-build/canopy-*.pacman`
+     (E), which installs, stops, crashes, upgrades and removes it. Last,
+     launch Canopy from the menu and check that it connects to the service.
+   - **.deb**: now automated in CI (E), by `packaging/linux/test-install.sh`
+     on a fresh Ubuntu runner.
    - **.rpm** is built in CI (E) and never installed on a real Fedora.
 10. **While it is installed** it holds 7001 and 1883, so `pnpm dev:backend`
     exits with "already running". `pnpm dev:ui` talks to the installed
@@ -1675,20 +1670,57 @@ Everything for Windows is in `packaging/windows/`.
    `node.exe` (signed by the OpenJS Foundation) and WinSW. Exclude them
    when signing arrives.
 
-#### E. CI
+#### E. CI ✅ built — awaiting its first runs
 
-The roadmap has said "keep it green in CI" since Phase 1, but there is no
-CI. GitHub Actions:
+The roadmap had said "keep it green in CI" since Phase 1, with no CI. There
+are two workflows in `.github/workflows/` now. Both pin Node to the repo's
+`.node-version`, which is also the Node `stage.mjs` ships with. Dev, CI and
+the installed controller now run one version, from one file.
 
-1. **Checks** on every push: typecheck and the backend tests, on Ubuntu and
-   Windows.
-2. **Packages** on demand and on tags: the controller artifacts (linux x64 and
-   arm64, windows x64), the Linux packages and the NSIS installer, uploaded
-   as workflow artifacts. The installer is built on a Windows runner (D.5),
-   and so is the .rpm, on Ubuntu with `rpm` installed. Signing and
-   publishing releases are not part of this phase.
-3. **The Windows install test** from D.7, on the Windows runner: the only
-   place with admin rights.
+1. **`ci.yml`** typechecks and runs the backend tests on Ubuntu and Windows,
+   on every push to main and on every pull request.
+2. **`package.yml`** runs on demand, on `v*` tags (which must match
+   `package.json`'s version), and on pushes to main that touch packaging.
+   - **Linux** builds the .deb, .rpm and pacman packages and the controller
+     tarballs for x64 and arm64, and prints the .rpm's scriptlets. There is
+     no Fedora runner, so that is as far as the .rpm is checked.
+   - **Linux install** runs `packaging/linux/test-install.sh` on a fresh
+     Ubuntu runner, first on the .deb and then on the tarball. That is B's
+     .deb hand-check, automated.
+   - **Windows** builds the NSIS installer, which only builds on Windows
+     (D.5), and runs `packaging/windows/test-install.ps1` on the runner,
+     which has admin. That is D.7.
+   - The artifacts are kept for 14 days. Signing and publishing releases are
+     not part of this phase.
+3. **The install tests check, on each platform**: the service is running,
+   enabled and not root. The controller reports `installed` and the right
+   data directory. A stop is clean, which on Windows proves WinSW's Ctrl+C
+   reaches Node. A killed controller is restarted. An upgrade restarts a
+   running controller, but leaves a stopped one (Linux) or a Disabled one
+   (Windows) off. Removal unregisters the service and keeps the data.
+   Windows adds three more: the service runs as `NT SERVICE\Canopy`, the
+   data folder grants nothing to Users or Everyone, and the firewall rules
+   are private and domain only. Both scripts also run by hand: the pacman
+   check at home is now
+   `packaging/linux/test-install.sh packages/frontend/dist-build/canopy-*.pacman`.
+4. **Fixed for Windows runners**: `stage.mjs` calls Windows' own
+   `System32\tar.exe` by full path. On a runner, Git's GNU tar can come
+   first on the PATH, and it reads no zip and takes `C:` for a remote host.
+   The same `tar` calls were run with the Windows `node.exe` on the work
+   machine's Windows, and extracted both archives.
+5. **Checked before the first push**: both workflows pass actionlint, with
+   shellcheck over their `run:` blocks. Every script in `packaging/linux`
+   passes shellcheck, apart from the part of `after-install.sh` copied
+   verbatim from electron-builder. `test-install.ps1` parses with Windows
+   PowerShell's own parser. None of it has run on a runner yet, and Windows
+   tests are likely to turn something up the first time.
+6. **Not covered**:
+   - pacman, which needs an Arch box with systemd. The check stays at home.
+   - The .rpm, which is only built, not installed.
+   - The provisioning Wi-Fi scan (D.8): runners have no Wi-Fi.
+   - An arm64 desktop package. Only the arm64 controller tarball is built.
+7. **The version is still 0.0.0.** A first real number, and a tag to build
+   it, is a release decision rather than part of CI.
 
 #### F. Tier 2 MQTT authentication
 
