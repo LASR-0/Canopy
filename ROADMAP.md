@@ -258,7 +258,7 @@ mode is the answer for many metrics at once — one lane each, one hue per lane,
 nothing to tell apart. `lux` and `ppfd` are the same quantity in different units,
 so a device reports one or the other and they are not expected to share a plot.
 
-### MQTT hardening — Tier 1 done, Tier 2 in Phase 8
+### MQTT hardening — Tiers 1 and 2 done, Tier 3 in Phase 8 G
 
 The broker binds `0.0.0.0:1883` **unauthenticated**, while HTTP binds
 `127.0.0.1`. LAN-reachable is intentional — devices have to connect — but
@@ -295,12 +295,17 @@ Verified against a live broker with a real MQTT client: a publish to
 topics and unrelated topics are accepted, and `POST /devices/:id/actuate` still
 lands on that same command topic.
 
-**Tier 2 — authentication.** Deferred to Phase 8, where it belongs: see below.
+**Tier 2 — authentication ✅ done** in Phase 8 F: one shared broker
+credential, required on fresh installs, with the scan window as the only way
+in without it. See Phase 8 F.
 
-**Tier 3 — per-device credentials.** Only meaningful for devices with a config
-channel to push a credential through — Shelly has an HTTP API, ESPHome and
-generic MQTT firmware are configured out of band at flash time. Revisit when
-Tier 2 lands, scoped to the families that can actually be provisioned.
+**Tier 3 — per-device credentials** is Phase 8 G, decided 2026-10-01. A
+credential per device, limited to that device's own topics, and pushed to
+Shelly over its HTTP API. ESPHome and generic MQTT firmware still take it by
+hand.
+
+**TLS** comes after v1, after Tier 3 and after the real-device testing that
+follows Phase 9. Decided 2026-10-01; see "After Phase 9".
 
 ---
 
@@ -1587,7 +1592,7 @@ desktop packages. Everything for Linux is in `packaging/linux/`.
    configurable address. `BACKEND_URL` reads `VITE_BACKEND_URL` at build
    time only. Not built yet.
 
-#### D. Windows service ✅ built — the installer awaits a Windows machine with admin (E)
+#### D. Windows service ✅ done — installed and tested on a Windows runner (E.8)
 
 Everything for Windows is in `packaging/windows/`.
 
@@ -1648,7 +1653,8 @@ Everything for Windows is in `packaging/windows/`.
      better-sqlite3 prebuild, WinSW, Electron's win32 zip and the NSIS
      tooling all came through with matching checksums. Only npm tarballs
      carrying `.exe` files are cut off.
-7. **Not verified: anything that needs elevation.** WinSW's own `testwait`
+7. **Verified since in CI (E.8)**, everything below passed on the first run.
+   Originally **not verified: anything that needs elevation.** WinSW's own `testwait`
    asks for UAC, and the work machine has no admin rights (the prompt was
    declined). There is no Windows machine at home, so E has to run the
    install test on a GitHub Windows runner, which has admin. The test:
@@ -1670,7 +1676,7 @@ Everything for Windows is in `packaging/windows/`.
    `node.exe` (signed by the OpenJS Foundation) and WinSW. Exclude them
    when signing arrives.
 
-#### E. CI ✅ built — awaiting its first runs
+#### E. CI ✅ built — CI green, packages fixed after the first run, rerun pending
 
 The roadmap had said "keep it green in CI" since Phase 1, with no CI. There
 are two workflows in `.github/workflows/` now. Both pin Node to the repo's
@@ -1721,58 +1727,138 @@ the installed controller now run one version, from one file.
    - An arm64 desktop package. Only the arm64 controller tarball is built.
 7. **The version is still 0.0.0.** A first real number, and a tag to build
    it, is a release decision rather than part of CI.
+8. **First runs, 2026-10-01** (commit c753d98):
+   - **`ci.yml` passed on Ubuntu and on Windows.** The backend suite had
+     never run on Windows before.
+   - **The Windows job passed on its first run**, installer build and
+     install test both. So WinSW's Ctrl+C clean stop, the
+     `NT SERVICE\Canopy` account, the data folder's ACL, the
+     private/domain firewall rules, crash restart, upgrade, Disabled-stays-off
+     and uninstall-keeps-data are verified on real Windows. That closes D.7.
+   - **The Linux build failed, and B was wrong.** fpm takes every flag before
+     the first file. The pacman config had `--after-upgrade` after the
+     `canopy.service=…` file mapping, so fpm took it for a file to package.
+     The .deb and .rpm passed only because their one extra flag came first.
+     `electron-builder.cjs` now builds the fpm arguments as flags, then
+     files. The pacman package and the .rpm were then built on the WSL2 box,
+     with bsdtar and rpmbuild unpacked from `apt-get download` without root.
+     Both build, and the pacman `.INSTALL` has all four hooks. The workflow
+     rerun comes with the next push.
+   - Not yet run at all: `linux-install`, which waits on the Linux build.
+   - GitHub warns that `pnpm/action-setup@v4` targets Node 20 and is being
+     run on Node 24. It still works. Move to its next major when one ships.
 
-#### F. Tier 2 MQTT authentication
+#### F. Tier 2 MQTT authentication ✅ done
 
-This belongs here, because this is the phase where Canopy stops being a dev
-box and becomes a service that boots unattended.
+The broker used to accept any client. Now a device needs the broker
+credential, except while a scan is open. Decided 2026-10-01:
 
-The chicken-and-egg: devices are discovered *over MQTT itself* — retained
-`homeassistant/+/+/config` and `shellies/announce` — so requiring credentials at
-CONNECT breaks zero-config discovery outright. A device cannot present a
-credential it has not been given, and it cannot be given one before it has been
-found.
+- **One shared credential** (username `canopy`, a random 24-character
+  password), seeded on first start. It is stored in `mqtt_credentials`, whose
+  nullable `device_id` is where G ties a credential to one device.
+- **Required on fresh installs.** An install upgraded with devices already
+  paired starts with it off, because they connect without one and enforcing
+  it would cut them all off. Settings names those devices until they have
+  it. The column migration does this: it sets the value to 0 when devices
+  exist.
+- **Plaintext on the LAN for v1**, written down rather than drifted into.
+  Settings says so in the UI.
+- **The broker listens on every interface by default**. `MQTT_HOST` (in the
+  service files, commented) overrides it, and Settings has an Advanced
+  "Listen on" choice.
 
-The scan session is the seam that resolves it. `SCAN_DURATION_MS` is already a
-20-second window opened by a deliberate user action, so use it as the security
-boundary in an `authenticate` hook:
+1. **Who may connect** (`broker/auth.ts`, pure and unit-tested):
 
-- **Known device** (credential on file) — authenticate, full rights.
-- **Anonymous, scan open** — accept, but mark the client unprovisioned so the
-  Tier 1 ACL narrows it to discovery topics only. It can announce itself; it
-  cannot inject readings.
-- **Anonymous, no scan open** — reject with `BAD_USERNAME_OR_PASSWORD`.
+   | the client presents        | required, no scan | required, scan open           | not required |
+   |----------------------------|-------------------|-------------------------------|--------------|
+   | the credential             | full rights       | full rights                   | full rights  |
+   | nothing, or a wrong login  | refused (CONNACK 4) | discovery only ("unprovisioned") | full rights, recorded as anonymous |
 
-This keeps the "press scan, devices appear" flow exactly as it is, and shrinks
-the anonymous surface from *always, everything* to *20 seconds, discovery
-topics only, while a human is watching the screen*.
+   **A wrong login counts as none.** Tasmota ships with `DVES_USER` /
+   `DVES_PASS`, and the broker never asked before. Refusing wrong logins
+   outright would have cut off every existing Tasmota device on upgrade, and
+   made a freshly flashed one impossible to discover. Comparisons are
+   constant-time.
+2. **Unprovisioned clients are not refused their other publishes.** In aedes
+   a refused publish closes the connection, and ESPHome publishes its
+   `online` status before its discovery config, so a refusal would cut it off
+   before it announced. Instead their messages pass through the broker:
+   - only discovery topics are acted on,
+   - the ACL strips their retain flag, so a 20-second visitor leaves nothing
+     behind,
+   - when the last scan closes, they are disconnected. Replacing a running
+     scan does not close the window.
+3. **Changing the rules applies to clients already connected.** Switching
+   enforcement on drops the anonymous ones. A new password drops every
+   device on the old one, because a new password usually means the old one
+   got out. A refusal is logged once an hour per client, since a refused
+   device retries every few seconds.
+4. **How each device connects is recorded** (`devices.mqtt_auth`), from
+   ingest when it changes and from discovery. The device card says "no
+   password", and Settings lists those devices.
+5. **Settings → Device connections** (`BrokerSettings.tsx`, `/mqtt` API):
+   - the broker address for each network interface, the username and the
+     password, each with copy, and the password hidden until shown,
+   - "New password", which asks first because it disconnects every device,
+   - the require switch, whose text changes with it, and the devices still
+     without a password,
+   - Advanced: "Listen on". An address not on the machine is refused with a
+     400. One that disappears later (a DHCP lease, an unplugged adapter)
+     falls back to every interface, logged and shown, rather than taking
+     every device offline.
+6. **The simulator connects with the credential**, read from `GET /mqtt` the
+   way the UI reads it, waiting up to 30 s for the controller. Without a
+   controller it connects without one, which only an install not requiring
+   credentials accepts.
+7. **Verified**:
+   - 26 new tests (462 in total): the decision table, discovery topics, the
+     refusal code, the bind choice, retain stripping, and the migration in
+     both directions on real SQLite. Breaking the "wrong login counts as
+     none" rule fails three of them.
+   - A live run against a fresh controller with real MQTT clients passed all
+     22 checks: refusals, including Tasmota's default login; a scan letting
+     a device announce without being cut off by its status message; nothing
+     retained; the window closing and dropping it; the switch both ways;
+     a new password; rebinding.
+   - A copy of the real dev database came up with enforcement off. The
+     simulator, run without a credential, was listed in Settings with all 11
+     devices, and switching enforcement on in the UI refused the next
+     anonymous connection.
+   - Still to verify on hardware: a real Tasmota, ESPHome and Shelly given
+     the credential. That belongs to the real-device testing after Phase 9.
+8. **Known limits, for G and later**:
+   - Any device with the shared credential may publish any device's state
+     topic. G's per-device credentials and topic limits close that.
+   - While a scan is open, an unprovisioned client may subscribe to
+     anything, so it could read live telemetry for 20 seconds. Not worth a
+     rule before G.
+   - The password is readable through the loopback API. Anything on the
+     machine can already drive devices through it.
+   - A `.canopy` export contains the database, credential included.
 
-Settled 2026-10-01:
+#### G. Tier 3: per-device credentials *(next)*
 
-- **The simulator** gets a dev credential, the same as a real device. It reads
-  the credential from the controller's HTTP API, which is loopback-only, as
-  the UI is.
+Decided 2026-10-01, to be built straight after F and tested with the rest of
+Phase 8 before Phase 9. F's data model is ready for it.
 
-Still to settle when it is built:
-
-- **Where a device's credential comes from.** Tier 3 is the per-device
-  credential, so Tier 2 is one broker credential, generated on first start.
-  Settings shows it for the user to type into Tasmota or ESPHome, and it is
-  pushed to Shelly over its HTTP API. A device found anonymously appears, but
-  sends no readings until it has the credential, and Settings has to say so.
-- **Upgrading.** Devices that connect anonymously today stop working the
-  moment Tier 2 is enforced. An upgraded install may need to start with
-  enforcement off and a prompt to turn it on.
-- **TLS, or not.** Without it, credentials cross the LAN in cleartext inside the
-  CONNECT packet. Cheap-device TLS support is patchy and cert distribution is its
-  own project. Accepting plaintext credentials on a trusted segment is
-  defensible for v1 — but decide it rather than drift into it.
-- **The bind address.** If devices live on one interface or VLAN, narrowing off
-  `0.0.0.0` is free defence in depth.
+1. **A credential per device**, generated when it is paired: a row in
+   `mqtt_credentials` with its `device_id`. Its username and password are
+   on its device card, with copy, the way F's are in Settings.
+2. **Each credential may publish only its own device's topics**: the topic
+   prefix and the topics its capabilities declare, plus discovery. The
+   shared credential remains during migration, as "any device", and
+   Settings counts the devices still on it.
+3. **Shelly gets its credential pushed** over its HTTP API (Gen 1
+   `/settings`, Gen 2 `MQTT.SetConfig`), so pairing one needs no typing.
+   ESPHome and Tasmota still take theirs by hand, or at flash time.
+4. **Forgetting a device revokes its credential.** That is safe, because the
+   Tier 1 ACL keeps its command topics closed regardless.
+5. Open, to settle when built: whether the shared credential is retired
+   once every device has its own, or kept as an opt-in "simple mode".
 
 #### Suggested order
 
-A → B → C → E → D → F. A and B make the dev box a real install. C follows
+A → B → C → E → D → F → G. A and B make the dev box a real install. C follows
 once the controller can be absent. E was to come before D because the Windows
 artifacts have to be built in CI. In the end D was built first, as far as an
 unprivileged machine allows, and E finishes it. F is independent of packaging
@@ -1820,6 +1906,20 @@ Settle two things before building:
   can't do this. Load it lazily when the view is opened, so it stays out of
   the main bundle.
 
+
+### After Phase 9 — real devices, then TLS
+
+Decided 2026-10-01. Once Phase 9 is done, the whole project is tested with
+real hardware: sensors and switches (ESP32 boards on ESPHome or Tasmota, or
+ready-made Shelly devices), and the controller installed on a Linux
+single-board computer such as a Raspberry Pi 4 or 5, using the linux-arm64
+controller tarball (B.6). The controller cannot run on a microcontroller,
+because it needs Linux, Node and SQLite. Bugs found with real data are fixed
+then.
+
+**TLS comes after that.** It depends on per-device identity (G) and on which
+device firmwares can take a certificate, which the real-device testing will
+show.
 ---
 
 ## Two-machine workflow
