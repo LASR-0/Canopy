@@ -4,7 +4,7 @@
  *   release/canopy-controller-<version>-<platform>-<arch>/
  *     node | node.exe        pinned Node runtime, checksum verified
  *     controller.mjs(.map)   the bundle from scripts/bundle.mjs
- *     node_modules/          better-sqlite3, prebuilt for that Node
+ *     better_sqlite3.node    better-sqlite3's binary, prebuilt for that Node
  *
  * It runs on its own: no pnpm, tsx or repo. Start it with
  *   DATA_DIR=<dir> ./node --enable-source-maps controller.mjs
@@ -105,22 +105,10 @@ await rm(join(out, "LICENSE"));
 // ── better-sqlite3 ────────────────────────────────────────────────────────────
 
 // Resolved the way the backend resolves it, so the version staged is the
-// version tested.
+// version bundled.
 const require = createRequire(join(root, "package.json"));
 const sqliteDir = dirname(require.resolve("better-sqlite3/package.json"));
 const sqliteVersion = JSON.parse(await readFile(join(sqliteDir, "package.json"), "utf8")).version;
-const fromSqlite = createRequire(join(sqliteDir, "package.json"));
-const bindingsDir = dirname(fromSqlite.resolve("bindings/package.json"));
-const fileUriDir = dirname(createRequire(join(bindingsDir, "package.json")).resolve("file-uri-to-path/package.json"));
-
-const modules = join(out, "node_modules");
-const staged = join(modules, "better-sqlite3");
-await mkdir(staged, { recursive: true });
-for (const entry of ["package.json", "LICENSE", "lib"]) {
-  await cp(join(sqliteDir, entry), join(staged, entry), { recursive: true });
-}
-await cp(bindingsDir, join(modules, "bindings"), { recursive: true, dereference: true });
-await cp(fileUriDir, join(modules, "file-uri-to-path"), { recursive: true, dereference: true });
 
 // The project publishes a prebuilt binary per Node ABI, platform and arch,
 // which is what `prebuild-install` fetches on a normal install.
@@ -129,7 +117,8 @@ const prebuildPath = await fetchCached(
   `https://github.com/WiseLibs/better-sqlite3/releases/download/v${sqliteVersion}/${prebuild}`,
   prebuild,
 );
-execFileSync("tar", ["-xzf", prebuildPath, "-C", staged, "build/Release/better_sqlite3.node"]);
+execFileSync("tar", ["-xzf", prebuildPath, "-C", out, "--strip-components=2", "build/Release/better_sqlite3.node"]);
+await cp(join(sqliteDir, "LICENSE"), join(out, "LICENSE.better-sqlite3"));
 
 // ── The controller ────────────────────────────────────────────────────────────
 

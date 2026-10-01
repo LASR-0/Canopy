@@ -1,9 +1,10 @@
 /**
  * Bundle the controller into one ESM file for install: release/controller.mjs.
  *
- * Everything is inlined except better-sqlite3, which is native and is staged
- * beside the bundle with a binary for the target Node (scripts/stage.mjs).
- * The result does not depend on the platform; staging does.
+ * Everything is inlined, better-sqlite3's JavaScript included. Its native
+ * binary is staged beside the bundle for the target Node (scripts/stage.mjs)
+ * and passed to it by path (src/store/sqlite.ts). The result does not depend
+ * on the platform; staging does.
  */
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
@@ -23,7 +24,6 @@ await build({
   target: "node24",
   sourcemap: "linked",
   external: [
-    "better-sqlite3",
     // ws tries these optional native speedups inside a try/catch and falls
     // back to JS without them.
     "bufferutil",

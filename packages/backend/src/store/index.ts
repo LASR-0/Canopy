@@ -1,17 +1,17 @@
-import Database from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { mkdirSync } from "node:fs";
 import * as schema from "./schema.js";
 import { DATA_DIR, DB_PATH } from "./paths.js";
 import { applyColumnAdditions, applyDDL, seedData } from "./ddl.js";
+import { openDatabase } from "./sqlite.js";
 
 export { DATA_DIR } from "./paths.js";
 export { addColumnIfMissing, applyColumnAdditions, applyDDL, seedData } from "./ddl.js";
 
 mkdirSync(DATA_DIR, { recursive: true });
 
-const sqlite = new Database(DB_PATH);
+const sqlite = openDatabase(DB_PATH);
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 

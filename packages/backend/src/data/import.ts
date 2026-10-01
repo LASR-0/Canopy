@@ -28,11 +28,11 @@ import { copyFile, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { createGunzip } from "node:zlib";
-import Database from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import type { ImportPreview, ImportStatus, ImportWorkspacePreview, ImportedWorkspace } from "@canopy/shared-types";
 import { NOTIFICATION_CHANNELS } from "@canopy/shared-types";
 import { applyColumnAdditions, applyDDL } from "../store/ddl.js";
+import { openDatabase } from "../store/sqlite.js";
 import { extractTar } from "./tar.js";
 import { alreadyClaimed, claimedTopics, type DeviceTopicsRow } from "../device-manager/claims.js";
 import { DB_ENTRY, EXPORT_FORMAT, EXPORT_VERSION, MANIFEST_ENTRY, PHOTO_PREFIX, type ExportManifest } from "./export.js";
@@ -131,7 +131,7 @@ async function unpack(input: AsyncIterable<Buffer>, dir: string): Promise<Staged
 function openStaged(dbPath: string): SqliteDatabase {
   let staged: SqliteDatabase;
   try {
-    staged = new Database(dbPath);
+    staged = openDatabase(dbPath);
     const check = staged.pragma("quick_check", { simple: true });
     if (check !== "ok") throw new Error(String(check));
     const hasWorkspaces = staged.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces'`).get();
@@ -365,7 +365,7 @@ async function copyIn(
     // The staged database was closed after the preview, so read the
     // already-here devices again through the live connection's attachment.
     const alreadyHere = (() => {
-      const staged = new Database(file.dbPath, { readonly: true });
+      const staged = openDatabase(file.dbPath, { readonly: true });
       try {
         return devicesAlreadyHere(staged, live, chosen);
       } finally {
