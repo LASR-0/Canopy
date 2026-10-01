@@ -94,5 +94,14 @@ module.exports = {
   rpm: fpmPackage(),
   // pacman runs nothing on an upgrade unless it has a post_upgrade, which
   // would leave the old controller running on deleted files until a reboot.
-  pacman: fpmPackage(["--after-upgrade", join(linux, "after-upgrade.sh")]),
+  pacman: {
+    ...fpmPackage(["--after-upgrade", join(linux, "after-upgrade.sh")]),
+    // electron-builder's default list, less http-parser and
+    // libappindicator-gtk3: both left Arch's repos for the AUR, so pacman -U
+    // refused the package. There is no tray icon to need an indicator.
+    depends: [
+      "c-ares", "ffmpeg", "gtk3", "libevent", "libvpx", "libxslt", "libxss",
+      "minizip", "nss", "re2", "snappy", "libnotify",
+    ],
+  },
 };
