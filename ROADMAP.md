@@ -258,7 +258,7 @@ mode is the answer for many metrics at once — one lane each, one hue per lane,
 nothing to tell apart. `lux` and `ppfd` are the same quantity in different units,
 so a device reports one or the other and they are not expected to share a plot.
 
-### MQTT hardening — Tiers 1 and 2 done, Tier 3 in Phase 8 G
+### MQTT hardening — Tiers 1, 2 and 3 done
 
 The broker binds `0.0.0.0:1883` **unauthenticated**, while HTTP binds
 `127.0.0.1`. LAN-reachable is intentional — devices have to connect — but
@@ -299,10 +299,10 @@ lands on that same command topic.
 credential, required on fresh installs, with the scan window as the only way
 in without it. See Phase 8 F.
 
-**Tier 3 — per-device credentials** is Phase 8 G, decided 2026-10-01. A
-credential per device, limited to that device's own topics, and pushed to
-Shelly over its HTTP API. ESPHome and generic MQTT firmware still take it by
-hand.
+**Tier 3 — per-device credentials ✅ built** in Phase 8 G: a credential
+per device, limited to that device's own topics, and pushed to Shelly over
+its HTTP API. ESPHome and generic MQTT firmware still take it by hand. The
+shared credential stays, as the "any device" login. See Phase 8 G.
 
 **TLS** comes after v1, after Tier 3 and after the real-device testing that
 follows Phase 9. Decided 2026-10-01; see "After Phase 9".
@@ -345,7 +345,8 @@ has something to drive on day one.
 Two invariants in `fleet.ts` are easy to break by accident — device dedup keys
 off the first two topic segments, and a `device_class` outside
 `SENSOR_COMPONENT_MAP` silently degrades to temperature. Both are commented
-there.
+there. Since Phase 8 G a device is matched by `device.identifiers` first, so
+the first matters only for firmware that sends none.
 
 ### Phase 3 — Telemetry ingestion ✅ done *(the keystone)*
 
@@ -1847,25 +1848,103 @@ credential, except while a scan is open. Decided 2026-10-01:
      machine can already drive devices through it.
    - A `.canopy` export contains the database, credential included.
 
-#### G. Tier 3: per-device credentials *(next)*
+#### G. Tier 3: per-device credentials ✅ built — awaiting a hands-on check
 
-Decided 2026-10-01, to be built straight after F and tested with the rest of
-Phase 8 before Phase 9. F's data model is ready for it.
+Every MQTT device now gets its own broker login when it is paired, limited
+to its own topics, beside F's shared one. Planned 2026-10-01; three things
+were settled when it was built, the same day:
 
-1. **A credential per device**, generated when it is paired: a row in
-   `mqtt_credentials` with its `device_id`. Its username and password are
-   on its device card, with copy, the way F's are in Settings.
-2. **Each credential may publish only its own device's topics**: the topic
-   prefix and the topics its capabilities declare, plus discovery. The
-   shared credential remains during migration, as "any device", and
-   Settings counts the devices still on it.
-3. **Shelly gets its credential pushed** over its HTTP API (Gen 1
-   `/settings`, Gen 2 `MQTT.SetConfig`), so pairing one needs no typing.
-   ESPHome and Tasmota still take theirs by hand, or at flash time.
-4. **Forgetting a device revokes its credential.** That is safe, because the
-   Tier 1 ACL keeps its command topics closed regardless.
-5. Open, to settle when built: whether the shared credential is retired
-   once every device has its own, or kept as an opt-in "simple mode".
+- **Device identity was fixed first.** A Canopy device was not one MQTT
+  connection. HA discovery made a device of each entity's first two topic
+  segments, so a real ESPHome or Tasmota board (`node/sensor/temp`,
+  `node/switch/relay`) became several devices over one connection, which
+  can only log in once. Worse, two sensors under one prefix collapsed into
+  one device and each announcement *replaced* its capabilities, so it kept
+  only the last. The simulator escaped both only because each of its
+  devices has its own prefix.
+- **Out-of-scope publishes are ignored, not refused.** aedes can refuse a
+  publish only by disconnecting the client, and firmware publishes topics
+  Canopy never learns (ESPHome's `<node>/status`, Tasmota's
+  `tele/<topic>/LWT`), so a refusal would loop it reconnecting forever.
+- **The shared credential stays** (point 5 of the plan), as the "any device"
+  login. The simulator is one connection for 12 devices, so it needs it,
+  and so does firmware that can be given only one login by hand.
+
+1. **One device per board.** `parseHaDiscovery` gives each entity a
+   `discoveryKey` from Home Assistant's `device.identifiers` (falling back
+   to the node id), stored in `devices.discovery_key`. Entities with the
+   same key become one device, their capabilities merged by channel
+   (`mergeCapabilities`); an entity announced again replaces itself. The
+   node-id topic form, `homeassistant/<component>/<node>/<object>/config`,
+   which ESPHome and Tasmota use, was not matched at all before and is now.
+   A device found before G is matched by its prefix once and given its key.
+2. **Pairing is one discovery at a time.** A board announces its entities
+   together, and the upserts raced: each missed the others and inserted its
+   own row, so the board became three devices. The live test caught it.
+   `scan-session.ts` now chains them.
+3. **A credential per device** (`broker/credentials.ts`): a row in
+   `mqtt_credentials` with its `device_id`, username `canopy-` and 8 random
+   hex characters (not the device's name, which is not unique and would say
+   which device is which on the wire), created when an MQTT device is paired,
+   or on first look at its card for one paired before G.
+4. **Who may connect** (`broker/auth.ts`): every credential is compared, both
+   halves of each in constant time, so the time taken says nothing about
+   which usernames exist. A device's own login connects as `device` with its
+   device id; the shared one as `shared`. `MqttAuth` was
+   `"credential" | "anonymous"` and is now `"device" | "shared" | "anonymous"`;
+   the stored value is renamed at startup, and in an imported file.
+5. **What it may publish** (`broker/acl.ts`, `mayPublish`): its device's
+   state topics, anything under its topic prefix, and discovery. Anything
+   else is not ingested, not retained, and logged once an hour per topic.
+   Command topics stay refused for everyone (Tier 1).
+6. **Changes apply at once.** Each connected client remembers the credential
+   it used, and `applyAuthConfig` drops any whose credential is gone or has a
+   new password (`stillValid`). That replaced F's `credentialChanged` flag,
+   and covers the shared password, a device's new password and revocation.
+7. **Forgetting revokes.** Forget-all and Remove delete the device's
+   credential and drop its client. Paired again, it gets a new one and keeps
+   its capabilities.
+8. **Shelly gets its credential pushed** (`shelly-push.ts`) when it is paired:
+   `GET /shelly` tells the generations apart, then Gen 1
+   `/settings?mqtt_enable=true&mqtt_server=…&mqtt_user=…&mqtt_pass=…` and
+   `/reboot`, or Gen 2+ `MQTT.SetConfig` and `Shelly.Reboot` when it asks.
+   The broker address sent is this machine's on the device's subnet
+   (`brokerAddressFor`), or the address the broker is pinned to. A Shelly
+   with a web login answers 401 and is left to be set by hand; the card
+   says so. ESPHome and Tasmota still take theirs by hand, or at flash time.
+9. **The UI.** Each MQTT device card has a **Broker login** button that opens
+   its broker address, username and password (copy, show), "New password"
+   (asks first, as it disconnects the device), "Send to device" for a
+   Shelly, and how the device connects now. Settings → Device connections
+   names the devices still on the shared password.
+10. **Verified**:
+    - 29 new tests (491 in total): the login table with device credentials,
+      `stillValid`, scopes and retain stripping, discovery keys and the
+      node-id form, merging, the broker address chooser, the Gen 1 and Gen 2
+      push against a fake device API, 401 and no answer, the rename
+      migration, and the credential going with its device.
+    - A live run against a fresh controller with real MQTT clients and a
+      fake Shelly HTTP API passed all 31 checks: three entities become one
+      device; its login is created at pairing and works; its readings are
+      ingested and another device's are not; an out-of-scope publish neither
+      disconnects nor is retained; its command topic is still refused; a new
+      password drops the old one; the Shelly is sent its login and rebooted;
+      forget-all drops and refuses it; paired again it gets a new login.
+    - The simulator, run against it, still pairs as 12 devices (each its own
+      key) on the shared credential. Its Shelly's push fails at once, since
+      nothing answers HTTP on 127.0.0.1, and the card says it did not answer.
+11. **Still to check by hand**: open a device's Broker login in the app, and
+    the shared-password note in Settings. On hardware, after Phase 9: a real
+    Shelly Gen 1 and Gen 2 sent its login, and an ESPHome board given one.
+12. **Known limits**:
+    - A client on a device's own login may announce *other* devices during a
+      scan, since discovery is open to every login. A scan is short and
+      watched, so it is left.
+    - While a scan is open, a wrong login is let in to announce itself (F),
+      so a revoked login connects again for those 20 seconds, as anything
+      unprovisioned can, discovery only.
+    - Readings for a topic two devices claim go to the first, as before. Two
+      workspaces scanning at once both pair what they hear.
 
 #### Suggested order
 

@@ -61,6 +61,16 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   }
   addColumnIfMissing(db, "app_settings", "mqtt_bind_host", "TEXT");
   addColumnIfMissing(db, "devices", "mqtt_auth", "TEXT");
+  // Per-device credentials (Phase 8 G): the shared credential is now one of
+  // two, so what was "credential" is "shared". Cheap and idempotent, and it
+  // runs on an imported file too, which may come from before the rename.
+  const deviceColumns = db.prepare(`PRAGMA table_info(devices)`).all() as { name: string }[];
+  if (deviceColumns.some((c) => c.name === "mqtt_auth")) {
+    db.exec(`UPDATE devices SET mqtt_auth = 'shared' WHERE mqtt_auth = 'credential'`);
+  }
+  // The physical device behind MQTT discovery, which gathers a board's
+  // entities into one device. Older rows gain it at their next discovery.
+  addColumnIfMissing(db, "devices", "discovery_key", "TEXT");
 }
 
 export function addColumnIfMissing(
@@ -150,14 +160,16 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       runtime_hours       REAL NOT NULL DEFAULT 0,
       forgotten           INTEGER NOT NULL DEFAULT 0,
       detached_at         TEXT,
-      mqtt_auth           TEXT
+      mqtt_auth           TEXT,
+      discovery_key       TEXT
     );
 
     /* ── mqtt_credentials ─────────────────────────────────────────────── */
     /* What a device presents when it connects to the broker. One shared row
-       (device_id NULL) for now; Phase 8 G ties a credential to each device.
-       The password is stored as it is, because Settings shows it for typing
-       into a device. The database is readable by the service alone. */
+       (device_id NULL) any device may use, and one per MQTT device, limited
+       to its own topics (Phase 8 G). The password is stored as it is,
+       because the UI shows it for typing into a device. The database is
+       readable by the service alone. */
     CREATE TABLE IF NOT EXISTS mqtt_credentials (
       id          TEXT PRIMARY KEY,
       username    TEXT NOT NULL UNIQUE,

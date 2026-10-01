@@ -1,10 +1,10 @@
 /**
  * Generic MQTT adapter — HA-style discovery.
  *
- * Any device that publishes to homeassistant/<type>/<id>/config is parsed here.
+ * Any device that publishes to homeassistant/<type>/[<node>/]<id>/config is parsed here.
  * This covers ESPHome, Tasmota, and any other HA-compatible firmware out of the box.
  */
-import type { ActuatorCapability, ActuatorCommand, Device } from "@canopy/shared-types";
+import type { ActuatorCapability, ActuatorCommand, Capability, Device } from "@canopy/shared-types";
 import { cannotEncode, encoded, isValidLevel, type EncodeResult } from "./command.js";
 
 /** Home Assistant's own defaults, used when the firmware declares nothing. */
@@ -26,7 +26,7 @@ interface HaConfig {
   brightness_command_topic?: string;
   brightness_scale?: number;
   device?: {
-    identifiers?: string[];
+    identifiers?: string[] | string;
     name?: string;
     model?: string;
     manufacturer?: string;
@@ -47,6 +47,30 @@ const SENSOR_COMPONENT_MAP: Record<string, { metric: string; unit: string }> = {
 };
 
 /**
+ * Which physical device an entity belongs to. Firmware announces each entity
+ * (a sensor, a relay) on its own discovery topic, and one board has several,
+ * all over one connection with one credential. Home Assistant groups them by
+ * `device.identifiers`; the node id in the topic is the fallback. Without
+ * either, the entity stands alone and is matched by its topic prefix.
+ */
+export function discoveryKey(identifiers: unknown, nodeId: string | undefined): string | undefined {
+  const first = Array.isArray(identifiers) ? identifiers[0] : identifiers;
+  if (typeof first === "string" && first !== "") return `ha:${first}`;
+  if (nodeId) return `ha-node:${nodeId}`;
+  return undefined;
+}
+
+/**
+ * A board's entities, gathered into one device: an entity announced again
+ * replaces its earlier self (same channel), and a new one is added. Pure.
+ * Used when a discovered device has a `discoveryKey`.
+ */
+export function mergeCapabilities(existing: readonly Capability[], incoming: readonly Capability[]): Capability[] {
+  const channels = new Set(incoming.map((c) => c.channel));
+  return [...existing.filter((c) => !channels.has(c.channel)), ...incoming];
+}
+
+/**
  * Parses a HA-style MQTT discovery topic + payload into a Device.
  * Returns null if the topic/payload is not recognisable.
  */
@@ -55,11 +79,12 @@ export function parseHaDiscovery(
   payload: Buffer,
   workspaceId: string,
 ): Omit<Device, "id"> | null {
-  // homeassistant/<component>/<object_id>/config
-  const match = topic.match(/^homeassistant\/([^/]+)\/([^/]+)\/config$/);
+  // homeassistant/<component>/[<node_id>/]<object_id>/config. ESPHome and
+  // Tasmota use the node id; without it they were not discovered at all.
+  const match = topic.match(/^homeassistant\/([^/]+)\/(?:([^/]+)\/)?([^/]+)\/config$/);
   if (!match) return null;
 
-  const [, component, objectId] = match;
+  const [, component, nodeId, objectId] = match;
   if (!component || !objectId) return null;
 
   let config: HaConfig;
@@ -70,7 +95,10 @@ export function parseHaDiscovery(
   }
 
   const deviceInfo = config.device;
-  const name = config.name ?? deviceInfo?.name ?? objectId;
+  const key = discoveryKey(deviceInfo?.identifiers, nodeId);
+  // A board's entities become one device, so it takes the board's name; an
+  // entity on its own keeps its own.
+  const name = (key ? deviceInfo?.name : undefined) ?? config.name ?? deviceInfo?.name ?? objectId;
   const model = deviceInfo?.model ?? deviceInfo?.manufacturer ?? undefined;
 
   // Determine capability from component type.
@@ -145,6 +173,7 @@ export function parseHaDiscovery(
     },
     ...(model ? { model } : {}),
     ...(deviceInfo?.sw_version ? { firmware: deviceInfo.sw_version } : {}),
+    ...(key ? { discoveryKey: key } : {}),
     capabilities,
     discoveredVia: "mqtt-discovery" as const,
     online: true,

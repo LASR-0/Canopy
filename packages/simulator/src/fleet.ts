@@ -4,11 +4,11 @@
  * Each entry becomes one HA-discoverable device. Two constraints from the
  * backend shape this file, and both are easy to violate by accident:
  *
- *  1. `scan-session.upsertDevice` deduplicates MQTT devices by
- *     `mqttTopicPrefix`, and `parseHaDiscovery` derives that prefix from the
- *     FIRST TWO segments of `state_topic`. So every device needs a distinct
- *     second segment, or several devices collapse into one row. Hence
- *     `canopy/<objectId>/state` rather than a shared prefix.
+ *  1. `scan-session.upsertDevice` matches a device by its
+ *     `device.identifiers` (Phase 8 G), so every spec announces its own, or
+ *     several devices merge into one. Firmware that sends none is matched
+ *     by `mqttTopicPrefix`, the FIRST TWO segments of `state_topic`, and its
+ *     own topic prefix, `canopy/<objectId>/state`, would keep them apart too.
  *
  *  2. `parseHaDiscovery` maps a sensor's capability from `device_class`, via
  *     SENSOR_COMPONENT_MAP in adapters/generic-mqtt.ts. A device_class outside

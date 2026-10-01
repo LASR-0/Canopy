@@ -7,7 +7,7 @@ import { useMqttBroker, usePatchMqttBroker, useRegenerateMqttPassword } from "@/
 
 const ALL = "0.0.0.0";
 
-function CopyValue({ value, label }: { value: string; label: string }) {
+export function CopyValue({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -28,10 +28,14 @@ function CopyValue({ value, label }: { value: string; label: string }) {
 }
 
 /**
- * A new password disconnects every device until it is given the new one, so
- * the first click only asks, and the question stands for five seconds.
+ * A new password disconnects the devices on the old one until they are given
+ * it, so the first click only asks, and the question stands for five seconds.
  */
-function NewPasswordButton({ onConfirm, pending }: { onConfirm: () => void; pending: boolean }) {
+export function NewPasswordButton({ onConfirm, pending, question = "Disconnect every device?" }: {
+  onConfirm: () => void;
+  pending: boolean;
+  question?: string;
+}) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return;
@@ -49,7 +53,7 @@ function NewPasswordButton({ onConfirm, pending }: { onConfirm: () => void; pend
         onConfirm();
       }}
     >
-      {armed ? "Disconnect every device?" : "New password"}
+      {armed ? question : "New password"}
     </button>
   );
 }
@@ -68,6 +72,7 @@ export function BrokerSettings() {
 
   const addresses = broker.interfaces.filter((i) => i.family === "IPv4");
   const without = broker.devicesWithoutCredential;
+  const onShared = broker.devicesOnShared;
   const listenValue = broker.bind.setting ?? ALL;
 
   return (
@@ -91,7 +96,7 @@ export function BrokerSettings() {
 
         <div className="auto-row">
           <div className="auto-meta">
-            <div className="auto-name">Username</div>
+            <div className="auto-name">Shared username</div>
           </div>
           <span className="broker-pair">
             <code className="broker-value">{broker.username}</code>
@@ -102,7 +107,7 @@ export function BrokerSettings() {
         <div className="auto-row">
           <div className="auto-meta">
             <div className="auto-name">Password</div>
-            <div className="auto-desc">Shared by every device</div>
+            <div className="auto-desc">Any device may use it. Each device also has its own, on its card.</div>
           </div>
           <span className="broker-pair">
             <code className="broker-value">{reveal ? broker.password : "•".repeat(broker.password.length)}</code>
@@ -141,6 +146,16 @@ export function BrokerSettings() {
               {broker.requireCredentials
                 ? "They stay offline until they are given it."
                 : "Give them the username and password before you require it, or they go offline."}
+            </span>
+          </div>
+        )}
+
+        {onShared.length > 0 && (
+          <div className="broker-note">
+            <Icon name="lock" size={14} />
+            <span>
+              {onShared.length === 1 ? "1 device connects" : `${onShared.length} devices connect`} with this shared password:{" "}
+              <b>{onShared.map((d) => d.name).join(", ")}</b>. Give each its own, from its card, to limit it to its own readings.
             </span>
           </div>
         )}

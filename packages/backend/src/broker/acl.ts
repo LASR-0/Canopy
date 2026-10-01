@@ -22,6 +22,14 @@
  * client let in without the credential only to announce itself during a scan
  * leaves nothing behind. Its other publishes are not refused, because a
  * refusal disconnects it before it has announced, but they are not retained.
+ *
+ * Tier 3 (Phase 8 G) adds a scope per device: a client on a device's own
+ * credential may publish that device's topics and discovery, and nothing
+ * else is read from it. Those publishes are ignored rather than refused, for
+ * the same reason: firmware publishes topics Canopy never learns about
+ * (ESPHome's `<node>/status`, Tasmota's `tele/<topic>/LWT`), and a refusal
+ * would disconnect it on every one, so it would reconnect forever. Ignored
+ * means not ingested (broker/index.ts) and not retained (below).
  */
 import { db } from "../store/index.js";
 import { devices } from "../store/schema.js";
@@ -39,6 +47,34 @@ const SYS_PREFIX = "$SYS/";
 /** Just enough of a device to derive the topics it accepts commands on. */
 export interface AclDevice {
   capabilities: Capability[];
+}
+
+/** Just enough of a device to derive the topics its own credential may publish. */
+export interface ScopedDevice extends AclDevice {
+  id: string;
+  mqttTopicPrefix: string | null;
+}
+
+/** What one device's credential may publish: these topics, and anything under the prefix. */
+export interface DeviceScope {
+  topics: Set<string>;
+  prefix?: string;
+}
+
+/**
+ * The topics each device's own credential may publish: every state topic its
+ * capabilities declare, and anything under its topic prefix. Pure, like
+ * `buildCommandTopicSet`. Discovery topics are allowed separately, for every
+ * credential, so a board can announce a new entity.
+ */
+export function buildDeviceScopes(deviceList: ScopedDevice[]): Map<string, DeviceScope> {
+  const scopes = new Map<string, DeviceScope>();
+  for (const device of deviceList) {
+    const topics = new Set<string>();
+    for (const cap of device.capabilities) if (cap.stateTopic) topics.add(cap.stateTopic);
+    scopes.set(device.id, device.mqttTopicPrefix ? { topics, prefix: device.mqttTopicPrefix } : { topics });
+  }
+  return scopes;
 }
 
 /**
@@ -69,6 +105,7 @@ export function buildCommandTopicSet(deviceList: AclDevice[]): Set<string> {
 }
 
 let commandTopics = new Set<string>();
+let deviceScopes = new Map<string, DeviceScope>();
 
 /**
  * Reload the command-topic ACL from the devices table.
@@ -81,12 +118,16 @@ let commandTopics = new Set<string>();
 export async function refreshCommandTopics(): Promise<void> {
   try {
     const rows = await db
-      .select({ capabilitiesJson: devices.capabilitiesJson })
+      .select({ id: devices.id, mqttTopicPrefix: devices.mqttTopicPrefix, capabilitiesJson: devices.capabilitiesJson })
       .from(devices);
 
-    commandTopics = buildCommandTopicSet(
-      rows.map((row) => ({ capabilities: parseCapabilities(row.capabilitiesJson) })),
-    );
+    const list = rows.map((row) => ({
+      id: row.id,
+      mqttTopicPrefix: row.mqttTopicPrefix,
+      capabilities: parseCapabilities(row.capabilitiesJson),
+    }));
+    commandTopics = buildCommandTopicSet(list);
+    deviceScopes = buildDeviceScopes(list);
   } catch (err) {
     // Keep the previous set. An empty ACL authorizes everything, so discarding
     // what we have on a transient DB error would open exactly the hole this
@@ -119,6 +160,35 @@ export function isCommandTopic(topic: string): boolean {
 }
 
 /**
+ * Whether a device's own credential may publish on this topic. A device
+ * Canopy no longer has (deleted since it connected) may publish nothing but
+ * discovery; its client is dropped as its credential goes anyway.
+ */
+export function mayPublish(deviceId: string, topic: string, scopes: Map<string, DeviceScope> = deviceScopes): boolean {
+  if (isDiscoveryTopic(topic)) return true;
+  const scope = scopes.get(deviceId);
+  if (!scope) return false;
+  return scope.topics.has(topic) || (scope.prefix !== undefined && topic.startsWith(`${scope.prefix}/`));
+}
+
+/**
+ * Publishes outside a device's scope are ignored, and logged once an hour per
+ * device and topic: firmware repeats them every few seconds, and an unknown
+ * topic is usually harmless (a status message), so the log says what was
+ * ignored without filling up.
+ */
+const OUT_OF_SCOPE_LOG_MS = 60 * 60_000;
+const outOfScopeLogged = new Map<string, number>();
+
+function noteOutOfScope(clientId: string, deviceId: string, topic: string): void {
+  const key = `${deviceId} ${topic}`;
+  const now = Date.now();
+  if (now - (outOfScopeLogged.get(key) ?? 0) < OUT_OF_SCOPE_LOG_MS) return;
+  outOfScopeLogged.set(key, now);
+  console.warn(`[broker] ignored ${topic} from ${clientId}: not one of its device's topics`);
+}
+
+/**
  * Aedes `authorizePublish` hook.
  *
  * `client` is used only for the log line. A command topic is refused whichever
@@ -145,7 +215,15 @@ export function authorizeClientPublish(
 
   // A client without the credential, in only for the scan: a retained state
   // message would outlive its 20 seconds and be replayed to every subscriber.
-  if (clientAuth(client)?.provisioned === false && !isDiscoveryTopic(packet.topic)) {
+  const state = clientAuth(client);
+  if (state?.provisioned === false && !isDiscoveryTopic(packet.topic)) {
+    packet.retain = false;
+  }
+
+  // A device's own credential, outside its device's topics: ignored, and so
+  // not retained either.
+  if (client && state?.deviceId && !mayPublish(state.deviceId, packet.topic)) {
+    noteOutOfScope(client.id, state.deviceId, packet.topic);
     packet.retain = false;
   }
 
@@ -159,4 +237,11 @@ export function setCommandTopicsForTesting(deviceList: AclDevice[]): void {
 
 export function resetAclForTesting(): void {
   commandTopics = new Set<string>();
+  deviceScopes = new Map();
+  outOfScopeLogged.clear();
+}
+
+/** Load device scopes directly, bypassing the database. Tests only. */
+export function setDeviceScopesForTesting(deviceList: ScopedDevice[]): void {
+  deviceScopes = buildDeviceScopes(deviceList);
 }

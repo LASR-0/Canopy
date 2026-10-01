@@ -31,6 +31,7 @@ import type {
   ControllerCommand,
   MqttBrokerSettings,
   MqttBrokerPatch,
+  DeviceMqttCredential,
   ActuatorCommand,
   DevicePlacement,
   Plant,
@@ -121,6 +122,12 @@ export interface ApiRoutes {
   "POST /workspaces/:workspaceId/devices/forget-all": { res: { forgotten: true } };
   "POST /workspaces/:workspaceId/roles":    { body: AssignRoleBody; res: RoleAssignment };
   "POST /devices/:deviceId/actuate":        { body: ActuateBody; res: { accepted: true } };
+  /** The device's own broker credential, created if it has none yet. */
+  "GET /devices/:deviceId/mqtt":            { res: DeviceMqttCredential };
+  /** A new password for this device alone; it is disconnected until it has it. */
+  "POST /devices/:deviceId/mqtt/password":  { res: DeviceMqttCredential };
+  /** Shelly: send the credential to the device over its HTTP API. */
+  "POST /devices/:deviceId/mqtt/push":      { res: DeviceMqttCredential };
 
   // ── Sensor thresholds ─────────────────────────────────────────────────────
   "GET /workspaces/:workspaceId/thresholds":           { res: SensorThreshold[] };

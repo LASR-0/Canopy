@@ -81,13 +81,15 @@ export const devices = sqliteTable("devices", {
    * never go to two places. See data/import.ts.
    */
   detachedAt:         text("detached_at"),
-  /** How it last connected to the broker: "credential" or "anonymous". */
+  /** How it last connected to the broker: "device", "shared" or "anonymous". */
   mqttAuth:           text("mqtt_auth"),
+  /** The physical device behind MQTT discovery, gathering a board's entities into one device. */
+  discoveryKey:       text("discovery_key"),
 });
 
 /**
- * What devices present when they connect to the broker. One shared row
- * (deviceId null) in Tier 2; Phase 8 G ties a credential to each device.
+ * What devices present when they connect to the broker: one shared row
+ * (deviceId null), and one per MQTT device (Phase 8 G).
  */
 export const mqttCredentials = sqliteTable("mqtt_credentials", {
   id:        text("id").primaryKey(),

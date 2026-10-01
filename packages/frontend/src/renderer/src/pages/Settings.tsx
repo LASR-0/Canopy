@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tag } from "@/components/Tag";
 import { SignalBars } from "@/components/SignalBars";
 import { BrokerSettings } from "@/components/BrokerSettings";
+import { DeviceCredential } from "@/components/DeviceCredential";
 import {
   Select,
   SelectContent,
@@ -60,7 +61,7 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
           <div className="dev-host">
             {/* First, because the line is cut off at the end when it is long. */}
             {device.mqttAuth === "anonymous" && (
-              <Tip content="Connects without the broker password. Enter the username and password from Device connections in its MQTT settings">
+              <Tip content="Connects without a broker password. Open Broker login below for the one to enter in its MQTT settings">
                 <span className="dev-nopass"><Icon name="alert" size={11} /> no password</span>
               </Tip>
             )}
@@ -106,6 +107,8 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
       </div>
       <div className="dev-foot">
         <span className="dev-kind">{isControl ? "Controllable equipment" : "Read-only sensor"}</span>
+        {/* Only an MQTT device connects to the broker; a detached copy is not in use. */}
+        {device.address.protocol === "mqtt" && !device.detachedAt && <DeviceCredential device={device} />}
       </div>
     </div>
   );

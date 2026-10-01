@@ -1,6 +1,6 @@
 /**
- * The broker's settings as stored: the shared credential, whether devices need
- * it, and where to listen. Apart from auth.ts, which decides with them and
+ * The broker's settings as stored: the credentials, whether devices need one,
+ * and where to listen. Apart from auth.ts, which decides with them and
  * stays free of the database.
  */
 import { networkInterfaces } from "node:os";
@@ -9,16 +9,25 @@ import type { MqttInterface } from "@canopy/shared-types";
 import { db } from "../store/index.js";
 import { appSettings, mqttCredentials } from "../store/schema.js";
 import { generateMqttPassword } from "../store/ddl.js";
-import type { AuthConfig } from "./auth.js";
+import type { AuthConfig, BrokerCredential } from "./auth.js";
 
+/** Every credential, the shared one and each device's own, and whether one is required. */
 export async function loadAuthConfig(): Promise<AuthConfig> {
   const [settings] = await db.select({ require: appSettings.mqttRequireCredentials }).from(appSettings).where(eq(appSettings.id, 1));
-  const [shared] = await db.select().from(mqttCredentials).where(isNull(mqttCredentials.deviceId));
+  const rows = await db
+    .select({ username: mqttCredentials.username, password: mqttCredentials.password, deviceId: mqttCredentials.deviceId })
+    .from(mqttCredentials);
   return {
-    username: shared?.username ?? "",
-    password: shared?.password ?? "",
+    credentials: rows.map(({ username, password, deviceId }): BrokerCredential =>
+      deviceId ? { username, password, deviceId } : { username, password }),
     requireCredentials: settings?.require ?? true,
   };
+}
+
+/** The credential every device may use, for Settings. */
+export async function loadSharedCredential(): Promise<{ username: string; password: string }> {
+  const [shared] = await db.select().from(mqttCredentials).where(isNull(mqttCredentials.deviceId));
+  return { username: shared?.username ?? "", password: shared?.password ?? "" };
 }
 
 export async function loadBindSetting(): Promise<string | null> {
@@ -51,6 +60,40 @@ export function localInterfaces(): MqttInterface[] {
     }
   }
   return list;
+}
+
+function ipv4ToInt(address: string): number | null {
+  const parts = address.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return null;
+  return parts.reduce((n, p) => n * 256 + p, 0);
+}
+
+/**
+ * The address a device at `deviceIp` should be told to reach the broker on:
+ * the one the broker is pinned to, if it is; otherwise this machine's IPv4
+ * address on the device's own subnet; otherwise the first IPv4 address.
+ * Undefined when there is none, which leaves the device to be told by hand.
+ */
+export function brokerAddressFor(
+  deviceIp: string | undefined,
+  boundHost: string,
+  interfaces: { address: string; netmask: string; family: string; internal: boolean }[] =
+    Object.values(networkInterfaces()).flat().filter((i) => i !== undefined),
+): string | undefined {
+  if (boundHost !== ALL_INTERFACES && boundHost !== "::") return boundHost;
+  const v4 = interfaces.filter((i) => i.family === "IPv4" && !i.internal);
+  const device = deviceIp ? ipv4ToInt(deviceIp) : null;
+  if (device !== null) {
+    const same = v4.find((i) => {
+      const address = ipv4ToInt(i.address);
+      const mask = ipv4ToInt(i.netmask);
+      return address !== null && mask !== null && ((address & mask) >>> 0) === ((device & mask) >>> 0);
+    });
+    if (same) return same.address;
+    // A device on this machine (the simulator) reaches it on loopback.
+    if (deviceIp === "127.0.0.1") return deviceIp;
+  }
+  return v4[0]?.address;
 }
 
 /** Every interface, IPv4 and IPv6. */

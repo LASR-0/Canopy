@@ -10,10 +10,14 @@
  * someone watching the screen, so while one is open a client without the
  * credential may connect, but only to announce itself:
  *
- *   right credential                  connects, full rights
+ *   a device's own credential         connects, its own topics only (Phase 8 G)
+ *   the shared credential             connects, full rights
  *   no credential, not required       connects, full rights, recorded as anonymous
  *   no credential, required, scan     connects unprovisioned: discovery only
  *   no credential, required           refused
+ *
+ * "Its own topics" is enforced where messages are read, not here: see
+ * acl.ts and broker/index.ts.
  *
  * "No credential" includes a wrong one. Tasmota ships with DVES_USER /
  * DVES_PASS and the broker never asked before, so a wrong login has to be
@@ -27,8 +31,8 @@
  * retained (acl.ts), and they are dropped when the scan window closes.
  *
  * Credentials cross the LAN in clear text inside the CONNECT packet. That is
- * decided for v1, on a trusted segment: TLS comes after per-device
- * credentials, which are Phase 8 G.
+ * decided for v1, on a trusted segment: TLS comes after the real-device
+ * testing that follows Phase 9.
  *
  * Pure apart from the module state below, so it is tested without a broker or
  * a database.
@@ -41,17 +45,27 @@ export interface ClientAuth {
   auth: MqttAuth;
   /** False while a client without the credential is let in only to announce itself. */
   provisioned: boolean;
+  /** Set for a device's own credential: the one device whose topics it may publish. */
+  deviceId?: string;
+  /** The credential it connected with, so a change to it can be noticed (`stillValid`). */
+  credential?: BrokerCredential;
+}
+
+/** A login the broker accepts. Without `deviceId`, the shared one. */
+export interface BrokerCredential {
+  username: string;
+  password: string;
+  deviceId?: string;
 }
 
 export interface AuthConfig {
-  username: string;
-  password: string;
+  credentials: BrokerCredential[];
   requireCredentials: boolean;
 }
 
-// Until the controller loads its settings nothing is accepted without the
-// credential, and there is no credential: closed, not open.
-let config: AuthConfig = { username: "", password: "", requireCredentials: true };
+// Until the controller loads its settings nothing is accepted without a
+// credential, and there are none: closed, not open.
+let config: AuthConfig = { credentials: [], requireCredentials: true };
 let discoveryOpen = false;
 const clients = new WeakMap<Client, ClientAuth>();
 
@@ -79,6 +93,38 @@ function same(presented: string | Buffer | undefined, expected: string): boolean
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/**
+ * The credential a login matches. Every one is compared, and both halves of
+ * each, so the time taken says nothing about which username exists or how
+ * close a guess came. There is one per device, so the list stays short.
+ */
+function findCredential(
+  username: string | undefined,
+  password: Buffer | undefined,
+  credentials: readonly BrokerCredential[],
+): BrokerCredential | undefined {
+  let found: BrokerCredential | undefined;
+  for (const credential of credentials) {
+    const userOk = same(username, credential.username);
+    const passOk = same(password, credential.password);
+    if (userOk && passOk && !found) found = credential;
+  }
+  return found;
+}
+
+/**
+ * Whether a client connected with a credential may stay connected under new
+ * settings: false once its credential is gone (a forgotten device) or has a
+ * new password. Clients without a credential are judged by `requireCredentials`
+ * instead, in broker/index.ts.
+ */
+export function stillValid(state: ClientAuth, next: AuthConfig): boolean {
+  const held = state.credential;
+  if (!held) return true;
+  return next.credentials.some((c) =>
+    c.username === held.username && c.password === held.password && c.deviceId === held.deviceId);
+}
+
 /** Who a client is let in as, or null if it is refused. */
 export function decideConnection(
   username: string | undefined,
@@ -86,10 +132,12 @@ export function decideConnection(
   current: AuthConfig = config,
   scanOpen: boolean = discoveryOpen,
 ): ClientAuth | null {
-  // Both compared, so a right username with a wrong password costs the same.
-  const userOk = same(username, current.username);
-  const passOk = same(password, current.password);
-  if (userOk && passOk) return { auth: "credential", provisioned: true };
+  const match = findCredential(username, password, current.credentials);
+  if (match) {
+    return match.deviceId
+      ? { auth: "device", provisioned: true, deviceId: match.deviceId, credential: match }
+      : { auth: "shared", provisioned: true, credential: match };
+  }
   if (!current.requireCredentials) return { auth: "anonymous", provisioned: true };
   if (scanOpen) return { auth: "anonymous", provisioned: false };
   return null;

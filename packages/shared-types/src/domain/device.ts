@@ -35,11 +35,17 @@ export interface Device {
    */
   detachedAt?: string;
   /**
-   * How an MQTT device last connected to the broker: with the broker
-   * credential or without it. Unset for devices that have not connected over
+   * How an MQTT device last connected to the broker: with its own credential,
+   * the shared one, or none. Unset for devices that have not connected over
    * MQTT since this was recorded.
    */
   mqttAuth?: MqttAuth;
+  /**
+   * The physical device behind MQTT discovery: Home Assistant's
+   * `device.identifiers`, or its node id. A board announces each entity
+   * separately, and they are gathered into one device by this key.
+   */
+  discoveryKey?: string;
 }
 
 /**

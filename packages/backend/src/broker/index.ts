@@ -8,7 +8,7 @@
 import { Aedes, type AedesPublishPacket, type Client } from "aedes";
 import { createServer, type Server } from "node:net";
 import type { MqttAuth } from "@canopy/shared-types";
-import { authorizeClientPublish, commandTopicCount, refreshCommandTopics } from "./acl.js";
+import { authorizeClientPublish, commandTopicCount, mayPublish, refreshCommandTopics } from "./acl.js";
 import {
   authenticateClient,
   clientAuth,
@@ -16,6 +16,7 @@ import {
   isDiscoveryTopic,
   REFUSED,
   setDiscoveryOpen,
+  stillValid,
   type AuthConfig,
   type ClientAuth,
 } from "./auth.js";
@@ -77,7 +78,7 @@ export async function publishToBroker(topic: string, payload: string): Promise<v
   });
 }
 
-/** `auth` is how the publishing client connected: with the broker credential or without. */
+/** `auth` is how the publishing client connected: with its own credential, the shared one, or none. */
 type MessageHandler = (topic: string, payload: Buffer, packet: AedesPublishPacket, auth: MqttAuth) => void;
 const messageHandlers: MessageHandler[] = [];
 
@@ -106,6 +107,8 @@ export async function startBroker(): Promise<void> {
     const state = clientAuth(client);
     // Let in only to announce itself: anything else it publishes is not read.
     if (state && !state.provisioned && !isDiscoveryTopic(packet.topic)) return;
+    // A device's own credential speaks for that device alone (acl.ts).
+    if (state?.deviceId && !mayPublish(state.deviceId, packet.topic)) return;
     for (const handler of messageHandlers) {
       handler(packet.topic, packet.payload as Buffer, packet, state?.auth ?? "anonymous");
     }
@@ -114,7 +117,11 @@ export async function startBroker(): Promise<void> {
   _broker.on("client", (client: Client) => {
     _clients.add(client);
     const state = clientAuth(client);
-    const how = !state ? "" : !state.provisioned ? " (no credential, scan open: discovery only)" : state.auth === "anonymous" ? " (no credential)" : "";
+    const how = !state ? ""
+      : !state.provisioned ? " (no credential, scan open: discovery only)"
+      : state.auth === "anonymous" ? " (no credential)"
+      : state.auth === "shared" ? " (shared credential)"
+      : "";
     console.log(`[broker] connected: ${client.id}${how}`);
   });
 
@@ -207,16 +214,18 @@ export function setDiscoveryWindow(open: boolean): void {
 
 /**
  * Apply changed settings to the clients already connected, judging each
- * again: switching enforcement on drops those without the credential, and a
- * new password (`credentialChanged`) drops those that connected with the old
- * one.
+ * again: switching enforcement on drops those without a credential, and a
+ * client whose credential has a new password, or is gone because its device
+ * was forgotten, is dropped too. A new password usually means the old one
+ * got out, so it is not left working until the device next reconnects.
  */
-export function applyAuthConfig(next: AuthConfig, credentialChanged = false): void {
+export function applyAuthConfig(next: AuthConfig): void {
   configureAuth(next);
-  closeClients((state) =>
-    (credentialChanged && state?.auth === "credential") ||
+  const dropped = closeClients((state) =>
+    (state !== undefined && !stillValid(state, next)) ||
     (next.requireCredentials && state?.auth === "anonymous" && state.provisioned),
   );
+  if (dropped > 0) console.log(`[broker] disconnected ${dropped} client(s) no longer allowed by the credentials`);
 }
 
 /**

@@ -25,9 +25,11 @@ const {
   buildCommandTopicSet,
   commandTopicCount,
   isCommandTopic,
+  mayPublish,
   refreshCommandTopics,
   resetAclForTesting,
   setCommandTopicsForTesting,
+  setDeviceScopesForTesting,
 } = await import("../../src/broker/acl.js");
 const { setClientAuthForTesting } = await import("../../src/broker/auth.js");
 
@@ -252,5 +254,69 @@ describe("a client let in only to announce itself (Tier 2)", () => {
   it("is still refused a command topic", () => {
     setCommandTopicsForTesting([{ capabilities: [switchCap] }]);
     expect(publishAsNewcomer("tent/fan/command").error).toBeInstanceOf(Error);
+  });
+});
+
+describe("a device's own credential (Tier 3)", () => {
+  const sensor: Capability = { kind: "sensor", channel: "temp", metric: "temperature", unit: "C", stateTopic: "esphome-node/sensor/temp/state" };
+  const relay: Capability = {
+    kind: "actuator", channel: "relay", actuator: "switch", variable: false,
+    stateTopic: "esphome-node/switch/relay/state", commandTopic: "esphome-node/switch/relay/command",
+  };
+  const other: Capability = { kind: "sensor", channel: "rh", metric: "humidity", unit: "percent", stateTopic: "tent/rh/state" };
+
+  beforeEach(() => {
+    setDeviceScopesForTesting([
+      { id: "board", mqttTopicPrefix: "esphome-node/sensor", capabilities: [sensor, relay] },
+      { id: "hygro", mqttTopicPrefix: "tent/rh", capabilities: [other] },
+    ]);
+    setCommandTopicsForTesting([{ capabilities: [relay] }]);
+  });
+
+  /** Run the hook as a client on the board's own credential. */
+  function publishAsBoard(topic: string): { error: Error | null; retain: boolean } {
+    const client = { id: "esphome-node" } as never;
+    setClientAuthForTesting(client, { auth: "device", provisioned: true, deviceId: "board" });
+    const packet = { topic, retain: true } as { topic: string; retain: boolean };
+    let error: Error | null = null;
+    authorizeClientPublish(client, packet as never, (e) => { error = e ?? null; });
+    return { error: error as Error | null, retain: packet.retain };
+  }
+
+  it("may publish each of its device's state topics, whatever entity it belongs to", () => {
+    expect(mayPublish("board", "esphome-node/sensor/temp/state")).toBe(true);
+    expect(mayPublish("board", "esphome-node/switch/relay/state")).toBe(true);
+  });
+
+  it("may publish under its prefix, and announce itself", () => {
+    expect(mayPublish("board", "esphome-node/sensor/new/state")).toBe(true);
+    expect(mayPublish("board", "homeassistant/sensor/esphome-node/new/config")).toBe(true);
+  });
+
+  it("may not publish another device's topics, which would feed it readings", () => {
+    expect(mayPublish("board", "tent/rh/state")).toBe(false);
+    // A prefix is a topic level, not a string prefix.
+    expect(mayPublish("board", "esphome-node/sensorX/state")).toBe(false);
+  });
+
+  it("may publish nothing but discovery once its device is gone", () => {
+    expect(mayPublish("deleted", "esphome-node/sensor/temp/state")).toBe(false);
+    expect(mayPublish("deleted", "shellies/announce")).toBe(true);
+  });
+
+  it("is not refused a topic outside its scope, which would loop it reconnecting, but nothing is retained", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = publishAsBoard("esphome-node/status");
+    expect(out.error).toBeNull();
+    expect(out.retain).toBe(false);
+  });
+
+  it("keeps the retain flag on its own topics", () => {
+    expect(publishAsBoard("esphome-node/sensor/temp/state").retain).toBe(true);
+  });
+
+  it("is still refused its own command topic: commands are the controller's", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(publishAsBoard("esphome-node/switch/relay/command").error).toBeInstanceOf(Error);
   });
 });

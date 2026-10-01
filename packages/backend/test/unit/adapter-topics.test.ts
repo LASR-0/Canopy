@@ -6,9 +6,9 @@
  * because the failure mode is silent: readings simply never appear.
  */
 import { describe, it, expect } from "vitest";
-import { parseHaDiscovery } from "../../src/device-manager/adapters/generic-mqtt.js";
+import { discoveryKey, mergeCapabilities, parseHaDiscovery } from "../../src/device-manager/adapters/generic-mqtt.js";
 import { deviceFromShellyAnnounce } from "../../src/device-manager/adapters/shelly.js";
-import type { ActuatorCapability, SensorCapability } from "@canopy/shared-types";
+import type { ActuatorCapability, Capability, SensorCapability } from "@canopy/shared-types";
 
 function haConfig(extra: Record<string, unknown>): Buffer {
   return Buffer.from(
@@ -109,5 +109,58 @@ describe("deviceFromShellyAnnounce — topic derivation", () => {
 
     expect(first?.capabilities[0]?.stateTopic).toBe("shellies/shelly-AAA/relay/0");
     expect(second?.capabilities[0]?.stateTopic).toBe("shellies/shelly-BBB/relay/0");
+  });
+});
+
+describe("parseHaDiscovery — one board, many entities (Phase 8 G)", () => {
+  const board = { identifiers: ["esp32-a1b2c3"], name: "Tent Board" };
+  const entity = (name: string, extra: Record<string, unknown>) =>
+    Buffer.from(JSON.stringify({ name, device: board, ...extra }));
+
+  it("accepts the node id form ESPHome and Tasmota publish", () => {
+    const device = parseHaDiscovery(
+      "homeassistant/sensor/tent-board/temperature/config",
+      entity("Temperature", { device_class: "temperature", state_topic: "tent-board/sensor/temperature/state" }),
+      "ws-1",
+    );
+    expect(device?.capabilities[0]?.channel).toBe("temperature");
+  });
+
+  it("gives every entity of a board the board's key and name, so they become one device", () => {
+    const temp = parseHaDiscovery(
+      "homeassistant/sensor/tent-board/temperature/config",
+      entity("Temperature", { device_class: "temperature", state_topic: "tent-board/sensor/temperature/state" }),
+      "ws-1",
+    );
+    const relay = parseHaDiscovery(
+      "homeassistant/switch/tent-board/relay/config",
+      entity("Relay", { state_topic: "tent-board/switch/relay/state", command_topic: "tent-board/switch/relay/command" }),
+      "ws-1",
+    );
+    expect(temp?.discoveryKey).toBe("ha:esp32-a1b2c3");
+    expect(relay?.discoveryKey).toBe("ha:esp32-a1b2c3");
+    expect(temp?.name).toBe("Tent Board");
+  });
+
+  it("falls back to the node id, and leaves an entity with neither on its own", () => {
+    expect(discoveryKey(undefined, "tent-board")).toBe("ha-node:tent-board");
+    expect(discoveryKey("esp32-a1b2c3", undefined)).toBe("ha:esp32-a1b2c3");
+    expect(discoveryKey([], undefined)).toBeUndefined();
+    const lone = parseHaDiscovery("homeassistant/sensor/lone/config", Buffer.from(JSON.stringify({ name: "Lone" })), "ws-1");
+    expect(lone && "discoveryKey" in lone).toBe(false);
+  });
+});
+
+describe("mergeCapabilities", () => {
+  const temp: Capability = { kind: "sensor", channel: "temperature", metric: "temperature", unit: "C", stateTopic: "b/sensor/temperature/state" };
+  const rh: Capability = { kind: "sensor", channel: "humidity", metric: "humidity", unit: "percent", stateTopic: "b/sensor/humidity/state" };
+
+  it("adds an entity announced after the first, rather than replacing it", () => {
+    expect(mergeCapabilities([temp], [rh])).toEqual([temp, rh]);
+  });
+
+  it("replaces an entity announced again, so its new topics win", () => {
+    const moved = { ...temp, stateTopic: "b/sensor/temp2/state" };
+    expect(mergeCapabilities([temp, rh], [moved])).toEqual([rh, moved]);
   });
 });

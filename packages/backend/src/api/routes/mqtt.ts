@@ -1,5 +1,6 @@
 /**
- * The broker's credential and connection rules (Phase 8 F), for Settings.
+ * The broker's shared credential and connection rules (Phase 8 F), for
+ * Settings. Each device's own credential is under /devices (Phase 8 G).
  *
  * The password is returned as it is, because Settings shows it for typing into
  * a device. The API listens on loopback only, and anything on this machine can
@@ -7,7 +8,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { and, eq, isNull } from "drizzle-orm";
-import type { MqttBrokerPatch, MqttBrokerSettings } from "@canopy/shared-types";
+import type { MqttAuth, MqttBrokerPatch, MqttBrokerSettings } from "@canopy/shared-types";
 import { db } from "../../store/index.js";
 import { devices } from "../../store/schema.js";
 import { applyAuthConfig, brokerBind, MQTT_PORT, rebindBroker } from "../../broker/index.js";
@@ -16,6 +17,7 @@ import {
   chooseBindHost,
   isBindable,
   loadAuthConfig,
+  loadSharedCredential,
   loadBindSetting,
   localInterfaces,
   regenerateSharedPassword,
@@ -24,18 +26,23 @@ import {
 } from "../../broker/settings.js";
 import { ok, err } from "../reply.js";
 
+/** Devices in use whose last connection was this way. */
+function devicesConnecting(how: MqttAuth) {
+  return db
+    .select({ id: devices.id, name: devices.name, workspaceId: devices.workspaceId })
+    .from(devices)
+    .where(and(eq(devices.mqttAuth, how), eq(devices.forgotten, false), isNull(devices.detachedAt)));
+}
+
 async function currentSettings(): Promise<MqttBrokerSettings> {
   const auth = authConfig();
   const bind = brokerBind();
   const setting = await loadBindSetting();
-  const without = await db
-    .select({ id: devices.id, name: devices.name, workspaceId: devices.workspaceId })
-    .from(devices)
-    .where(and(eq(devices.mqttAuth, "anonymous"), eq(devices.forgotten, false), isNull(devices.detachedAt)));
+  const shared = await loadSharedCredential();
 
   return {
-    username: auth.username,
-    password: auth.password,
+    username: shared.username,
+    password: shared.password,
     requireCredentials: auth.requireCredentials,
     port: MQTT_PORT,
     bind: {
@@ -45,7 +52,8 @@ async function currentSettings(): Promise<MqttBrokerSettings> {
       ...(bind.unavailable ? { unavailable: bind.unavailable } : {}),
     },
     interfaces: localInterfaces(),
-    devicesWithoutCredential: without,
+    devicesWithoutCredential: await devicesConnecting("anonymous"),
+    devicesOnShared: await devicesConnecting("shared"),
   };
 }
 
@@ -85,7 +93,7 @@ export async function mqttRoutes(app: FastifyInstance): Promise<void> {
     await regenerateSharedPassword();
     // Devices on the old password are dropped now, rather than at their next
     // reconnect, because a new password usually means the old one got out.
-    applyAuthConfig(await loadAuthConfig(), true);
+    applyAuthConfig(await loadAuthConfig());
     return reply.send(ok(await currentSettings()));
   });
 }

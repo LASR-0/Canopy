@@ -167,3 +167,34 @@ describe("MQTT credentials (Phase 8 F)", () => {
     expect(creds[0]!.password).toMatch(/^[A-Za-z0-9_-]{24}$/);
   });
 });
+
+describe("per-device credentials (Phase 8 G)", () => {
+  it("renames how a device connected from 'credential' to 'shared', and adds discovery_key", () => {
+    sqlite.exec(`
+      CREATE TABLE devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, mqtt_auth TEXT);
+      INSERT INTO devices VALUES ('d1', 'Fan', 'credential'), ('d2', 'Pump', 'anonymous');
+    `);
+    applyColumnAdditions(sqlite);
+    applyColumnAdditions(sqlite);
+    const rows = sqlite.prepare(`SELECT id, mqtt_auth, discovery_key FROM devices ORDER BY id`).all();
+    expect(rows).toEqual([
+      { id: "d1", mqtt_auth: "shared", discovery_key: null },
+      { id: "d2", mqtt_auth: "anonymous", discovery_key: null },
+    ]);
+  });
+
+  it("deletes a device's credential with the device", () => {
+    applyDDL(sqlite);
+    applyColumnAdditions(sqlite);
+    seedData(sqlite);
+    sqlite.pragma("foreign_keys = ON");
+    sqlite.exec(`
+      INSERT INTO workspaces (id, name, created_at) VALUES ('w1', 'Tent', '2026-10-01');
+      INSERT INTO devices (id, workspace_id, name, family, protocol, discovered_via) VALUES ('d1', 'w1', 'Fan', 'generic-mqtt', 'mqtt', 'mqtt-discovery');
+      INSERT INTO mqtt_credentials (id, username, password, device_id, created_at) VALUES ('c1', 'canopy-00000001', 'x', 'd1', '2026-10-01');
+    `);
+    sqlite.exec(`DELETE FROM devices WHERE id = 'd1'`);
+    const left = sqlite.prepare(`SELECT device_id FROM mqtt_credentials`).all();
+    expect(left).toEqual([{ device_id: null }]);
+  });
+});

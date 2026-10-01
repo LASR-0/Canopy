@@ -1,11 +1,12 @@
 import type { Id } from "./common.js";
 
 /**
- * How a client connected to the embedded MQTT broker: with the broker
- * credential, or without one. A device with a wrong username or password
- * (Tasmota ships with DVES_USER / DVES_PASS) counts as without one.
+ * How a client connected to the embedded MQTT broker: with a device's own
+ * credential (Phase 8 G), with the shared one every device may use, or
+ * without one. A device with a wrong username or password (Tasmota ships with
+ * DVES_USER / DVES_PASS) counts as without one.
  */
-export type MqttAuth = "credential" | "anonymous";
+export type MqttAuth = "device" | "shared" | "anonymous";
 
 /** A network address on the controller's machine. */
 export interface MqttInterface {
@@ -45,6 +46,34 @@ export interface MqttBrokerSettings {
   interfaces: MqttInterface[];
   /** Devices whose last connection had no credential: what stops enforcement being switched on. */
   devicesWithoutCredential: { id: Id; name: string; workspaceId: Id }[];
+  /** Devices whose last connection used the shared credential rather than their own. */
+  devicesOnShared: { id: Id; name: string; workspaceId: Id }[];
+}
+
+/**
+ * Sending a Shelly its credential over its HTTP API, so it needs no typing.
+ * Kept in memory: it describes the last attempt since the controller started.
+ */
+export interface MqttCredentialPush {
+  state: "sending" | "sent" | "failed";
+  at: string;
+  /** Why it failed, in words for the device card. */
+  error?: string;
+}
+
+/**
+ * One device's own broker credential (Phase 8 G). It may publish only that
+ * device's topics; anything else it sends is ignored.
+ */
+export interface DeviceMqttCredential {
+  username: string;
+  password: string;
+  /** Where the device reaches the broker: the address on its own network when one is known. */
+  brokerHost?: string;
+  port: number;
+  /** Shelly only: whether the credential can be sent to it over HTTP. */
+  canPush: boolean;
+  push?: MqttCredentialPush;
 }
 
 export interface MqttBrokerPatch {

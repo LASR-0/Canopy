@@ -7,6 +7,8 @@ import { ok, err } from "../reply.js";
 import { startScan, refreshDeviceTopics } from "../../device-manager/index.js";
 import { refreshDerivedRoles } from "../../device-manager/derived.js";
 import { actuateDevice, validateCommand } from "../../device-manager/actuate.js";
+import { ensureDeviceCredential, regenerateDevicePassword, revokeDeviceCredentials } from "../../broker/credentials.js";
+import { credentialView, needsCredential, pushCredential } from "../../device-manager/device-credentials.js";
 import type { ActuateBody, ApiErrorCode, Device, MqttAuth, RoleAssignment } from "@canopy/shared-types";
 
 /**
@@ -46,6 +48,7 @@ function rowToDevice(row: typeof devices.$inferSelect): Device {
   if (row.mqttAuth)          device.mqttAuth = row.mqttAuth as MqttAuth;
   if (row.signalPct != null) device.signalPct = row.signalPct;
   if (row.detachedAt)        device.detachedAt = row.detachedAt;
+  if (row.discoveryKey)      device.discoveryKey = row.discoveryKey;
   return device;
 }
 
@@ -76,14 +79,18 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { workspaceId: string } }>(
     "/workspaces/:workspaceId/devices/forget-all",
     async (req, reply) => {
-      await db
+      const forgotten = await db
         .update(devices)
         .set({ online: false, forgotten: true })
-        .where(eq(devices.workspaceId, req.params.workspaceId));
+        .where(eq(devices.workspaceId, req.params.workspaceId))
+        .returning({ id: devices.id });
       // Forgotten devices are excluded from the index, so their telemetry stops
       // being recorded. Their command topics stay closed — forgetting a device
       // does not unplug it. See broker/acl.ts.
       await refreshDeviceTopics();
+      // Their own broker credentials go, and anything connected with one is
+      // dropped. Paired again, a device gets a new one.
+      await revokeDeviceCredentials(forgotten.map((d) => d.id));
       return reply.send(ok({ forgotten: true as const }));
     },
   );
@@ -106,6 +113,9 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { deviceId: string } }>(
     "/devices/:deviceId",
     async (req, reply) => {
+      // Before the row: its credential would go with it (ON DELETE CASCADE),
+      // but the broker would not hear of it.
+      await revokeDeviceCredentials([req.params.deviceId]);
       await db.delete(devices).where(eq(devices.id, req.params.deviceId));
       await refreshDeviceTopics();
       return reply.send(ok({ deleted: true as const }));
@@ -202,4 +212,44 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(202).send(ok({ accepted: true as const }));
     },
   );
+
+  // ── The device's own broker credential (Phase 8 G) ─────────────────────────
+
+  /** A device that can have a credential, or the reply saying why not. */
+  async function credentialDevice(deviceId: string) {
+    const [row] = await db.select().from(devices).where(eq(devices.id, deviceId));
+    if (!row) return { error: [404, err("not_found", "Device not found")] as const };
+    if (row.forgotten) return { error: [404, err("not_found", "Device not found")] as const };
+    if (!needsCredential(row)) {
+      return { error: [400, err("validation_failed", "Only an MQTT device in use connects to the broker")] as const };
+    }
+    return { row };
+  }
+
+  /** Created here if it has none: a device paired before Phase 8 G gets one on first look. */
+  app.get<{ Params: { deviceId: string } }>("/devices/:deviceId/mqtt", async (req, reply) => {
+    const found = await credentialDevice(req.params.deviceId);
+    if ("error" in found) return reply.status(found.error[0]).send(found.error[1]);
+    const { created: _created, ...credential } = await ensureDeviceCredential(found.row.id);
+    return reply.send(ok(credentialView(found.row, credential)));
+  });
+
+  app.post<{ Params: { deviceId: string } }>("/devices/:deviceId/mqtt/password", async (req, reply) => {
+    const found = await credentialDevice(req.params.deviceId);
+    if ("error" in found) return reply.status(found.error[0]).send(found.error[1]);
+    const credential = await regenerateDevicePassword(found.row.id);
+    return reply.send(ok(credentialView(found.row, credential)));
+  });
+
+  /** Waits for the device's answer (a few seconds at most), so the card can say how it went. */
+  app.post<{ Params: { deviceId: string } }>("/devices/:deviceId/mqtt/push", async (req, reply) => {
+    const found = await credentialDevice(req.params.deviceId);
+    if ("error" in found) return reply.status(found.error[0]).send(found.error[1]);
+    if (found.row.family !== "shelly" || !found.row.host) {
+      return reply.status(400).send(err("validation_failed", "Only a Shelly with a known address can be sent its credential"));
+    }
+    const { created: _created, ...credential } = await ensureDeviceCredential(found.row.id);
+    await pushCredential(found.row, credential);
+    return reply.send(ok(credentialView(found.row, credential)));
+  });
 }
