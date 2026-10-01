@@ -17,6 +17,7 @@
     "build:ui": "pnpm build:types && pnpm --filter @canopy/frontend build",
     "build:controller": "pnpm build:types && pnpm --filter @canopy/backend build:controller",
     "package:linux": "pnpm build:controller && pnpm --filter @canopy/backend build:tarball && pnpm --filter @canopy/frontend package:linux",
+    "package:win": "pnpm build:controller && pnpm --filter @canopy/frontend package:win",
     "typecheck": "pnpm build:types && pnpm -r typecheck",
     "test": "pnpm build:types && pnpm --filter @canopy/backend test",
     "test:watch": "pnpm build:types && pnpm --filter @canopy/backend test:watch",

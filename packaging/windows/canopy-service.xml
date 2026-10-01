@@ -1,0 +1,41 @@
+<!--
+  The Canopy controller as a Windows service: device comms, the MQTT broker,
+  schedules, rules and the store. The desktop app connects to it over HTTP and
+  never owns it, so closing the window never stops a light or a pump.
+
+  Read by WinSW 2.12, staged beside it as canopy-service.exe: WinSW takes the
+  .xml with its own name. node.exe cannot answer the Service Control Manager
+  itself, which is the whole reason for the wrapper.
+
+  The installer (installer.nsh) registers it, then runs it as the virtual
+  account NT SERVICE\Canopy, which can write %ProgramData%\Canopy and nothing
+  else. The UI's offline state tells people to run `Get-Service Canopy`, so
+  the id stays "Canopy".
+-->
+<service>
+  <id>Canopy</id>
+  <name>Canopy</name>
+  <description>Canopy grow controller: devices, MQTT broker, schedules and rules. Keeps running when the Canopy window is closed.</description>
+
+  <executable>%BASE%\node.exe</executable>
+  <arguments>--enable-source-maps "%BASE%\controller.mjs"</arguments>
+  <env name="DATA_DIR" value="%ProgramData%\Canopy" />
+  <env name="NODE_ENV" value="production" />
+
+  <startmode>Automatic</startmode>
+  <!-- A crash restarts it. A deliberate stop does not, because it exits 0. -->
+  <onfailure action="restart" delay="5 sec" />
+  <resetfailure>1 hour</resetfailure>
+  <!--
+    WinSW stops it with Ctrl+C, which Node raises as SIGINT. The controller
+    gives itself 30 s to finish the work in flight, so wait a little longer
+    than that before WinSW kills it.
+  -->
+  <stoptimeout>45 sec</stoptimeout>
+
+  <logpath>%ProgramData%\Canopy\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+</service>

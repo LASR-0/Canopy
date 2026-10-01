@@ -60,7 +60,21 @@ module.exports = {
     category: "public.app-category.utilities",
   },
   win: {
-    target: "nsis",
+    target: [{ target: "nsis", arch: ["x64"] }],
+    // Installed to <install dir>\controller, where canopy-service.xml expects
+    // node.exe beside WinSW.
+    extraFiles: [{ from: controller("win32"), to: "controller" }],
+    // Stamping Canopy.exe's version and icon runs rcedit.exe, which needs Wine
+    // anywhere but Windows. A build on Linux is for testing; the installers
+    // that ship are built on Windows in CI.
+    signAndEditExecutable: process.platform === "win32",
+  },
+  nsis: {
+    // Per machine: Program Files, one elevation prompt, and the rights to
+    // register a service, which a per-user install does not have.
+    perMachine: true,
+    // Registers, upgrades and removes the controller service.
+    include: join(repo, "packaging/windows/installer.nsh"),
   },
   linux: {
     // No AppImage: it has no install step, so it cannot register the service.

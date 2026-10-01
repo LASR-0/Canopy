@@ -15,6 +15,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package:linux": "electron-vite build && electron-builder --linux",
+    "package:win": "electron-vite build && electron-builder --win",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
   },
   "//postinstall_note": "Electron 42 dropped its install-time download and fetches the runtime lazily on the first require('electron'). electron-vite reads node_modules/electron/path.txt directly and never triggers that, so it fails with 'Error: Electron uninstall'. install-electron is electron's own downloader and is a no-op once the runtime is present.",

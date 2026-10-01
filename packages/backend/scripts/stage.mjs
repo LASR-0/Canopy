@@ -3,8 +3,9 @@
  *
  *   release/canopy-controller-<version>-<platform>-<arch>/
  *     node | node.exe        pinned Node runtime, checksum verified
- *     controller.mjs(.map)   the bundle from scripts/bundle.mjs
+ *     controller.mjs(.map)   the bundle, rebuilt by scripts/bundle.mjs first
  *     better_sqlite3.node    better-sqlite3's binary, prebuilt for that Node
+ *     canopy-service.exe     win32 only: WinSW, with canopy-service.xml
  *
  * It runs on its own: no pnpm, tsx or repo. Start it with
  *   DATA_DIR=<dir> ./node --enable-source-maps controller.mjs
@@ -27,6 +28,15 @@ import { fileURLToPath } from "node:url";
  * runs on, so what is tested is what is installed.
  */
 const NODE_VERSION = "24.20.0";
+
+/**
+ * WinSW, which lets node.exe run as a Windows service (packaging/windows).
+ * The .NET Framework 4.6.1 build: 656 KB, and every supported Windows ships
+ * .NET Framework 4.8. WinSW publishes no checksums and does not sign its
+ * releases, so this hash was taken from the GitHub release on 2026-10-01.
+ */
+const WINSW_VERSION = "2.12.0";
+const WINSW_SHA256 = "b5066b7bbdfba1293e5d15cda3caaea88fbeab35bd5b38c41c913d492aadfc4f";
 
 const { values } = parseArgs({
   options: {
@@ -65,7 +75,9 @@ async function sha256(path) {
   return createHash("sha256").update(await readFile(path)).digest("hex");
 }
 
-if (!(await exists(bundle))) throw new Error("No bundle. Run scripts/bundle.mjs first.");
+// Always bundled afresh: staging a bundle left over from an earlier build once
+// packed a 0.0.1 controller into a folder named 0.0.0. It takes under a second.
+execFileSync(process.execPath, [join(root, "scripts/bundle.mjs")], { stdio: "inherit" });
 
 // ── Node ──────────────────────────────────────────────────────────────────────
 
@@ -93,7 +105,10 @@ await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
 if (platform === "win32") {
-  execFileSync("unzip", ["-q", "-j", archivePath, `${nodeBase}/node.exe`, `${nodeBase}/LICENSE`, "-d", out]);
+  // Windows' own tar is bsdtar, which reads zip; Linux's GNU tar does not.
+  const entries = [`${nodeBase}/node.exe`, `${nodeBase}/LICENSE`];
+  if (process.platform === "win32") execFileSync("tar", ["-xf", archivePath, "-C", out, "--strip-components=1", ...entries]);
+  else execFileSync("unzip", ["-q", "-j", archivePath, ...entries, "-d", out]);
 } else {
   execFileSync("tar", ["-xJf", archivePath, "-C", out, "--strip-components=1", `${nodeBase}/bin/node`, `${nodeBase}/LICENSE`]);
   await cp(join(out, "bin/node"), join(out, "node"));
@@ -119,6 +134,27 @@ const prebuildPath = await fetchCached(
 );
 execFileSync("tar", ["-xzf", prebuildPath, "-C", out, "--strip-components=2", "build/Release/better_sqlite3.node"]);
 await cp(join(sqliteDir, "LICENSE"), join(out, "LICENSE.better-sqlite3"));
+
+// ── WinSW (Windows) ───────────────────────────────────────────────────────────
+
+if (platform === "win32") {
+  const winsw = await fetchCached(
+    `https://github.com/winsw/winsw/releases/download/v${WINSW_VERSION}/WinSW.NET461.exe`,
+    `WinSW.NET461-v${WINSW_VERSION}.exe`,
+  );
+  if ((await sha256(winsw)) !== WINSW_SHA256) {
+    await rm(winsw);
+    throw new Error("WinSW does not match its pinned checksum, so it was deleted. Run again.");
+  }
+  const license = await fetchCached(
+    `https://raw.githubusercontent.com/winsw/winsw/v${WINSW_VERSION}/LICENSE.txt`,
+    `WinSW-LICENSE-v${WINSW_VERSION}.txt`,
+  );
+  // WinSW reads the .xml that shares its own name.
+  await cp(winsw, join(out, "canopy-service.exe"));
+  await cp(join(root, "../../packaging/windows/canopy-service.xml"), join(out, "canopy-service.xml"));
+  await cp(license, join(out, "LICENSE.winsw"));
+}
 
 // ── The controller ────────────────────────────────────────────────────────────
 
