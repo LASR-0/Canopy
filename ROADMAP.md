@@ -1394,7 +1394,7 @@ Decided 2026-10-01:
   the UI's runtime or its GUI libraries.
 - **Linux: cover the most distros reliably.** Native packages for the three
   big families, **.deb, .rpm and pacman**, each with install scripts that
-  create the service user and enable the unit. For everything else there is a
+  enable and start the unit. For everything else there is a
   **controller-only tarball** with an install script. The bundled Node makes
   it independent of the distro, and it needs systemd and glibc, nothing more.
   **AppImage is dropped**, because it has no install step and cannot register
@@ -1413,14 +1413,14 @@ Before this it only ran as `tsx watch src/index.ts` inside the repo.
 `pnpm build:controller` now produces an install that runs on its own.
 
 1. **Bundle** (`scripts/bundle.mjs`): esbuild inlines everything into one ESM
-   file, `release/controller.mjs` (2.9 MB, with a source map). better-sqlite3
-   is left external because it is native. A banner gives the CommonJS
-   dependencies the `require` and `__dirname` an ESM file lacks.
+   file, `release/controller.mjs` (3 MB, with a source map), better-sqlite3's
+   JavaScript included. A banner gives the CommonJS dependencies the
+   `require` and `__dirname` an ESM file lacks.
 2. **Stage** (`scripts/stage.mjs [--platform] [--arch]`): puts together
    `release/canopy-controller-<version>-<platform>-<arch>/`. It holds Node
    24.20.0 from nodejs.org, checked against the published SHASUMS, the
-   bundle, and better-sqlite3 with the project's own prebuilt binary for
-   that Node's ABI (137). The ABI is read from nodejs.org's release index
+   bundle, and better-sqlite3's own prebuilt binary for that Node's ABI
+   (137). There is no `node_modules` (see B.3). The ABI is read from nodejs.org's release index
    rather than hardcoded. It stages linux and win32, x64 and arm64, from any
    host, and caches the downloads in `.cache/`. It is 131 MB unpacked, most
    of it the Node binary. Start it with
@@ -1453,45 +1453,144 @@ Before this it only ran as `tsx watch src/index.ts` inside the repo.
    but it has not been run, because there is no ARM machine yet. win32 is
    staged in CI (E), because of the proxy.
 8. **Found on the way**: `.gitignore`'s bare `build/` rule also matches
-   `packages/frontend/build/`, which is electron-builder's resources folder,
-   where B and D put their install scripts. It needs the same anchoring
-   that `data/` got in 7.5 F.
+   `packages/frontend/build/`, electron-builder's resources folder. B put
+   its files in `packaging/linux/` instead, so the rule could stay, but
+   anything placed in `frontend/build/` later is silently untracked.
+9. **Fixed in B**: the backend's script was first called `stage`, which pnpm
+   11 treats as its own built-in command, so `pnpm build:controller` failed.
+   It is `build:controller` in both places now.
 
-#### B. Linux: systemd service
+#### B. Linux: systemd service ✅ built — awaiting a hands-on install (item 9)
 
-1. **`canopy.service`**: `User=canopy`, `StateDirectory=canopy` (which
-   creates `/var/lib/canopy` and owns it), `Restart=on-failure`,
-   `After=network-online.target`, and hardening (`ProtectSystem=strict`,
-   `ProtectHome`, `PrivateTmp`, `NoNewPrivileges`). None of it needs root:
-   1883 and 7001 are unprivileged ports, and mDNS is plain multicast UDP.
-2. **The service user comes from `sysusers.d`**, not `useradd` in a script.
-   It is the one mechanism every systemd distro shares.
-3. **Package scripts** (deb, rpm and pacman each call them differently, but
-   they do the same things): after install, run `systemd-sysusers`,
-   `daemon-reload` and `enable --now`. On upgrade, restart. Before removal,
-   `disable --now`. Removal leaves `/var/lib/canopy` in place. Grow history
-   is never deleted by an uninstall.
-4. **The controller-only tarball** has an `install.sh` and an
-   `uninstall.sh` that do the same: the unit, sysusers, enable. This is the
-   headless build, and linux-arm64 is built as well for a Pi.
-5. **Verify** the .deb under WSL2 systemd at work (it is enabled on this box
-   already) and pacman at home. There is no Fedora box, so the .rpm is
-   checked for contents and scriptlets in a container, and recorded as such.
-6. **Firewall** is left to the user and documented. ufw and firewalld are not
-   touched by the packages.
+`pnpm package:linux` builds the controller, the controller tarball and the
+desktop packages. Everything for Linux is in `packaging/linux/`.
 
-#### C. The UI as a client of an installed service
+1. **`canopy.service`** runs `/opt/Canopy/controller/node controller.mjs`
+   with `DATA_DIR=/var/lib/canopy`. It uses `Restart=always` (a deliberate
+   `systemctl stop` is not restarted) and `TimeoutStopSec=45` around the
+   controller's own 30 s. Hardening: `ProtectSystem=strict`, `ProtectHome`,
+   `PrivateTmp`, `PrivateDevices`, no capabilities at all, and address
+   families limited to IP, Unix and netlink. Node needs netlink to list
+   network interfaces, and mDNS needs that list. `MemoryDenyWriteExecute`
+   is left off, because V8's JIT needs writable executable memory.
+   `systemd-analyze security` rates it 2.9, "OK".
+2. **`DynamicUser=yes` instead of `sysusers.d`** (changed from the plan).
+   systemd allocates the account when the service starts, so no package
+   script creates a user, and it is the same on every systemd distro.
+   `StateDirectory=canopy` keeps `/var/lib/canopy` (really
+   `/var/lib/private/canopy`) across restarts, upgrades and uninstalls.
+3. **The controller has no `node_modules`.** electron-builder always drops a
+   `node_modules` folder at the top of any folder it copies, whatever the
+   filter says (`util/filter.js`), so the first .deb shipped a controller
+   without better-sqlite3. Now better-sqlite3's JavaScript is bundled, and
+   its binary sits beside the bundle, passed by path through
+   `store/sqlite.ts`, which every database open goes through.
+4. **Packages: .deb, .rpm and pacman**, all built by electron-builder through
+   fpm, and all installing to `/opt/Canopy`. `electron-builder.yml` became
+   `electron-builder.cjs`, so paths resolve absolutely (fpm runs from
+   wherever the build started) and the version comes from the root. Two
+   more fixes on the way: the package name was `@canopy/frontend`, which is
+   no valid package name (now `canopy`), and electron-builder was shipping
+   the frontend's `dependencies` a second time inside the app. Everything
+   there is bundled by Vite, so they are all devDependencies now.
+5. **Install and upgrade scripts.** electron-builder's own after-install and
+   after-remove are kept verbatim inside ours: the `/usr/bin/canopy` link,
+   chrome-sandbox, the desktop database and AppArmor. Re-copy them when
+   upgrading electron-builder. Then:
+   - **A first install** enables and starts the controller.
+   - **An upgrade** runs `try-restart`, so the new files are picked up, but
+     a controller someone stopped or disabled stays that way.
+   - **Removal** stops and disables it before the files go.
+     `/var/lib/canopy` is never deleted.
 
-1. **Offline state.** When `/health` does not answer, say the controller
-   service is not running and how to check it on this platform
-   (`systemctl status canopy`, or Services on Windows). There is no start
-   button: the UI does not own the service.
-2. **One controller URL.** `ProvisionModal.tsx` hardcodes
-   `http://localhost:7001`, apart from `lib/http.ts`. It should use the same
-   constant. A configurable address for the headless shape is noted here and
-   not built yet.
-3. **Settings → Controller** shows the version and data directory that the
-   controller reports, rather than fixed strings.
+   The three formats signal an upgrade differently. The .deb passes
+   `configure <old version>` or `upgrade`, and the .rpm passes a count of
+   installed versions. The scripts read those arguments directly. pacman
+   has separate functions, and fpm writes a `post_upgrade` only when given
+   one, which is what `after-upgrade.sh` is for. Without it, a `pacman -U`
+   upgrade would have left the old controller running on deleted files. The
+   .deb and .rpm must not get `--after-upgrade`: it switches fpm to wrapping
+   every script in `/bin/sh`, and electron-builder's part is bash.
+6. **The controller tarball** (`canopy-controller-<version>-linux-<arch>.tar.gz`,
+   47 MB) is for headless machines and other distros. Its `install.sh`
+   checks for root and systemd, and runs the bundled Node once to catch the
+   wrong architecture or a musl system before changing anything. It swaps
+   the new files in beside the old, and installs the same unit into
+   `/etc/systemd/system`. Running it again upgrades. It refuses when the
+   desktop package is installed, and `uninstall.sh` keeps the data.
+7. **Electron comes from the local cache.** electron-builder's own download
+   uses ranged requests, which the work proxy refuses (HTTP 416). The
+   config hands it the zip `install-electron` already cached, when it is
+   there, and downloads otherwise.
+8. **Verified here**: the .deb's contents and maintainer scripts, and the
+   scripts' upgrade test under bash and dash for each format's arguments.
+   The unit was run through the user systemd instance, with everything but
+   `DynamicUser`, and with `PrivateTmp` and `ProtectHome` relaxed so it
+   could reach a test copy under `/tmp`. Under that sandbox, a scan found
+   the simulator's 12 devices, an export ran, a `kill -9` was restarted in
+   5 s, and `systemctl stop` shut down cleanly.
+9. **Still to check by hand** (noted 2026-10-01; none of it needs a code
+   change first):
+   - **pacman, at home on Omarchy.** Build it with `pnpm build:controller`,
+     then in `packages/frontend` run
+     `npx electron-vite build && npx electron-builder --linux pacman`.
+     `pnpm package:linux` stops at the rpm step without `rpmbuild`. Then
+     check that `sudo pacman -U` starts the service and `/health` answers.
+     Bump the root version, build again and `pacman -U` that, which should
+     restart the service on the new version. `sudo pacman -R canopy` should
+     remove the unit and keep `/var/lib/private/canopy`. Launch Canopy from
+     the menu and check that it connects to the service.
+   - **.deb, on the WSL2 box.** `canopy_0.0.0_amd64.deb` and
+     `canopy_0.0.1_amd64.deb` are in `packages/frontend/dist-build/`, and
+     need rebuilding after a fresh clone. Run the same sequence with
+     `sudo apt install ./canopy_0.0.0_amd64.deb`, then the 0.0.1 one, then
+     `sudo apt remove canopy`.
+   - **.rpm** is built in CI (E) and never installed on a real Fedora.
+10. **While it is installed** it holds 7001 and 1883, so `pnpm dev:backend`
+    exits with "already running". `pnpm dev:ui` talks to the installed
+    controller instead. Stop the service to develop the backend.
+
+#### C. The UI as a client of an installed service ✅ done
+
+1. **Offline state** (`shell/ControllerOffline.tsx`). Before this, a window
+   with no controller showed each page's empty state. The Overview said "No
+   workspace selected, create one in Settings", and Settings said "No
+   devices connected yet" with a Scan button, while the workspace and its
+   devices were fine and only out of reach. Now, when `/health` fails, the
+   page is replaced by "The controller isn't answering". It says what the
+   controller is, that nothing is being automated while it is stopped, and
+   how to check on it here: `systemctl status / start canopy` and
+   `journalctl -u canopy` on Linux, `Get-Service / Start-Service Canopy` on
+   Windows, and `pnpm dev:backend` in a dev build. Each command has a copy
+   button. There is no start button: the window does not own the service.
+2. **The app notices within a second either way** (`useControllerConnection`,
+   mounted once by the shell). `/health` is polled every 3 s while offline
+   rather than every 30 s, and a dropped or restored WebSocket re-checks at
+   once. When the controller comes back, every query is refetched, so pages
+   do not stay on the errors they got meanwhile. Measured in the running
+   app: after a controller started, the page was back 0.8 s later, with
+   its workspace loaded. After `systemctl`-style SIGTERM, the panel was up
+   in 0.1 s.
+3. **Settings → About reports what the controller says about itself.**
+   `ControllerStatus` gained `installed`, `dataDir`, `httpPort` and
+   `mqttPort`. About shows the state (running, paused or stopped), the
+   version with "service" or "from the repo", both ports, and the data
+   directory. It used to say the MQTT broker was "local only · 127.0.0.1",
+   which was wrong: the broker listens on every interface, because devices
+   on the LAN connect to it.
+4. **One controller URL.** `ProvisionModal` had its own
+   `http://localhost:7001`, now `BACKEND_URL`. That was a bug as well as a
+   duplicate: the controller binds `127.0.0.1` only, and `localhost` can
+   resolve to `::1` first, which would fail provisioning alone.
+5. **Fixed on the way: the WebSocket only opened on the Settings page.**
+   `ws.ts` says to connect once at start, but only Settings ever called it,
+   so Overview's live readings waited for a visit to Settings. The shell
+   connects it now.
+6. **D must name the Windows service `Canopy`**, because the offline state's
+   PowerShell commands use that name.
+7. The headless shape (a controller on another machine) still needs a
+   configurable address. `BACKEND_URL` reads `VITE_BACKEND_URL` at build
+   time only. Not built yet.
 
 #### D. Windows service
 
@@ -1881,6 +1980,8 @@ pnpm dev:sim          # simulated devices; run alongside pnpm dev
 pnpm typecheck        # all packages
 pnpm test             # backend vitest suite
 pnpm build:ui         # electron-vite build
+pnpm build:controller # the installable controller for this machine (Phase 8 A)
+pnpm package:linux    # controller tarball + .deb/.rpm/pacman (Phase 8 B)
 ```
 
 Default ports: HTTP/WS `7001` (localhost), MQTT `1883` (all interfaces).
