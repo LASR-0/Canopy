@@ -24,6 +24,7 @@ import { onReading } from "../rules/index.js";
 import { checkThresholds } from "../rules/thresholds.js";
 import { recordHeartbeat } from "./heartbeat.js";
 import { deriveFromReading } from "./derived.js";
+import { deriveDli } from "./dli.js";
 import { rememberReading } from "./latest.js";
 import { noteActuatorState, parseActuatorPayload, type ActuatorBinding } from "./actuator-state.js";
 import type { Capability, Metric, MqttAuth, Reading, Unit } from "@canopy/shared-types";
@@ -279,6 +280,9 @@ export async function handleTelemetry(topic: string, payload: Buffer, auth?: Mqt
       await checkThresholds(derived, new Date(derived.ts));
       await onReading(derived, new Date(derived.ts));
     }
+    // Today's DLI so far: pushed like a reading, but not stored or judged
+    // (dli.ts), since it is below any target every morning.
+    deriveDli(reading);
   } catch (err) {
     // A bad message must never take the broker's publish handler down.
     console.error(`[ingest] failed to ingest ${topic}:`, err);

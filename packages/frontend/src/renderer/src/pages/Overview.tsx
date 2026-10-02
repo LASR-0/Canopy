@@ -117,7 +117,9 @@ function SensorCard({
   range: RangeKey;
 }) {
   const meta   = METRIC_META[reading.metric];
-  const status = statusOf(reading, thresholds, stage, alertSettings);
+  // DLI here is today's total so far, below any target until the lights go
+  // off, so it is not judged; the Logging chart shows whole days against one.
+  const status = reading.metric === "dli" ? "ok" : statusOf(reading, thresholds, stage, alertSettings);
   const sparkColor =
     status === "err"  ? "var(--danger-fg)"    :
     status === "warn" ? "var(--attention-fg)" :
@@ -148,7 +150,14 @@ function SensorCard({
         <div className="s-ico" style={{ background: meta.color + "22", color: meta.color }}>
           <Icon name={meta.icon} size={14} />
         </div>
-        <span className="s-label">{meta.label}</span>
+        <span className="s-label">
+          {reading.metric === "dli" ? "DLI so far today" : meta.label}
+          {reading.estimated && (
+            <Tip content="Estimated from a lux sensor, using the grow light set in Settings → Workspaces">
+              <span className="s-est">est.</span>
+            </Tip>
+          )}
+        </span>
         <span className={`s-status ${status}`} />
       </div>
       <div className="s-valrow">

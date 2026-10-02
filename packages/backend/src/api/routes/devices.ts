@@ -6,6 +6,7 @@ import { devices, roleAssignments } from "../../store/schema.js";
 import { ok, err } from "../reply.js";
 import { startScan, refreshDeviceTopics } from "../../device-manager/index.js";
 import { refreshDerivedRoles } from "../../device-manager/derived.js";
+import { refreshDliSources } from "../../device-manager/dli.js";
 import { actuateDevice, validateCommand } from "../../device-manager/actuate.js";
 import { actuatorStates } from "../../device-manager/actuator-state.js";
 import { ensureDeviceCredential, regenerateDevicePassword, revokeDeviceCredentials } from "../../broker/credentials.js";
@@ -156,8 +157,9 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         channel,
       });
       // Derived metrics resolve their inputs by role, so assigning the canopy
-      // temperature or humidity role is what starts VPD being computed.
+      // temperature, humidity or light role is what starts VPD or DLI.
       await refreshDerivedRoles();
+      await refreshDliSources();
 
       const [row] = await db.select().from(roleAssignments).where(eq(roleAssignments.id, id));
       return reply.status(201).send(ok(rowToRole(row!)));
@@ -175,6 +177,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         ),
       );
       await refreshDerivedRoles();
+      await refreshDliSources();
       return reply.send(ok({ deleted: true as const }));
     },
   );

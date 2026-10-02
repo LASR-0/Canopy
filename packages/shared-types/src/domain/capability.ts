@@ -16,12 +16,14 @@ export type Metric =
   | "lux"
   | "ppfd"
   | "power"
-  | "water_level";
+  | "water_level"
+  /** Daily light integral, mol/m²/day. Derived from the canopy light sensor, never stored. */
+  | "dli";
 
 /** Every metric, for code that has to recognise one at runtime. */
 export const METRICS: readonly Metric[] = [
   "temperature", "humidity", "co2", "vpd", "soil_moisture", "ph", "ec",
-  "lux", "ppfd", "power", "water_level",
+  "lux", "ppfd", "power", "water_level", "dli",
 ];
 
 /** Display units, kept alongside readings so the UI never guesses. */
@@ -36,7 +38,8 @@ export type Unit =
   | "lux"
   | "umol_m2s"
   | "W"
-  | "L";
+  | "L"
+  | "mol_m2d";
 
 /** Things a device can be told to do. */
 export type ActuatorKind =

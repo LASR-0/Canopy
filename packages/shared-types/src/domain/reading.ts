@@ -10,6 +10,8 @@ export interface Reading {
   unit: Unit;
   value: number;
   ts: Timestamp;
+  /** Converted rather than measured: DLI from a lux sensor (see GrowLight). */
+  estimated?: boolean;
 }
 
 export type ReadingResolution = "raw" | "hourly" | "daily";
@@ -38,6 +40,8 @@ export interface ReadingPoint {
    */
   min?: number;
   max?: number;
+  /** DLI only: the light sensor reported for fewer than 24 hours of this day, or the day is today. */
+  partial?: boolean;
 }
 
 /**
@@ -68,4 +72,6 @@ export interface ReadingSeries {
   devices: DeviceSeries[];
   /** True when points were decimated to fit the response cap. */
   downsampled?: boolean;
+  /** Converted rather than measured: DLI from a lux sensor (see GrowLight). */
+  estimated?: boolean;
 }

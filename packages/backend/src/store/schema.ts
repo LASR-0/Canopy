@@ -17,6 +17,10 @@ export const workspaces = sqliteTable("workspaces", {
   heightCm:       integer("height_cm"),
   // Circular ref with grows — omit .references() to avoid TS cycle; enforced in DDL.
   activeGrowId:   text("active_grow_id"),
+  /** GrowLightType; null is the default, white LED. */
+  growLight:      text("grow_light"),
+  /** µmol/m²/s per lux, for a custom grow light only. */
+  luxToPpfd:      real("lux_to_ppfd"),
 });
 
 // ── app_settings ─────────────────────────────────────────────────────────────

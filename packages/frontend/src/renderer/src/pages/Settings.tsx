@@ -38,7 +38,7 @@ import { ROLE_META, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
 import { useControllerStatus, useHealthStatus } from "@/hooks/useBackend";
 import { api, BACKEND_URL } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import type { Device, RoleAssignment, AppSettings } from "@canopy/shared-types";
+import { LUX_TO_PPFD, type Device, type RoleAssignment, type AppSettings, type GrowLightType } from "@canopy/shared-types";
 
 
 // ── Device card ───────────────────────────────────────────────────────────────
@@ -253,6 +253,15 @@ function RoleRow({ device, roles, onAssign }: {
 }
 
 // ── Workspace management row ──────────────────────────────────────────────────
+
+/** For DLI from a lux sensor: what lights the tent decides how lux converts to PPFD. */
+const GROW_LIGHT_OPTIONS: { value: GrowLightType; label: string }[] = [
+  { value: "white_led", label: `White LED (× ${LUX_TO_PPFD.white_led})` },
+  { value: "hps", label: `HPS (× ${LUX_TO_PPFD.hps})` },
+  { value: "sunlight", label: `Sunlight (× ${LUX_TO_PPFD.sunlight})` },
+  { value: "custom", label: "Custom factor" },
+];
+
 function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive }: {
   workspace: import("@canopy/shared-types").Workspace;
   isActive: boolean;
@@ -263,12 +272,19 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
 }) {
   const [name, setName] = useState(workspace.name);
   const [tz, setTz] = useState(workspace.timezone);
+  const [light, setLight] = useState<GrowLightType>(workspace.growLight.type);
+  const [factor, setFactor] = useState(String(workspace.growLight.luxToPpfd));
   const patch = usePatchWorkspace(workspace.id);
 
   useEffect(() => {
     setName(workspace.name);
     setTz(workspace.timezone);
-  }, [workspace.name, workspace.timezone]);
+    setLight(workspace.growLight.type);
+    setFactor(String(workspace.growLight.luxToPpfd));
+  }, [workspace.name, workspace.timezone, workspace.growLight.type, workspace.growLight.luxToPpfd]);
+
+  const customFactor = Number(factor);
+  const factorOk = light !== "custom" || (Number.isFinite(customFactor) && customFactor > 0 && customFactor < 1);
 
   return (
     <div className="ws-mgmt-row" style={{ borderBottom: isLast ? "none" : "1px solid var(--border-muted)" }}>
@@ -291,6 +307,24 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
             placeholder="e.g. Australia/Sydney"
             onChange={(e) => setTz(e.target.value)}
           />
+        </div>
+        <div className="gc-field">
+          <Tip content="Only used when the canopy light sensor reads lux: it converts lux to PPFD for DLI, and depends on the light's spectrum. DLI from lux is shown as an estimate.">
+            <label>Grow light</label>
+          </Tip>
+          <select className="role-select ws-light" value={light} onChange={(e) => setLight(e.target.value as GrowLightType)}>
+            {GROW_LIGHT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {light === "custom" && (
+            <input
+              value={factor}
+              inputMode="decimal"
+              placeholder="µmol/m²/s per lux, e.g. 0.016"
+              aria-label="Lux to PPFD factor"
+              aria-invalid={!factorOk}
+              onChange={(e) => setFactor(e.target.value)}
+            />
+          )}
         </div>
         <div className="ws-mgmt-actions">
           {/* No countdown: a deleted workspace can be restored for 7 days.
@@ -315,8 +349,12 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
 
           <button
             className="btn primary sm"
-            onClick={() => patch.mutate({ name, timezone: tz })}
-            disabled={patch.isPending}
+            onClick={() => patch.mutate({
+              name,
+              timezone: tz,
+              growLight: { type: light, luxToPpfd: light === "custom" ? customFactor : LUX_TO_PPFD[light] },
+            })}
+            disabled={patch.isPending || !factorOk}
           >
             <Icon name="check" size={13} /> Save
           </button>

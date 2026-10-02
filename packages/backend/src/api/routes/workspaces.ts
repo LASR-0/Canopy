@@ -14,7 +14,8 @@ import {
 } from "../../workspaces/lifecycle.js";
 import { workspaces, roleAssignments, devicePlacements, plants } from "../../store/schema.js";
 import { ok, err } from "../reply.js";
-import { dimensionsProblem, type EnclosureDimensions, type Workspace, type RoleAssignment } from "@canopy/shared-types";
+import { GROW_LIGHT_TYPES, dimensionsProblem, type EnclosureDimensions, type Workspace, type RoleAssignment } from "@canopy/shared-types";
+import { growLightOf, refreshDliSources } from "../../device-manager/dli.js";
 import { dimensionsChanged, rescalePlacement, rescalePlant } from "../../layout/index.js";
 
 function dimensionsOf(row: typeof workspaces.$inferSelect): EnclosureDimensions | undefined {
@@ -53,6 +54,7 @@ function rowToWorkspace(row: typeof workspaces.$inferSelect): Workspace {
     name: row.name,
     createdAt: row.createdAt,
     timezone: row.timezone,
+    growLight: growLightOf(row),
   };
   if (row.archivedAt) w.archivedAt = row.archivedAt;
   if (row.deletedAt) {
@@ -143,7 +145,7 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
   /** Update workspace name, timezone, or dimensions */
   app.patch<{
     Params: { workspaceId: string };
-    Body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions">>;
+    Body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions" | "growLight">>;
   }>(
     "/workspaces/:workspaceId",
     async (req, reply) => {
@@ -151,6 +153,17 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
       const updates: Partial<typeof workspaces.$inferInsert> = {};
       if (req.body.name)     updates.name = req.body.name;
       if (req.body.timezone) updates.timezone = req.body.timezone;
+      const light = req.body.growLight;
+      if (light) {
+        if (!GROW_LIGHT_TYPES.includes(light.type)) {
+          return reply.status(400).send(err("validation_failed", `growLight.type must be one of ${GROW_LIGHT_TYPES.join(", ")}`));
+        }
+        if (light.type === "custom" && !(typeof light.luxToPpfd === "number" && light.luxToPpfd > 0 && light.luxToPpfd < 1)) {
+          return reply.status(400).send(err("validation_failed", "A custom grow light needs a lux-to-PPFD factor between 0 and 1"));
+        }
+        updates.growLight = light.type;
+        updates.luxToPpfd = light.type === "custom" ? light.luxToPpfd : null;
+      }
 
       const [current] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId));
       if (!current) return reply.status(404).send(err("not_found", "Workspace not found"));
@@ -179,6 +192,10 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
         }
         if (from && to && dimensionsChanged(from, to)) rescaleLayout(tx, workspaceId, from, to);
       });
+
+      // DLI follows the timezone (where a day starts) and the grow light (how
+      // lux converts), so either change restarts today's running total.
+      if (updates.timezone || light) await refreshDliSources();
 
       const [row] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId));
       if (!row) return reply.status(404).send(err("not_found", "Workspace not found"));

@@ -6,6 +6,7 @@
  */
 import { refreshTopicIndex } from "../device-manager/ingest.js";
 import { refreshDerivedRoles } from "../device-manager/derived.js";
+import { refreshDliSources } from "../device-manager/dli.js";
 import { refreshRules } from "../rules/index.js";
 import { refreshThresholds } from "../rules/thresholds.js";
 import { refreshActiveGrows } from "../grow/stage.js";
@@ -13,6 +14,7 @@ import { refreshActiveGrows } from "../grow/stage.js";
 export async function reloadWorkspaceCaches(): Promise<void> {
   await refreshTopicIndex();
   await refreshDerivedRoles();
+  await refreshDliSources();
   await refreshRules();
   await refreshThresholds();
   await refreshActiveGrows();

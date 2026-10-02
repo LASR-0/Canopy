@@ -484,6 +484,8 @@ body {
 .s-top { display: flex; align-items: center; gap: 8px; }
 .s-ico { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; flex: 0 0 26px; }
 .s-label { font-size: 12px; color: var(--fg-muted); font-weight: 500; flex: 1; }
+/* DLI from a lux sensor (Overview). Like Logging's "deriv" tag. */
+.s-est { margin-left: 6px; font-size: 8.5px; line-height: 13px; font-weight: 700; text-transform: uppercase; color: var(--done-fg); background: var(--done-muted); border-radius: 3px; padding: 0 4px; vertical-align: 1px; }
 .s-status { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
 .s-valrow { display: flex; align-items: baseline; gap: 5px; }
 .s-val { font-size: 28px; font-weight: 600; letter-spacing: -0.6px; font-feature-settings: "tnum"; line-height: 1; }
@@ -1793,6 +1795,8 @@ body {
    then centres in the row. */
 .ws-mgmt-form { display: flex; flex-direction: column; gap: 10px; width: fit-content; margin-inline: auto; }
 .ws-mgmt-form .gc-field input { width: 0; min-width: 100%; box-sizing: border-box; }
+.ws-mgmt-form .gc-field .ws-light { width: 0; min-width: 100%; max-width: none; box-sizing: border-box; }
+.ws-mgmt-form .gc-field input + input, .ws-mgmt-form .gc-field select + input { margin-top: 6px; }
 .ws-mgmt-actions { display: flex; gap: 8px; margin-top: 2px; }
 /* One line each: a wrapped "Are you sure?" made the row two lines tall and
    stretched the buttons beside it. Armed, the delete also sets smaller. */

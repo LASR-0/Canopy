@@ -373,7 +373,9 @@ export function Logging() {
             {visible.length > 0 && (
               <div className="stat-strip">
                 {visible.map((metric) => {
-                  const summary = stats(toPoints(seriesFor(metric)));
+                  // A partial day (today, or one the sensor missed hours of)
+                  // would read as a dark day in DLI's min and average.
+                  const summary = stats(toPoints(seriesFor(metric), metric === "dli"));
                   const meta = METRIC_META[metric];
                   const unit = unitLabel(seriesFor(metric)?.unit ?? "");
                   return (
@@ -385,6 +387,11 @@ export function Logging() {
                             five-digit lux reading pushed it onto a second line. */}
                         {unit && <span className="sc-unit">{unit}</span>}
                         {meta.derived && <span className="sc-deriv">deriv</span>}
+                        {seriesFor(metric)?.estimated && (
+                          <Tip content="Estimated from a lux sensor, using the grow light set in Settings → Workspaces">
+                            <span className="sc-deriv">est.</span>
+                          </Tip>
+                        )}
                       </div>
                       <div className="sc-stats">
                         {([

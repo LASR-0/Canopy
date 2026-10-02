@@ -68,6 +68,9 @@ export const METRIC_META: Record<Metric, MetricMeta> = {
   ppfd:           { label: "Light \u00b7 PPFD", color: "#e3b341", icon: "sun", axis: "ppfd", side: "right" },
   power:          { label: "Power", color: "#f85149", icon: "power", axis: "power", side: "right" },
   water_level:    { label: "Water level", color: "#79c0ff", icon: "ruler", axis: "pct", side: "left" },
+  // The prototype's own DLI colour and axis. One point per day, never stored
+  // (backend device-manager/dli.ts).
+  dli:            { label: "DLI", color: "#56d364", icon: "sun", axis: "dli", side: "right", derived: true },
 };
 
 export function metricLabel(metric: Metric): string {
@@ -78,7 +81,7 @@ export function metricLabel(metric: Metric): string {
 export const UNIT_DISPLAY: Record<string, string> = {
   C: "°C", F: "°F", percent: "%", ppm: "ppm", kPa: "kPa",
   pH: "pH", mS_cm: "mS/cm", lux: "lux", umol_m2s: "µmol/m²s",
-  W: "W", L: "L",
+  W: "W", L: "L", mol_m2d: "mol/m²/d",
 };
 
 export function unitLabel(unit: string): string {
@@ -92,7 +95,7 @@ export function unitLabel(unit: string): string {
  * two invents precision the sensor does not have.
  */
 const METRIC_DECIMALS: Partial<Record<Metric, number>> = {
-  temperature: 1, humidity: 1, vpd: 2, ph: 2, ec: 2, soil_moisture: 1, water_level: 1,
+  temperature: 1, humidity: 1, vpd: 2, ph: 2, ec: 2, soil_moisture: 1, water_level: 1, dli: 1,
 };
 
 export function metricDecimals(metric: Metric): number {

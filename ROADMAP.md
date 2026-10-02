@@ -124,10 +124,10 @@ numbers. What remains:
 - **Grow archives ✅ built** (see "Before Phase 9", D). The live database
   was already bounded by retention; what grows lost was hourly detail, which
   now moves into each grow's own archive instead of being pruned.
-- **Derived metrics: VPD done, DLI outstanding.** VPD is computed on the ingest
+- **Derived metrics: VPD and DLI done.** VPD is computed on the ingest
   path and stored under `device_id = "__derived__"`, so the Overview's VPD card
-  fills once the canopy roles are assigned. DLI still needs PPFD integrated over
-  the photoperiod. See "Derived metrics" below.
+  fills once the canopy roles are assigned. DLI is worked out from the canopy
+  light's readings and never stored. See "Derived metrics" below.
 
 ### Stubbed routes
 
@@ -213,7 +213,7 @@ chart cards a real loading state. The page currently holds the previous render a
 reduced opacity, which is right for a refetch and says nothing on a first load.
 Both done, 2026-10-02: see "Before Phase 9", C.
 
-### Derived metrics — VPD lands, DLI does not
+### Derived metrics — VPD, and DLI since "Before Phase 9", E
 
 `device_id = "__derived__"` had been reserved since the first commit with nothing
 writing it, which is why the Overview's VPD card was empty from the moment
@@ -234,7 +234,8 @@ a figure that looks authoritative and is wrong by an unknown amount. A leaf-offs
 setting is the honest way to add it.
 
 DLI is the prototype's other derived metric. It needs PPFD integrated across each
-photoperiod rather than a reading-to-reading function, so it is not done.
+photoperiod rather than a reading-to-reading function. Done since, without
+storing it: see "Before Phase 9", E.
 
 ### Chart palette — adopted from the prototype
 
@@ -2141,9 +2142,58 @@ averages are left, and a grow often runs longer than that. Decided
    hour's rollup see Compare's Avg VPD, Temp and RH filled in. The archiving
    itself only shows after 90 days, so the tests stand in for it.
 
-#### E. After Phase 9, or with the first screen that needs it
+#### E. DLI ✅ built — awaiting a hands-on check
 
-DLI, per-workspace WebSocket filtering, and keyboard-only use (7.5 I).
+Daily light integral, mol/m²/day: the canopy's PPFD summed over a day. In
+the prototype it is a Logging metric with a 35–45 target. Decided
+2026-10-02: **estimate it from lux too**, by the tent's grow light.
+
+1. **Worked out, never stored** (`device-manager/dli.ts`). An hour's
+   average PPFD × 3,600 s is exactly that hour's light, so a past day's DLI
+   is the sum of its hourly rollups, live and archived (D). Stored as a
+   reading, a running total would have made the hourly and daily averages
+   nonsense. Today's total is kept in memory from the readings as they
+   arrive, seeded from raw after a restart or at midnight without counting
+   the newest reading twice, and pushed like a reading, so the Overview and
+   Logging take it up unchanged. No threshold or rule judges it: "so far
+   today" is below any target every morning.
+2. **The day runs from local midnight** in the workspace's timezone. With a
+   fixed daily schedule, any 24 hours hold exactly one photoperiod's light,
+   so a whole day is right however the lights sit across midnight, and
+   nothing reads the light automation, which changes between stages. Hourly
+   rows go to the day their middle falls in, which settles hours a
+   half-hour timezone (Adelaide) splits. DST days have 23 or 25 hours.
+3. **The input is the canopy light role**, as VPD's are canopy roles. PPFD
+   is used as read. Lux is converted by the workspace's **grow light**
+   (Settings → Workspaces): white LED × 0.017, HPS × 0.0122, sunlight
+   × 0.0185, or a custom factor. These are typical, spectrum-dependent
+   factors, so DLI from lux carries `estimated` and shows "est." wherever
+   it appears. Changing the light or the timezone restarts today's total.
+4. **Partial days.** A day with fewer hours of readings than it has is
+   `partial` (and today always is): missing hours count as no light. The
+   Logging stat cards leave partial days out of DLI's average, min and max.
+   A day with no readings at all is left off the chart and the CSV, since
+   it is a day without data, not a day without light.
+5. **Where**: the Overview's "DLI so far today" card (not judged against a
+   target), Logging's DLI metric, one point per local day at any range,
+   the report's PNG, and the CSV, one row per day.
+6. **Verified**: 12 tests against real SQLite (557 in total): Adelaide's
+   midnight and Sydney's 23-hour DST day, an unknown timezone, 12 hours at
+   500 µmol as 21.6 mol, partial days, the lux factor, half-hour hours,
+   empty days, today from raw, the live total matching a recount, midnight,
+   and estimation. On the dev controller, the simulator's lux sensor gave an
+   estimated 15.29 so far today; switching the grow light to HPS gave 10.98,
+   exactly the factors' ratio, and a custom factor of 2 was refused.
+7. **Still to check by hand**: the Overview card and its "est." tag, Logging
+   on 7D and 30D, and the grow light setting in Settings → Workspaces.
+8. **Not covered**: the simulator's lux is constant day and night, so its
+   DLI is far above a real tent's. A Shelly or ESPHome PAR sensor reporting
+   in µmol/m²/s with no `device_class` is not recognised as PPFD at
+   discovery yet; that belongs with B.
+
+#### F. After Phase 9, or with the first screen that needs it
+
+Per-workspace WebSocket filtering, and keyboard-only use (7.5 I).
 
 ### Phase 9 — Setup View 3D render *(last)*
 

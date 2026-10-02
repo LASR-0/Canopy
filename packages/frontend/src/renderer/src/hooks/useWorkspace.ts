@@ -34,12 +34,14 @@ export function useActiveWorkspace(): Workspace | undefined {
 export function usePatchWorkspace(workspaceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions">>) =>
+    mutationFn: (body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions" | "growLight">>) =>
       api("PATCH /workspaces/:workspaceId", { params: { workspaceId }, body }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["workspaces"] });
       // A resize moves everything in the tent proportionally on the server.
       void qc.invalidateQueries({ queryKey: ["layout", workspaceId] });
+      // The timezone and grow light decide DLI's days and its lux conversion.
+      void qc.invalidateQueries({ queryKey: ["series", workspaceId, "dli"] });
     },
   });
 }

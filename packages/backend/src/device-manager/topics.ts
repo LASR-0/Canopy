@@ -14,6 +14,7 @@
 import { refreshCommandTopics } from "../broker/acl.js";
 import { refreshDerivedRoles } from "./derived.js";
 import { refreshTopicIndex } from "./ingest.js";
+import { refreshDliSources } from "./dli.js";
 
 export async function refreshDeviceTopics(): Promise<void> {
   await refreshTopicIndex();
@@ -21,4 +22,5 @@ export async function refreshDeviceTopics(): Promise<void> {
   // Which devices are the canopy sensors is a role question, so this also has to
   // run when a role is assigned — see the roles route.
   await refreshDerivedRoles();
+  await refreshDliSources();
 }

@@ -5,10 +5,11 @@ import { devices, readingsHourly, readingsDaily } from "../../store/schema.js";
 import { latestReadings } from "../../device-manager/latest.js";
 import { err, ok } from "../reply.js";
 import { Readable } from "node:stream";
-import { readingsCsv } from "../../export/readings.js";
+import { csvField, readingsCsv } from "../../export/readings.js";
 import { rawSeries } from "../../readings/raw-series.js";
 import { archivedHourly, withArchived } from "../../grow/archive.js";
 import { GROW_ARCHIVE_DIR } from "../../store/paths.js";
+import { dailyDli, dliPoints, dliSource } from "../../device-manager/dli.js";
 import {
   METRICS,
   type Metric,
@@ -89,6 +90,27 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
     "/readings/series",
     async (req, reply) => {
       const { workspaceId, metric, deviceId, from, to } = req.body;
+
+      // DLI is one value per local day, worked out from the canopy light's
+      // hourly readings rather than stored (device-manager/dli.ts), whatever
+      // resolution was asked for.
+      if (metric === "dli") {
+        const source = dliSource(workspaceId);
+        const days = source && Number.isFinite(Date.parse(from)) && Number.isFinite(Date.parse(to))
+          ? dailyDli(sqliteConnection, GROW_ARCHIVE_DIR, source, new Date(from), new Date(to))
+          : [];
+        const dli: ReadingSeries = {
+          metric,
+          unit: "mol_m2d",
+          resolution: "daily",
+          devices: days.length > 0
+            ? [{ deviceId: "__derived__", deviceName: "DLI", channel: "dli", points: dliPoints(days) }]
+            : [],
+          ...(source?.estimated ? { estimated: true } : {}),
+        };
+        return reply.send(ok(dli));
+      }
+
       const resolution = resolutionFor(req.body.resolution ?? "raw", from, to);
 
       // Raw is thinned in SQL, so only what is charted is read into memory.
@@ -217,15 +239,32 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(devices.workspaceId, req.params.workspaceId));
       const names = new Map(rows.map((d) => [d.id, d.name]));
 
+      // Checked above; held as such for the generator below, where narrowing does not reach.
+      const workspaceId = req.params.workspaceId;
+      const window = { from: from as string, to: to as string, resolution: resolution as ReadingResolution };
+      const stored = metrics.filter((m) => m !== "dli");
+      const source = metrics.includes("dli") ? dliSource(workspaceId) : undefined;
+      async function* csv(): AsyncGenerator<string> {
+        yield* readingsCsv(sqliteConnection, { workspaceId, metrics: stored, ...window }, names,
+          (metric) => archivedHourly(sqliteConnection, GROW_ARCHIVE_DIR, { workspaceId, metric, from: window.from, to: window.to }));
+        // DLI is not stored (device-manager/dli.ts): one row per local day,
+        // whatever the resolution, in the value or average column.
+        if (!source) return;
+        const rollup = window.resolution !== "raw";
+        let chunk = "";
+        for (const day of dailyDli(sqliteConnection, GROW_ARCHIVE_DIR, source, new Date(window.from), new Date(window.to))) {
+          if (day.hours === 0) continue; // no data, not no light
+          chunk += [day.start, "dli", "mol_m2d", day.dli, ...(rollup ? ["", ""] : []), source.estimated ? "DLI (estimated)" : "DLI", "dli"]
+            .map(csvField).join(",") + "\n";
+        }
+        yield chunk;
+      }
+
       const stamp = `${from.slice(0, 10)}_${to.slice(0, 10)}`;
       return reply
         .header("content-type", "text/csv; charset=utf-8")
         .header("content-disposition", `attachment; filename="canopy-${resolution}-${stamp}.csv"`)
-        .send(Readable.from(readingsCsv(sqliteConnection, {
-          workspaceId: req.params.workspaceId, metrics, from, to, resolution,
-        }, names, (metric) => archivedHourly(sqliteConnection, GROW_ARCHIVE_DIR, {
-          workspaceId: req.params.workspaceId, metric, from, to,
-        }))));
+        .send(Readable.from(csv()));
     },
   );
 }

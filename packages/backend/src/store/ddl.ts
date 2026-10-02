@@ -73,6 +73,9 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   addColumnIfMissing(db, "devices", "discovery_key", "TEXT");
   // When a finished grow's environment summary was worked out (grow/archive.ts).
   addColumnIfMissing(db, "grows", "env_summarised_at", "TEXT");
+  // What lights the tent, for estimating DLI from a lux sensor (device-manager/dli.ts).
+  addColumnIfMissing(db, "workspaces", "grow_light", "TEXT");
+  addColumnIfMissing(db, "workspaces", "lux_to_ppfd", "REAL");
 }
 
 export function addColumnIfMissing(
@@ -110,7 +113,9 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       width_cm        INTEGER,
       depth_cm        INTEGER,
       height_cm       INTEGER,
-      active_grow_id  TEXT REFERENCES grows(id) ON DELETE SET NULL
+      active_grow_id  TEXT REFERENCES grows(id) ON DELETE SET NULL,
+      grow_light      TEXT,     /* GrowLightType; null is white_led */
+      lux_to_ppfd     REAL      /* custom only */
     );
 
     /* ── app_settings (single row, id = 1) ───────────────────────────── */

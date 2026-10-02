@@ -111,11 +111,11 @@ export function stats(points: Point[]): { avg: number; min: number; max: number 
 }
 
 /** Flatten a series to the points a lane draws, across every device it holds. */
-export function toPoints(series: ReadingSeries | undefined): Point[] {
+export function toPoints(series: ReadingSeries | undefined, wholeOnly = false): Point[] {
   if (!series) return [];
   return series.devices
     .flatMap((device) =>
-      device.points.map((p) => ({
+      device.points.filter((p) => !(wholeOnly && p.partial)).map((p) => ({
         t: Date.parse(p.ts),
         v: p.value,
         ...(p.min != null ? { min: p.min } : {}),
@@ -238,6 +238,7 @@ export function MetricRow({ metric, on, series, latest, onToggle }: {
         <div className="mr-name">
           {meta.label}
           {meta.derived && <span className="mr-deriv">derived</span>}
+          {series?.estimated && <span className="mr-deriv">est.</span>}
         </div>
         <div className="mr-val">
           {latest != null

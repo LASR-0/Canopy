@@ -97,7 +97,7 @@ export interface ApiRoutes {
   /** Remove a workspace in Recently deleted for good, now rather than after 7 days. */
   "DELETE /workspaces/:workspaceId/permanent": { res: { deleted: true } };
   "POST /workspaces":               { body: CreateWorkspaceBody; res: Workspace };
-  "PATCH /workspaces/:workspaceId": { body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions">>; res: Workspace };
+  "PATCH /workspaces/:workspaceId": { body: Partial<Pick<Workspace, "name" | "timezone" | "dimensions" | "growLight">>; res: Workspace };
   /** Move to Recently deleted, restorable for 7 days. */
   "DELETE /workspaces/:workspaceId": { res: { deleted: true } };
 
