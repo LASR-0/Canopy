@@ -12,8 +12,8 @@
  * ingested for the whole life of the service.
  *
  * Only sensor channels produce readings. An actuator publishing "ON" on its
- * state topic is proof of life, so it refreshes the device heartbeat and is
- * otherwise ignored — reflecting actuator state back into the UI is Phase 4.
+ * state topic is proof of life, and its state is held in memory and pushed to
+ * the UI when it changes (actuator-state.ts), but it is not a reading.
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../store/index.js";
@@ -25,6 +25,7 @@ import { checkThresholds } from "../rules/thresholds.js";
 import { recordHeartbeat } from "./heartbeat.js";
 import { deriveFromReading } from "./derived.js";
 import { rememberReading } from "./latest.js";
+import { noteActuatorState, parseActuatorPayload, type ActuatorBinding } from "./actuator-state.js";
 import type { Capability, Metric, MqttAuth, Reading, Unit } from "@canopy/shared-types";
 
 /** A sensor channel, resolved from the topic it publishes on. */
@@ -46,11 +47,15 @@ export interface IndexableDevice {
 export interface TopicIndex {
   /** state topic -> the sensor channel publishing on it. */
   sensors: Map<string, SensorBinding>;
+  /** state topic -> the actuator channel reporting on it. */
+  actuators: Map<string, ActuatorBinding>;
   /** state topic -> device id, for every channel including actuators. */
   owners: Map<string, string>;
 }
 
-let index: TopicIndex = { sensors: new Map(), owners: new Map() };
+const emptyIndex = (): TopicIndex => ({ sensors: new Map(), actuators: new Map(), owners: new Map() });
+
+let index: TopicIndex = emptyIndex();
 
 /**
  * Build the topic index for a set of devices.
@@ -62,6 +67,7 @@ let index: TopicIndex = { sensors: new Map(), owners: new Map() };
  */
 export function buildTopicIndex(deviceList: IndexableDevice[]): TopicIndex {
   const sensors = new Map<string, SensorBinding>();
+  const actuators = new Map<string, ActuatorBinding>();
   const owners = new Map<string, string>();
 
   for (const device of deviceList) {
@@ -80,10 +86,24 @@ export function buildTopicIndex(deviceList: IndexableDevice[]): TopicIndex {
           unit: cap.unit,
         });
       }
+
+      if (cap.kind === "actuator" && !actuators.has(topic)) {
+        actuators.set(topic, {
+          deviceId: device.id,
+          workspaceId: device.workspaceId,
+          channel: cap.channel,
+          variable: cap.variable,
+          ...(cap.payloadOn !== undefined ? { payloadOn: cap.payloadOn } : {}),
+          ...(cap.payloadOff !== undefined ? { payloadOff: cap.payloadOff } : {}),
+          ...(cap.stateOn !== undefined ? { stateOn: cap.stateOn } : {}),
+          ...(cap.stateOff !== undefined ? { stateOff: cap.stateOff } : {}),
+          ...(cap.brightnessScale !== undefined ? { brightnessScale: cap.brightnessScale } : {}),
+        });
+      }
     }
   }
 
-  return { sensors, owners };
+  return { sensors, actuators, owners };
 }
 
 /**
@@ -207,6 +227,15 @@ export async function handleTelemetry(topic: string, payload: Buffer, auth?: Mqt
     await touchDevice(deviceId);
     if (auth) await noteDeviceAuth(deviceId, auth);
 
+    // Not returned from: a topic can in principle carry both a state and a
+    // reading, and the sensor path below decides for itself.
+    const actuator = index.actuators.get(topic);
+    if (actuator) {
+      const parsed = parseActuatorPayload(payload, actuator);
+      const changed = parsed && noteActuatorState(actuator, parsed);
+      if (changed) broadcast({ type: "actuator.state", payload: changed });
+    }
+
     const binding = index.sensors.get(topic);
     if (!binding) return;
 
@@ -290,7 +319,7 @@ async function touchDevice(deviceId: string): Promise<void> {
 
 /** Reset module state. Tests only. */
 export function resetIngestState(): void {
-  index = { sensors: new Map(), owners: new Map() };
+  index = emptyIndex();
   lastHeartbeat.clear();
 }
 

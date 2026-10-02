@@ -45,6 +45,16 @@ describe("parseHaDiscovery — topic capture", () => {
     expect(cap.commandTopic).toBe("canopy/water-pump/set");
   });
 
+  it("keeps the words an actuator reports its state in, when the firmware declares them", () => {
+    const device = parseHaDiscovery(
+      "homeassistant/switch/water-pump/config",
+      haConfig({ state_topic: "canopy/water-pump/state", payload_on: "1", payload_off: "0", state_on: "running", state_off: "stopped" }),
+      "ws-1",
+    );
+
+    expect(device?.capabilities[0]).toMatchObject({ payloadOn: "1", payloadOff: "0", stateOn: "running", stateOff: "stopped" });
+  });
+
   it("omits the topic keys entirely when the firmware declared none", () => {
     const device = parseHaDiscovery(
       "homeassistant/sensor/canopy-temp/config",

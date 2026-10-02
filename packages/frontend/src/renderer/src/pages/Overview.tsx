@@ -17,6 +17,8 @@ import { useThresholdAlerts, useThresholds } from "@/hooks/useThresholds";
 import { useEvents } from "@/hooks/useEvents";
 import { useMaintenanceToday, useCompleteTask } from "@/hooks/useMaintenance";
 import { useDevices, useScan } from "@/hooks/useDevices";
+import { actuatorKey, useActuatorStates, type ActuatorStatesMap } from "@/hooks/useActuatorStates";
+import { ActuatorStateTag } from "@/components/ActuatorStateTag";
 import { useAutomations } from "@/hooks/useAutomations";
 import { useControllerStatus } from "@/hooks/useBackend";
 import { statusOf } from "@/lib/thresholds";
@@ -452,11 +454,20 @@ function ProblemsPreview({ workspaceId, devices }: { workspaceId: string; device
   );
 }
 
-function DevicePill({ device }: { device: Device }) {
+function DevicePill({ device, states }: { device: Device; states: ActuatorStatesMap }) {
+  const actuators = device.capabilities.filter((c) => c.kind === "actuator");
   return (
     <div className="device-pill">
       <span className={`dp-dot ${device.online ? "online" : "offline"}`} />
       <span>{device.name}</span>
+      {actuators.map((c) => (
+        <ActuatorStateTag
+          key={c.channel}
+          state={states.get(actuatorKey(device.id, c.channel))}
+          online={device.online}
+          {...(actuators.length > 1 ? { label: c.label ?? c.channel } : {})}
+        />
+      ))}
     </div>
   );
 }
@@ -490,6 +501,7 @@ export function Overview() {
   const { data: events = [] }       = useEvents(workspace?.id);
   const maintenanceToday            = useMaintenanceToday(workspace?.id);
   const { data: devices = [] }      = useDevices(workspace?.id);
+  const actuatorStates              = useActuatorStates(workspace?.id);
   const { data: automations = [] }  = useAutomations(workspace?.id);
   const { data: controller }        = useControllerStatus();
   const scan                        = useScan(workspace?.id);
@@ -642,7 +654,7 @@ export function Overview() {
                   </div>
                   <div className="box">
                     <div className="device-strip">
-                      {devices.map((d) => <DevicePill key={d.id} device={d} />)}
+                      {devices.map((d) => <DevicePill key={d.id} device={d} states={actuatorStates} />)}
                     </div>
                   </div>
                 </>

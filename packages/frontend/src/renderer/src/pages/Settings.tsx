@@ -32,6 +32,8 @@ import {
   usePurgeWorkspace,
 } from "@/hooks/useWorkspace";
 import { useDevices, useRoles, useAssignRole, useScan } from "@/hooks/useDevices";
+import { actuatorKey, useActuatorStates, type ActuatorStatesMap } from "@/hooks/useActuatorStates";
+import { ActuatorStateTag } from "@/components/ActuatorStateTag";
 import { ROLE_META, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
 import { useControllerStatus, useHealthStatus } from "@/hooks/useBackend";
 import { api, BACKEND_URL } from "@/lib/http";
@@ -40,7 +42,7 @@ import type { Device, RoleAssignment, AppSettings } from "@canopy/shared-types";
 
 
 // ── Device card ───────────────────────────────────────────────────────────────
-function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: string) => void }) {
+function DeviceCard({ device, states, onRemove }: { device: Device; states: ActuatorStatesMap; onRemove: (id: string) => void }) {
   const isControl = device.capabilities.some((c) => c.kind === "actuator");
   const metrics = device.capabilities.filter((c) => c.kind === "sensor");
   const controls = device.capabilities.filter((c) => c.kind === "actuator");
@@ -97,6 +99,7 @@ function DeviceCard({ device, onRemove }: { device: Device; onRemove: (id: strin
               <span key={c.channel} className="ctrl-chip" style={{ fontSize: 11.5 }}>
                 {"label" in c ? c.label ?? c.actuator : c.actuator}
                 <span className="res-tag">{c.variable ? "variable" : "on/off"}</span>
+                <ActuatorStateTag state={states.get(actuatorKey(device.id, c.channel))} online={device.online} />
               </span>
             ))}
           </div>
@@ -401,6 +404,7 @@ export function Settings() {
   const { data: workspaceList = [] } = useWorkspaces();
   const { data: settings } = useAppSettings();
   const { data: deviceList = [] } = useDevices(workspace?.id);
+  const actuatorStates = useActuatorStates(workspace?.id);
   const { data: roleList = [] } = useRoles(workspace?.id);
   const { online, version, uptimeSec } = useHealthStatus();
   // What the controller says about itself, rather than what this window assumes.
@@ -634,7 +638,7 @@ export function Settings() {
               </div>
               <div className="dev-list">
                 {deviceList.map((d) => (
-                  <DeviceCard key={d.id} device={d} onRemove={handleRemoveDevice} />
+                  <DeviceCard key={d.id} device={d} states={actuatorStates} onRemove={handleRemoveDevice} />
                 ))}
               </div>
 

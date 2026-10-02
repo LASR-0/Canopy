@@ -25,6 +25,7 @@ import type {
   AppSettings,
   ChartLayout,
   Reading,
+  ActuatorState,
   ReadingSeriesQuery,
   ReadingSeries,
   ControllerStatus,
@@ -122,6 +123,8 @@ export interface ApiRoutes {
   "POST /workspaces/:workspaceId/devices/forget-all": { res: { forgotten: true } };
   "POST /workspaces/:workspaceId/roles":    { body: AssignRoleBody; res: RoleAssignment };
   "POST /devices/:deviceId/actuate":        { body: ActuateBody; res: { accepted: true } };
+  /** What each actuator channel last reported, for devices that have reported since the controller started. */
+  "GET /workspaces/:workspaceId/actuators/state": { res: ActuatorState[] };
   /** The device's own broker credential, created if it has none yet. */
   "GET /devices/:deviceId/mqtt":            { res: DeviceMqttCredential };
   /** A new password for this device alone; it is disconnected until it has it. */

@@ -7,6 +7,7 @@ import { ok, err } from "../reply.js";
 import { startScan, refreshDeviceTopics } from "../../device-manager/index.js";
 import { refreshDerivedRoles } from "../../device-manager/derived.js";
 import { actuateDevice, validateCommand } from "../../device-manager/actuate.js";
+import { actuatorStates } from "../../device-manager/actuator-state.js";
 import { ensureDeviceCredential, regenerateDevicePassword, revokeDeviceCredentials } from "../../broker/credentials.js";
 import { credentialView, needsCredential, pushCredential } from "../../device-manager/device-credentials.js";
 import type { ActuateBody, ApiErrorCode, Device, MqttAuth, RoleAssignment } from "@canopy/shared-types";
@@ -211,6 +212,12 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       );
       return reply.status(202).send(ok({ accepted: true as const }));
     },
+  );
+
+  /** What each actuator channel last reported: the echo the 202 above waits on. */
+  app.get<{ Params: { workspaceId: string } }>(
+    "/workspaces/:workspaceId/actuators/state",
+    async (req, reply) => reply.send(ok(actuatorStates(req.params.workspaceId))),
   );
 
   // ── The device's own broker credential (Phase 8 G) ─────────────────────────

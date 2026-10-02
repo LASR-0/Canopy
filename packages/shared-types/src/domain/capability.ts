@@ -88,6 +88,13 @@ export interface ActuatorCapability extends MqttTopics {
   payloadOn?: string;
   payloadOff?: string;
   /**
+   * What the channel reports on its state topic when on or off, when the
+   * firmware says it differs from the switching payloads (Home Assistant's
+   * `state_on` / `state_off`).
+   */
+  stateOn?: string;
+  stateOff?: string;
+  /**
    * Separate topic for level, when the firmware declares one. Home Assistant
    * keeps brightness off the on/off command topic; simpler firmware accepts a
    * bare level on the command topic instead.

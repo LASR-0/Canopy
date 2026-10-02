@@ -36,6 +36,8 @@ const {
   setTopicIndexForTesting,
 } = await import("../../src/device-manager/ingest.js");
 
+const { resetActuatorStates } = await import("../../src/device-manager/actuator-state.js");
+
 const { setControllerState, resetControllerState } = await import(
   "../../src/controller/state.js"
 );
@@ -73,6 +75,7 @@ const oneDevice = [
 beforeEach(() => {
   vi.clearAllMocks();
   resetIngestState();
+  resetActuatorStates();
   resetControllerState();
 });
 
@@ -128,11 +131,29 @@ describe("buildTopicIndex", () => {
     });
   });
 
-  it("claims actuator topics for heartbeats but not as reading sources", () => {
-    const { sensors, owners } = buildTopicIndex(oneDevice);
+  it("claims actuator topics for heartbeats and state, not as reading sources", () => {
+    const { sensors, actuators, owners } = buildTopicIndex(oneDevice);
 
     expect(owners.get("canopy/exhaust-fan/state")).toBe("dev-1");
     expect(sensors.has("canopy/exhaust-fan/state")).toBe(false);
+    expect(actuators.get("canopy/exhaust-fan/state")).toEqual({
+      deviceId: "dev-1",
+      workspaceId: "ws-1",
+      channel: "exhaust-fan",
+      variable: false,
+    });
+  });
+
+  it("carries the channel's declared words onto its actuator binding", () => {
+    const { actuators } = buildTopicIndex([{
+      id: "dev-3",
+      workspaceId: "ws-1",
+      capabilities: [{ ...fanActuator, payloadOn: "1", payloadOff: "0", stateOn: "running", stateOff: "stopped" }],
+    }]);
+
+    expect(actuators.get("canopy/exhaust-fan/state")).toMatchObject({
+      payloadOn: "1", payloadOff: "0", stateOn: "running", stateOff: "stopped",
+    });
   });
 
   it("skips capabilities that declared no state topic", () => {
@@ -197,11 +218,31 @@ describe("handleTelemetry", () => {
     expect(mockRecordHeartbeat).not.toHaveBeenCalled();
   });
 
-  it("treats an actuator's state as proof of life, not as a reading", async () => {
+  it("treats an actuator's state as proof of life and pushes it, but stores no reading", async () => {
     await handleTelemetry("canopy/exhaust-fan/state", Buffer.from("ON"));
 
     expect(mockRecordHeartbeat).toHaveBeenCalledWith("dev-1");
     expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(mockBroadcast).toHaveBeenCalledTimes(1);
+    expect(mockBroadcast).toHaveBeenCalledWith({
+      type: "actuator.state",
+      payload: expect.objectContaining({ workspaceId: "ws-1", deviceId: "dev-1", channel: "exhaust-fan", on: true }),
+    });
+  });
+
+  it("pushes an actuator's state only when it changes", async () => {
+    await handleTelemetry("canopy/exhaust-fan/state", Buffer.from("ON"));
+    await handleTelemetry("canopy/exhaust-fan/state", Buffer.from("ON"));
+    await handleTelemetry("canopy/exhaust-fan/state", Buffer.from("OFF"));
+
+    const pushed = mockBroadcast.mock.calls.map((c) => (c[0] as { payload: { on: boolean } }).payload.on);
+    expect(pushed).toEqual([true, false]);
+  });
+
+  it("keeps the heartbeat but pushes nothing for an actuator payload it cannot read", async () => {
+    await handleTelemetry("canopy/exhaust-fan/state", Buffer.from("unavailable"));
+
+    expect(mockRecordHeartbeat).toHaveBeenCalledWith("dev-1");
     expect(mockBroadcast).not.toHaveBeenCalled();
   });
 

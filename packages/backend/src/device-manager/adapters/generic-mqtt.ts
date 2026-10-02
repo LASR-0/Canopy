@@ -22,6 +22,8 @@ interface HaConfig {
   device_class?: string;
   payload_on?: string;
   payload_off?: string;
+  state_on?: string;
+  state_off?: string;
   brightness?: boolean;
   brightness_command_topic?: string;
   brightness_scale?: number;
@@ -111,12 +113,14 @@ export function parseHaDiscovery(
   const stateTopic = config.state_topic ? { stateTopic: config.state_topic } : {};
   const commandTopic = config.command_topic ? { commandTopic: config.command_topic } : {};
 
-  // Switching payloads and the brightness channel are captured for the same
-  // reason as the topics: the firmware chooses them, and a wrong guess fails
-  // silently rather than erroring.
+  // Switching payloads, the words its state is reported in, and the
+  // brightness channel are captured for the same reason as the topics: the
+  // firmware chooses them, and a wrong guess fails silently rather than erroring.
   const switching = {
     ...(config.payload_on ? { payloadOn: config.payload_on } : {}),
     ...(config.payload_off ? { payloadOff: config.payload_off } : {}),
+    ...(config.state_on ? { stateOn: config.state_on } : {}),
+    ...(config.state_off ? { stateOff: config.state_off } : {}),
     ...(config.brightness_command_topic
       ? { brightnessCommandTopic: config.brightness_command_topic }
       : {}),

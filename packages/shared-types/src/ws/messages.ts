@@ -1,5 +1,6 @@
 import type {
   Reading,
+  ActuatorState,
   ControllerStatus,
   GrowStageName,
   Id,
@@ -17,6 +18,8 @@ export const WS_PROTOCOL_VERSION = 1 as const;
 /** Server -> client: things the backend pushes. */
 export type ServerMessage =
   | { type: "reading";              payload: Reading }
+  /** An actuator channel reported a different state. Sent on change only. */
+  | { type: "actuator.state";       payload: ActuatorState }
   | { type: "device.status";        payload: { deviceId: Id; online: boolean } }
   | { type: "controller.status";    payload: ControllerStatus }
   | { type: "automation.fired";     payload: { automationId: Id; at: string } }

@@ -1,6 +1,7 @@
 export * from "./common.js";
 export * from "./protocol.js";
 export * from "./capability.js";
+export * from "./actuator-state.js";
 export * from "./device.js";
 export * from "./reading.js";
 export * from "./workspace.js";
