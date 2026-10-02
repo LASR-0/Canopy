@@ -1,11 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db, sqliteConnection } from "../../store/index.js";
-import { devices, readingsRaw, readingsHourly, readingsDaily } from "../../store/schema.js";
+import { devices, readingsHourly, readingsDaily } from "../../store/schema.js";
 import { latestReadings } from "../../device-manager/latest.js";
 import { err, ok } from "../reply.js";
 import { Readable } from "node:stream";
 import { readingsCsv } from "../../export/readings.js";
+import { rawSeries } from "../../readings/raw-series.js";
 import {
   METRICS,
   type Metric,
@@ -56,7 +57,8 @@ export function resolutionFor(
 /**
  * Reduce a line to at most `limit` points, keeping the first and last.
  *
- * Even-stride decimation. It is chosen over anything cleverer because the
+ * For rollup lines only, as a guard: raw is thinned in SQL (raw-series.ts),
+ * and no rollup range comes near the limit. Even-stride decimation. It is chosen over anything cleverer because the
  * extremes a naive stride would drop are already carried on each rollup point as
  * `min`/`max`, so the band stays honest even when the average line is thinned.
  * At raw resolution there are no extremes to lose — every point is a sample.
@@ -87,27 +89,34 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
       const { workspaceId, metric, deviceId, from, to } = req.body;
       const resolution = resolutionFor(req.body.resolution ?? "raw", from, to);
 
-      const table =
-        resolution === "hourly" ? readingsHourly
-        : resolution === "daily" ? readingsDaily
-        : readingsRaw;
-
-      const conditions = [
-        eq(table.workspaceId, workspaceId),
-        eq(table.metric, metric),
-        gte(table.recordedAt, from),
-        lte(table.recordedAt, to),
-        ...(deviceId ? [eq(table.deviceId, deviceId)] : []),
-      ];
-
-      // Ordered in SQL, not left to insertion order. Rollup rows are written by
-      // a DELETE-then-INSERT whose order follows the GROUP BY, so a chart
-      // connecting them as they came back drew a scribble rather than a line.
-      const rows = await db
-        .select()
-        .from(table)
-        .where(and(...conditions))
-        .orderBy(asc(table.recordedAt));
+      // Raw is thinned in SQL, so only what is charted is read into memory.
+      // Rollups are a few hundred rows per line at most, and carry min/max.
+      let rows: { deviceId: string; channel: string; unit: string; value: number; recordedAt: string; minValue?: number | null; maxValue?: number | null }[];
+      let downsampled = false;
+      if (resolution === "raw") {
+        const raw = rawSeries(sqliteConnection, {
+          workspaceId, metric, from, to, limit: MAX_POINTS_PER_SERIES,
+          ...(deviceId ? { deviceId } : {}),
+        });
+        rows = raw.rows;
+        downsampled = raw.downsampled;
+      } else {
+        const table = resolution === "hourly" ? readingsHourly : readingsDaily;
+        // Ordered in SQL, not left to insertion order. Rollup rows are written by
+        // a DELETE-then-INSERT whose order follows the GROUP BY, so a chart
+        // connecting them as they came back drew a scribble rather than a line.
+        rows = await db
+          .select()
+          .from(table)
+          .where(and(
+            eq(table.workspaceId, workspaceId),
+            eq(table.metric, metric),
+            gte(table.recordedAt, from),
+            lte(table.recordedAt, to),
+            ...(deviceId ? [eq(table.deviceId, deviceId)] : []),
+          ))
+          .orderBy(asc(table.recordedAt));
+      }
 
       // Split per (device, channel): two sensors reporting one metric are two
       // claims about the tent, and flattening them interleaved the two into
@@ -125,8 +134,8 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
         const point: ReadingPoint = { ts: row.recordedAt, value: row.value };
         // Raw rows have no extremes, and a rollup written before the min/max
         // columns existed has them as null.
-        if ("minValue" in row && row.minValue != null) point.min = row.minValue;
-        if ("maxValue" in row && row.maxValue != null) point.max = row.maxValue;
+        if (row.minValue != null) point.min = row.minValue;
+        if (row.maxValue != null) point.max = row.maxValue;
         line.points.push(point);
       }
 
@@ -141,7 +150,6 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
         : [];
       const names = new Map(nameRows.map((r) => [r.id, r.name]));
 
-      let downsampled = false;
       const series: DeviceSeries[] = [...byLine.values()].map((line) => {
         const points = decimate(line.points);
         if (points.length !== line.points.length) downsampled = true;

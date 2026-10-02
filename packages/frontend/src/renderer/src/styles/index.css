@@ -2518,7 +2518,9 @@ body {
 .mr-eye { color: var(--fg-subtle); flex: 0 0 auto; display: grid; place-items: center; }
 .metric-row.on .mr-eye { color: var(--accent-fg); }
 
-.chart-wrap { min-width: 0; }
+.chart-wrap { min-width: 0; position: relative; }
+/* A range with nothing loaded yet (Logging.tsx): over the empty chart, not in place of it. */
+.chart-loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; color: var(--fg-muted); background: var(--canvas-overlay); border: 1px solid var(--border-default); border-radius: 6px; box-shadow: var(--shadow-sm); pointer-events: none; }
 .chart-box {
   border: 1px solid var(--border-default);
   border-radius: 8px;

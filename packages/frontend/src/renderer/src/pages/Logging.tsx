@@ -136,8 +136,11 @@ export function Logging() {
   });
   const seriesFor = (metric: Metric) => seriesByMetric.get(metric);
   // Refetching holds the previous render at reduced opacity rather than showing a
-  // skeleton, so changing range never blanks the page or reflows it.
+  // skeleton, so changing range never blanks the page or reflows it. A range not
+  // loaded yet has no previous render to hold: its chart is empty, which would
+  // read as "no readings", so it says it is loading instead.
   const fetching = results.some((r) => r.isFetching);
+  const loading = results.some((r) => r.isPending && r.isFetching);
 
   /** Target bands, from the thresholds in force for the current stage. */
   const targets = useMemo(() => {
@@ -457,8 +460,13 @@ export function Logging() {
 
               <div
                 className="chart-wrap"
-                style={{ opacity: fetching ? 0.6 : 1, transition: "opacity .15s" }}
+                style={{ opacity: fetching && !loading ? 0.6 : 1, transition: "opacity .15s" }}
               >
+                {loading && (
+                  <div className="chart-loading" role="status">
+                    <span className="spinner" /> Loading readings…
+                  </div>
+                )}
                 <ChartPanel
                   metrics={visible}
                   seriesFor={seriesFor}
