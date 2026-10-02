@@ -33,6 +33,11 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      # Typecheck and tests need Electron's types, which ship in the npm
+      # package, but not its ~100 MB runtime. Skipping the download takes a
+      # network fetch that can fail out of every run.
       - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: pnpm typecheck
       - run: pnpm test

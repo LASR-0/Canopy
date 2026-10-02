@@ -11,14 +11,14 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
-    "postinstall": "install-electron",
+    "postinstall": "node -e \"process.exit(process.env.ELECTRON_SKIP_BINARY_DOWNLOAD ? 0 : 1)\" || install-electron",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package:linux": "electron-vite build && electron-builder --linux",
     "package:win": "electron-vite build && electron-builder --win",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
   },
-  "//postinstall_note": "Electron 42 dropped its install-time download and fetches the runtime lazily on the first require('electron'). electron-vite reads node_modules/electron/path.txt directly and never triggers that, so it fails with 'Error: Electron uninstall'. install-electron is electron's own downloader and is a no-op once the runtime is present.",
+  "//postinstall_note": "Electron 42 dropped its install-time download and fetches the runtime lazily on the first require('electron'). electron-vite reads node_modules/electron/path.txt directly and never triggers that, so it fails with 'Error: Electron uninstall'. install-electron is electron's own downloader and is a no-op once the runtime is present. ELECTRON_SKIP_BINARY_DOWNLOAD (the variable Electron's old installer honoured) skips it, for CI jobs that only typecheck and test.",
   "//dependencies_note": "Everything is a devDependency: electron-vite bundles the renderer, and main and preload import only electron and node builtins, so the packaged app needs no node_modules. electron-builder ships whatever is under dependencies, so keep that empty.",
   "devDependencies": {
     "@canopy/shared-types": "workspace:*",
