@@ -165,10 +165,9 @@ Overview. It is the one page with no prototype design behind it.
 
 ### Not started
 
-- The **boot-level OS-managed service**, which the architecture calls a
-  requirement. No systemd unit, no launchd plist, no Windows service, on any
-  platform. `electron-builder.yml` is 18 lines of bare targets — no service
-  registration, no signing.
+- **Actuator state.** See "The data pipe" above.
+- **Archiving completed grows.** `archive_grow` is scheduled and has no
+  handler. See "Retention".
 - WebSocket has no per-workspace subscription filtering. `subscribe` /
   `unsubscribe` frames are parsed and then ignored, so every client receives
   every workspace's traffic. Harmless with one tent and one window; wrong as
@@ -196,7 +195,10 @@ hour, a 170 MB database, and a 7-day projection of ~21 million rows. Samples
 arrive in bursts of a dozen within milliseconds carrying *different* values, so
 they are independent publishers rather than one message ingested repeatedly — and
 at least three `tsx src/index.ts` simulator processes were alive at once, orphaned
-by watch-mode restarts. **Before changing the sample rate or the storage design,
+by watch-mode restarts. A third cause turned up in Phase 8 G: the
+simulator started a new set of publish timers on every reconnect without
+stopping the old ones, so each broker restart added another copy of the
+fleet. Fixed. **Before changing the sample rate or the storage design,
 kill the strays and confirm a single simulator gives 0.2/s.** The volume is
 probably an artefact of the dev loop, not a property of the app.
 
@@ -1380,7 +1382,7 @@ the layout and controls.
 Set aside on 2026-10-01 so Phase 8 can start. Pick it up either before
 Phase 9 or after it.
 
-### Phase 8 — Service install & packaging *(next)*
+### Phase 8 — Service install & packaging ✅ done
 
 The real cross-platform push, with everything else working. Planned
 2026-10-01, with 7.5 I (keyboard-only use) set aside to pick up before or
@@ -1848,7 +1850,7 @@ credential, except while a scan is open. Decided 2026-10-01:
      machine can already drive devices through it.
    - A `.canopy` export contains the database, credential included.
 
-#### G. Tier 3: per-device credentials ✅ built — awaiting a hands-on check
+#### G. Tier 3: per-device credentials ✅ done — checked by hand on WSL2
 
 Every MQTT device now gets its own broker login when it is paired, limited
 to its own topics, beside F's shared one. Planned 2026-10-01; three things
@@ -1933,9 +1935,29 @@ were settled when it was built, the same day:
     - The simulator, run against it, still pairs as 12 devices (each its own
       key) on the shared credential. Its Shelly's push fails at once, since
       nothing answers HTTP on 127.0.0.1, and the card says it did not answer.
-11. **Still to check by hand**: open a device's Broker login in the app, and
-    the shared-password note in Settings. On hardware, after Phase 9: a real
-    Shelly Gen 1 and Gen 2 sent its login, and an ESPHome board given one.
+11. **Checked by hand, 2026-10-02**, on WSL2 with `pnpm dev` and the
+    simulator:
+    - A device's Broker login shows its address, username and password, and
+      "New password" asks first. Settings names the devices on the shared
+      password. The simulated Shelly's "Send to device" says it did not
+      answer.
+    - A test client on one device's own login connected, its readings were
+      ingested, another device's topic was ignored, an out-of-scope retained
+      publish neither disconnected it nor stayed retained, and a command
+      topic disconnected it. With "require" on, a wrong password was refused.
+    - Forget-all and a rescan brought every device back, and the device's
+      login came back under a new username, the old one gone.
+    - **Found on the way, in the simulator.** It read the shared password
+      once, at startup. A new password in Settings dropped it, as it should,
+      but it reconnected on the old one, which counts as none: so with
+      "require" off it came back as anonymous, and switching "require" on
+      cut it off. It now reads the password again whenever its connection
+      closes, before mqtt.js retries. Its `connect` handler also started new
+      publish timers on every reconnect without stopping the old ones, so
+      each reconnect added another full copy of the fleet's telemetry.
+      Fixed too.
+    - Still to do, on hardware after Phase 9: a real Shelly Gen 1 and Gen 2
+      sent its login, and an ESPHome board given one.
 12. **Known limits**:
     - A client on a device's own login may announce *other* devices during a
       scan, since discovery is open to every login. A scan is short and
