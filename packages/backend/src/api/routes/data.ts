@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { sqliteConnection } from "../../store/index.js";
-import { IMPORT_DIR, PHOTO_DIR, TMP_DIR } from "../../store/paths.js";
+import { GROW_ARCHIVE_DIR, IMPORT_DIR, PHOTO_DIR, TMP_DIR } from "../../store/paths.js";
 import { exportArchive, exportFileName } from "../../data/export.js";
 import { ImportError, applyImport, discardImport, importStatus, stageImport } from "../../data/import.js";
 import { reloadWorkspaceCaches } from "../../controller/reload.js";
@@ -17,7 +17,7 @@ export async function dataRoutes(app: FastifyInstance): Promise<void> {
 
   /** Everything, as a `.canopy` file download. */
   app.get("/data/export", async (_req, reply) => {
-    const stream = await exportArchive(sqliteConnection, PHOTO_DIR, TMP_DIR);
+    const stream = await exportArchive(sqliteConnection, PHOTO_DIR, TMP_DIR, new Date(), GROW_ARCHIVE_DIR);
     return reply
       .header("content-type", "application/octet-stream")
       .header("content-disposition", `attachment; filename="${exportFileName()}"`)
@@ -49,7 +49,7 @@ export async function dataRoutes(app: FastifyInstance): Promise<void> {
       if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === "string")) {
         return reply.status(400).send(err("validation_failed", "Choose at least one workspace from the file"));
       }
-      void applyImport(sqliteConnection, req.params.token, ids as string[], PHOTO_DIR, reloadWorkspaceCaches);
+      void applyImport(sqliteConnection, req.params.token, ids as string[], PHOTO_DIR, reloadWorkspaceCaches, new Date(), GROW_ARCHIVE_DIR);
       return reply.status(202).send(ok(importStatus(req.params.token)!));
     },
   );

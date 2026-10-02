@@ -24,6 +24,7 @@
  * driven, so readings and commands never go to two places.
  */
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -35,7 +36,8 @@ import { applyColumnAdditions, applyDDL } from "../store/ddl.js";
 import { openDatabase } from "../store/sqlite.js";
 import { extractTar } from "./tar.js";
 import { alreadyClaimed, claimedTopics, type DeviceTopicsRow } from "../device-manager/claims.js";
-import { DB_ENTRY, EXPORT_FORMAT, EXPORT_VERSION, MANIFEST_ENTRY, PHOTO_PREFIX, type ExportManifest } from "./export.js";
+import { ARCHIVE_PREFIX, DB_ENTRY, EXPORT_FORMAT, EXPORT_VERSION, MANIFEST_ENTRY, PHOTO_PREFIX, type ExportManifest } from "./export.js";
+import { ARCHIVE_FILE, archiveFileName } from "../grow/archive.js";
 
 /** Readings copied per batch, between yields to the event loop. */
 export const READINGS_BATCH = 5_000;
@@ -56,6 +58,8 @@ interface StagedFile {
   dir: string;
   dbPath: string;
   photoDir: string;
+  /** Grow archives (grow/archive.ts), under their ids in the file. */
+  archiveDir: string;
   manifest: ExportManifest;
 }
 
@@ -85,6 +89,8 @@ function freeName(name: string, taken: Set<string>): string | undefined {
 async function unpack(input: AsyncIterable<Buffer>, dir: string): Promise<StagedFile> {
   const photoDir = join(dir, "photos");
   await mkdir(photoDir, { recursive: true });
+  const archiveDir = join(dir, "archive");
+  await mkdir(archiveDir, { recursive: true });
   const dbPath = join(dir, DB_ENTRY);
   const manifestPath = join(dir, MANIFEST_ENTRY);
 
@@ -96,6 +102,10 @@ async function unpack(input: AsyncIterable<Buffer>, dir: string): Promise<Staged
       if (name.startsWith(PHOTO_PREFIX)) {
         const file = name.slice(PHOTO_PREFIX.length);
         if (PHOTO_NAME.test(file)) return join(photoDir, file);
+      }
+      if (name.startsWith(ARCHIVE_PREFIX)) {
+        const file = name.slice(ARCHIVE_PREFIX.length);
+        if (ARCHIVE_FILE.test(file)) return join(archiveDir, file);
       }
       return null;
     });
@@ -120,7 +130,7 @@ async function unpack(input: AsyncIterable<Buffer>, dir: string): Promise<Staged
   if (manifest.version > EXPORT_VERSION) {
     throw new ImportError("That export was made by a newer version of Canopy. Update Canopy to import it.");
   }
-  return { dir, dbPath, photoDir, manifest };
+  return { dir, dbPath, photoDir, archiveDir, manifest };
 }
 
 /**
@@ -336,6 +346,7 @@ async function copyIn(
   photoDir: string,
   onLoaded: () => Promise<void>,
   now: Date = new Date(),
+  archiveDir?: string,
 ): Promise<ImportStatus> {
   const session = sessions.get(token);
   if (!session) throw new ImportError("That import has expired. Upload the file again.");
@@ -348,6 +359,7 @@ async function copyIn(
   const at = now.toISOString();
   let newWorkspaces: string[] = [];
   const copiedPhotos: string[] = [];
+  const copiedArchives: string[] = [];
   let attached = false;
 
   try {
@@ -464,6 +476,39 @@ async function copyIn(
       }
     }
 
+    // Grow archives: under each grow's new id, with the workspace and device
+    // ids inside rewritten the way the rows above were.
+    if (archiveDir) {
+      set({ step: "Copying grow archives" });
+      const grows = live.prepare(`
+        SELECT g.id AS old, m.new AS new, w.new AS workspace FROM imp.grows g
+        JOIN temp.import_map m ON m.old = g.id
+        JOIN temp.import_map w ON w.old = g.workspace_id
+        WHERE g.workspace_id IN (SELECT id FROM temp.import_ws)
+      `).all() as { old: string; new: string; workspace: string }[];
+      const devices = live.prepare(`
+        SELECT m.old, m.new FROM temp.import_map m JOIN imp.devices d ON d.id = m.old
+      `).all() as { old: string; new: string }[];
+      await mkdir(archiveDir, { recursive: true });
+      for (const g of grows) {
+        const source = join(file.archiveDir, archiveFileName(g.old));
+        if (!existsSync(source)) continue;
+        const target = join(archiveDir, archiveFileName(g.new));
+        await copyFile(source, target);
+        copiedArchives.push(target);
+        const archive = openDatabase(target);
+        try {
+          archive.transaction(() => {
+            archive.prepare(`UPDATE readings_hourly SET workspace_id = ?`).run(g.workspace);
+            const move = archive.prepare(`UPDATE readings_hourly SET device_id = ? WHERE device_id = ?`);
+            for (const d of devices) move.run(d.new, d.old);
+          })();
+        } finally {
+          archive.close();
+        }
+      }
+    }
+
     // What went in, per workspace.
     const tally = (sql: string, id: string) => (live.prepare(sql).get(id) as { n: number }).n;
     const result = [...counts.values()].map((w) => ({
@@ -493,7 +538,7 @@ async function copyIn(
         for (const table of READINGS_TABLES) live.prepare(`DELETE FROM main.${table} WHERE workspace_id = ?`).run(id);
         live.prepare(`DELETE FROM main.workspaces WHERE id = ?`).run(id);
       }
-      await Promise.all(copiedPhotos.map((p) => rm(p, { force: true })));
+      await Promise.all([...copiedPhotos, ...copiedArchives].map((p) => rm(p, { force: true })));
     } catch (cleanup) {
       console.error("[import] cleanup after a failed import also failed:", cleanup);
     }

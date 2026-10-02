@@ -27,6 +27,8 @@ export const DATA_DIR = dataDir();
 export const DB_PATH = process.env["DB_PATH"] ?? join(DATA_DIR, "canopy.db");
 /** Journal photos (grow/journal-photos.ts). */
 export const PHOTO_DIR = join(DATA_DIR, "attachments", "journal");
+/** Each grow's hourly readings once they age out of the live database (grow/archive.ts). */
+export const GROW_ARCHIVE_DIR = join(DATA_DIR, "archive");
 /** Imports being staged (data/import.ts); cleared on start. */
 export const IMPORT_DIR = join(DATA_DIR, "import");
 /** Scratch space, e.g. an export's database snapshot while it streams. */

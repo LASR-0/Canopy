@@ -37,6 +37,7 @@ function prune(
   aggregateTable: "readings_hourly" | "readings_daily",
   retentionDays: number,
   now: Date,
+  beforeDelete?: (cutoff: string) => void,
 ): PruneOutcome {
   const wanted = isoDaysAgo(retentionDays, now);
 
@@ -47,6 +48,7 @@ function prune(
   }
 
   const cutoff = wanted <= rolledUpTo ? wanted : rolledUpTo;
+  beforeDelete?.(cutoff);
   const result = db
     .prepare(`DELETE FROM ${table} WHERE recorded_at < ?`)
     .run(cutoff);
@@ -84,11 +86,17 @@ export function pruneEvents(
   return { deleted: result.changes, cutoff };
 }
 
-/** Drop hourly buckets past the retention window, but never past the daily rollup. */
+/**
+ * Drop hourly buckets past the retention window, but never past the daily
+ * rollup. `beforeDelete` sees the cutoff actually used, so rows inside a grow
+ * can be moved to its archive first (grow/archive.ts). If it throws, nothing
+ * is deleted.
+ */
 export function pruneHourly(
   db: Database,
   retentionDays: number,
   now: Date = new Date(),
+  beforeDelete?: (cutoff: string) => void,
 ): PruneOutcome {
-  return prune(db, "readings_hourly", "readings_daily", retentionDays, now);
+  return prune(db, "readings_hourly", "readings_daily", retentionDays, now, beforeDelete);
 }

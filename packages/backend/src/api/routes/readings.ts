@@ -7,6 +7,8 @@ import { err, ok } from "../reply.js";
 import { Readable } from "node:stream";
 import { readingsCsv } from "../../export/readings.js";
 import { rawSeries } from "../../readings/raw-series.js";
+import { archivedHourly, withArchived } from "../../grow/archive.js";
+import { GROW_ARCHIVE_DIR } from "../../store/paths.js";
 import {
   METRICS,
   type Metric,
@@ -116,6 +118,17 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
             ...(deviceId ? [eq(table.deviceId, deviceId)] : []),
           ))
           .orderBy(asc(table.recordedAt));
+
+        // Hourly rows the prune has moved into a grow's archive, for a window
+        // reaching further back than live still holds. Daily is kept in live
+        // for good, so only hourly needs this.
+        const liveFrom = rows[0]?.recordedAt;
+        if (resolution === "hourly" && (liveFrom === undefined || liveFrom > from)) {
+          rows = withArchived(
+            rows.map((r) => ({ ...r, minValue: r.minValue ?? null, maxValue: r.maxValue ?? null })),
+            archivedHourly(sqliteConnection, GROW_ARCHIVE_DIR, { workspaceId, metric, from, to, ...(deviceId ? { deviceId } : {}) }),
+          );
+        }
       }
 
       // Split per (device, channel): two sensors reporting one metric are two
@@ -210,7 +223,9 @@ export async function readingsRoutes(app: FastifyInstance): Promise<void> {
         .header("content-disposition", `attachment; filename="canopy-${resolution}-${stamp}.csv"`)
         .send(Readable.from(readingsCsv(sqliteConnection, {
           workspaceId: req.params.workspaceId, metrics, from, to, resolution,
-        }, names)));
+        }, names, (metric) => archivedHourly(sqliteConnection, GROW_ARCHIVE_DIR, {
+          workspaceId: req.params.workspaceId, metric, from, to,
+        }))));
     },
   );
 }

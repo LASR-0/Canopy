@@ -71,6 +71,8 @@ export function applyColumnAdditions(db: InstanceType<typeof Database>): void {
   // The physical device behind MQTT discovery, which gathers a board's
   // entities into one device. Older rows gain it at their next discovery.
   addColumnIfMissing(db, "devices", "discovery_key", "TEXT");
+  // When a finished grow's environment summary was worked out (grow/archive.ts).
+  addColumnIfMissing(db, "grows", "env_summarised_at", "TEXT");
 }
 
 export function addColumnIfMissing(
@@ -330,7 +332,8 @@ export function applyDDL(db: InstanceType<typeof Database>): void {
       env_rh_max              REAL,
       env_rh_avg              REAL,
       env_failsafe_trips      INTEGER,
-      env_failsafe_note       TEXT
+      env_failsafe_note       TEXT,
+      env_summarised_at       TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_grows_workspace
       ON grows (workspace_id, status);
@@ -569,5 +572,6 @@ export function seedData(database: InstanceType<typeof Database>): void {
   seedJob.run("job_prune_attachments",   "prune_attachments",   in1h);
   seedJob.run("job_purge_workspaces",    "purge_workspaces",    in1h);
   seedJob.run("job_maintenance_check",   "maintenance_check",   nextMid);
+  seedJob.run("job_archive_grow",        "archive_grow",        in1h);
   seedJob.run("job_vacuum",              "vacuum",              in7d);
 }

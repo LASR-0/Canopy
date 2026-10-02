@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, sqliteConnection } from "../../store/index.js";
-import { PHOTO_DIR } from "../../store/paths.js";
+import { GROW_ARCHIVE_DIR, PHOTO_DIR } from "../../store/paths.js";
 import { reloadWorkspaceCaches } from "../../controller/reload.js";
 import {
   WorkspaceStateError,
@@ -116,7 +116,7 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
 
   /** For good, now, rather than after 7 days. Only from Recently deleted. */
   app.delete<{ Params: { workspaceId: string } }>("/workspaces/:workspaceId/permanent", async (req, reply) => {
-    const done = await change(reply, () => purgeWorkspace(sqliteConnection, PHOTO_DIR, req.params.workspaceId));
+    const done = await change(reply, () => purgeWorkspace(sqliteConnection, PHOTO_DIR, req.params.workspaceId, GROW_ARCHIVE_DIR));
     if (!done) return reply;
     return reply.send(ok({ deleted: true as const }));
   });

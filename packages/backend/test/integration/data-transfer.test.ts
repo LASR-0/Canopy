@@ -18,6 +18,7 @@ import { createTestDb, type TestDb } from "../helpers/db.js";
 import { exportArchive } from "../../src/data/export.js";
 import { ImportError, applyImport, importsSettled, resetImportSessions, stageImport } from "../../src/data/import.js";
 import { tarStream } from "../../src/data/tar.js";
+import { archiveBeforePrune, openArchive } from "../../src/grow/archive.js";
 
 let dir: string;
 let source: TestDb;
@@ -133,6 +134,41 @@ describe("export, then import", () => {
     }
     const names = (live.sqlite.prepare(`SELECT name FROM workspaces ORDER BY name`).all() as { name: string }[]).map((r) => r.name);
     expect(names).toEqual(["Tent 1", "Tent 1 (imported 2)", "Tent 1 (imported)"]);
+  });
+});
+
+describe("grow archives", () => {
+  it("travel with the export, under the grow's new id, with ids inside following", async () => {
+    // The source grow's hourly rows, moved into its archive as a prune would.
+    const insert = source.sqlite.prepare(`INSERT INTO readings_hourly (workspace_id, device_id, channel, metric, unit, value, recorded_at)
+      VALUES ('ws-a', ?, 'l', 'lux', 'lux', 1, ?)`);
+    insert.run("dev-own", "2026-09-30T01:00:00.000Z");
+    insert.run("__derived__", "2026-09-30T01:00:00.000Z");
+    const sourceArchives = join(dir, "source-archive");
+    archiveBeforePrune(source.sqlite, sourceArchives, "2026-10-01T00:00:00.000Z");
+
+    const file = join(dir, "export.canopy");
+    await pipeline(await exportArchive(source.sqlite, join(dir, "no-photos"), join(dir, "tmp"), new Date(NOW), sourceArchives), createWriteStream(file));
+    const preview = await stageImport(read(file), join(dir, "staging"), live.sqlite);
+    const liveArchives = join(dir, "live-archive");
+    expect((await applyImport(live.sqlite, preview.token, ["ws-a"], join(dir, "live-photos"), loaded, new Date(NOW), liveArchives)).state).toBe("done");
+
+    const ws = live.sqlite.prepare(`SELECT id FROM workspaces WHERE name = 'Tent 1 (imported)'`).get() as { id: string };
+    const grow = live.sqlite.prepare(`SELECT id FROM grows WHERE workspace_id = ?`).get(ws.id) as { id: string };
+    const own = live.sqlite.prepare(`SELECT id FROM devices WHERE workspace_id = ? AND name = 'Own light'`).get(ws.id) as { id: string };
+    expect(await readdir(liveArchives)).toEqual([`grow-${grow.id}.db`]);
+
+    const archive = openArchive(liveArchives, grow.id)!;
+    try {
+      const rows = archive.prepare(`SELECT workspace_id, device_id FROM readings_hourly`).all();
+      expect(rows).toHaveLength(2);
+      expect(rows).toEqual(expect.arrayContaining([
+        { workspace_id: ws.id, device_id: "__derived__" },
+        { workspace_id: ws.id, device_id: own.id },
+      ]));
+    } finally {
+      archive.close();
+    }
   });
 });
 

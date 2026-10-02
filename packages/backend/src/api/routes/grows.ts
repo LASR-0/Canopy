@@ -137,6 +137,9 @@ export async function growRoutes(app: FastifyInstance): Promise<void> {
       const updates: Partial<typeof grows.$inferInsert> = {};
       if (b.name)                          updates.name = b.name;
       if (b.status)                        updates.status = b.status;
+      // Worked out again after any change of status (grow/archive.ts), so a
+      // grow reopened and finished again is not left with its first summary.
+      if (b.status)                        updates.envSummarisedAt = null;
       if (b.strain !== undefined)          updates.strain = b.strain ?? null;
       if (b.plantCount != null)            updates.plantCount = b.plantCount;
       if (b.startedAt)                     updates.startedAt = b.startedAt;

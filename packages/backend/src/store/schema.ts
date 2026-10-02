@@ -256,6 +256,8 @@ export const grows = sqliteTable("grows", {
   envRhAvg:         real("env_rh_avg"),
   envFailsafeTrips: integer("env_failsafe_trips"),
   envFailsafeNote:  text("env_failsafe_note"),
+  /** When the summary above was worked out; null until then (grow/archive.ts). */
+  envSummarisedAt:  text("env_summarised_at"),
 });
 
 // ── grow_milestones ───────────────────────────────────────────────────────────

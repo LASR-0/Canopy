@@ -20,7 +20,8 @@ import { runBackup } from "./jobs/backup.js";
 import { pruneAttachments } from "../grow/journal-photos.js";
 import { purgeDeletedWorkspaces } from "../workspaces/lifecycle.js";
 import { reloadWorkspaceCaches } from "../controller/reload.js";
-import { PHOTO_DIR } from "../store/paths.js";
+import { GROW_ARCHIVE_DIR, PHOTO_DIR } from "../store/paths.js";
+import { archiveBeforePrune, summariseFinishedGrows } from "../grow/archive.js";
 import type { JobType } from "@canopy/shared-types";
 
 /**
@@ -93,21 +94,31 @@ async function loadSettings(): Promise<Settings> {
 /**
  * The registry.
  *
- * `archive_grow` and `maintenance_check` are deliberately absent. Archiving
- * needs the separate archive-database design, and runtime-cadence maintenance
+ * `maintenance_check` is deliberately absent: runtime-cadence maintenance
  * cannot work while nothing accumulates device runtime hours. A job with no
  * handler is rescheduled rather than repeatedly failed.
+ *
+ * `archive_grow` works out finished grows' environment summaries. The
+ * archiving itself happens inside `prune_hourly`, which moves rows that fall
+ * in a grow into its archive instead of deleting them (grow/archive.ts).
  */
 function handlers(settings: Settings): Partial<Record<JobType, JobHandler>> {
   return {
     rollup_hourly: (now) => rollupHourly(sqliteConnection, now),
     rollup_daily: (now) => rollupDaily(sqliteConnection, now),
     prune_raw: (now) => pruneRaw(sqliteConnection, settings.rawRetentionDays, now),
-    prune_hourly: (now) => pruneHourly(sqliteConnection, settings.hourlyRetentionDays, now),
+    prune_hourly: (now) => {
+      let moved = { archived: 0, grows: 0 };
+      const pruned = pruneHourly(sqliteConnection, settings.hourlyRetentionDays, now, (cutoff) => {
+        moved = archiveBeforePrune(sqliteConnection, GROW_ARCHIVE_DIR, cutoff);
+      });
+      return { ...pruned, ...moved };
+    },
+    archive_grow: (now) => summariseFinishedGrows(sqliteConnection, GROW_ARCHIVE_DIR, now),
     prune_events: (now) => pruneEvents(sqliteConnection, settings.eventRetentionDays, now),
     prune_attachments: (now) => pruneAttachments(sqliteConnection, PHOTO_DIR, now),
     purge_workspaces: async (now) => {
-      const outcome = await purgeDeletedWorkspaces(sqliteConnection, PHOTO_DIR, now);
+      const outcome = await purgeDeletedWorkspaces(sqliteConnection, PHOTO_DIR, now, GROW_ARCHIVE_DIR);
       if (outcome.purged > 0) await reloadWorkspaceCaches();
       return outcome;
     },
@@ -129,8 +140,8 @@ const CADENCE: Record<JobType, Cadence> = {
   prune_attachments: (now) => nextMidnight(now),
   purge_workspaces: (now) => nextMidnight(now),
   vacuum: (now, settings) => inDays(settings.backupIntervalDays, now),
-  // No handler yet; checked rarely so an unimplemented job is not a hot loop.
-  archive_grow: (now) => inDays(1, now),
+  // Just after the hourly rollup, whose progress it waits on.
+  archive_grow: (now) => new Date(nextHour(now).getTime() + 5 * 60_000),
   maintenance_check: (now) => nextMidnight(now),
   backup: (now, settings) => inDays(settings.backupIntervalDays, now),
 };

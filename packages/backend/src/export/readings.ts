@@ -13,6 +13,7 @@
  */
 import type { Database } from "better-sqlite3";
 import type { Metric, ReadingResolution } from "@canopy/shared-types";
+import type { HourlyRow } from "../grow/archive.js";
 
 export const EXPORT_PAGE = 5000;
 
@@ -51,10 +52,17 @@ export function csvField(value: string | number | null | undefined): string {
 
 const nextTick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+/**
+ * `archived`, for hourly only, gives a metric's rows from the grows' archives
+ * (grow/archive.ts). Those older than anything live still holds go first, so
+ * the file stays in time order; any younger are rows a crash left in both
+ * places, and live has them.
+ */
 export async function* readingsCsv(
   db: Database,
   request: ExportRequest,
   deviceNames: ReadonlyMap<string, string>,
+  archived?: (metric: Metric) => HourlyRow[],
 ): AsyncGenerator<string> {
   const rollup = request.resolution !== "raw";
   const header = ["timestamp", "metric", "unit", rollup ? "average" : "value", ...(rollup ? ["min", "max"] : []), "device", "channel"];
@@ -73,7 +81,25 @@ export async function* readingsCsv(
     LIMIT ${EXPORT_PAGE}
   `);
 
+  const oldestLive = db.prepare(`
+    SELECT MIN(recorded_at) AS at FROM ${table}
+    WHERE workspace_id = ? AND metric = ? AND recorded_at >= ? AND recorded_at <= ?
+  `);
+
   for (const metric of request.metrics) {
+    if (archived && request.resolution === "hourly") {
+      const before = (oldestLive.get(request.workspaceId, metric, request.from, request.to) as { at: string | null }).at;
+      let chunk = "";
+      for (const r of archived(metric)) {
+        if (before !== null && r.recordedAt >= before) break;
+        chunk += [
+          r.recordedAt, metric, r.unit, Math.round(r.value * 10_000) / 10_000, r.minValue, r.maxValue,
+          deviceNames.get(r.deviceId) ?? r.deviceId, r.channel,
+        ].map(csvField).join(",") + "\n";
+      }
+      if (chunk) yield chunk;
+    }
+
     // Starting below every id takes in readings stamped exactly at `from`.
     let at = request.from;
     let id = -1;

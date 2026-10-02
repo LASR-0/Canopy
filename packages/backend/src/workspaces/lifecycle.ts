@@ -15,6 +15,7 @@
  * One live workspace always remains, since the app needs somewhere to be.
  */
 import { unlink } from "node:fs/promises";
+import { removeArchives } from "../grow/archive.js";
 import { join } from "node:path";
 import type { Database } from "better-sqlite3";
 import { WORKSPACE_RESTORE_DAYS } from "@canopy/shared-types";
@@ -110,9 +111,10 @@ const nextTick = () => new Promise<void>((resolve) => setImmediate(resolve));
 /**
  * Remove a deleted workspace for good. Readings have no foreign key to cascade
  * on and can run to millions, so they go first, in batches that yield. The
- * rest cascades from the workspace row, and photo files are removed by hand.
+ * rest cascades from the workspace row, and photo files and grow archives
+ * (in `archiveDir`, when given) are removed by hand.
  */
-export async function purgeWorkspace(db: Database, photoDir: string, id: string): Promise<void> {
+export async function purgeWorkspace(db: Database, photoDir: string, id: string, archiveDir?: string): Promise<void> {
   const w = find(db, id);
   if (!w.deleted_at) throw new WorkspaceStateError("Only a workspace in Recently deleted can be deleted for good");
 
@@ -122,16 +124,18 @@ export async function purgeWorkspace(db: Database, photoDir: string, id: string)
   }
   const photos = db.prepare(`SELECT id, content_type FROM journal_photos WHERE workspace_id = ?`).all(id) as
     { id: string; content_type: string }[];
+  const grows = (db.prepare(`SELECT id FROM grows WHERE workspace_id = ?`).all(id) as { id: string }[]).map((g) => g.id);
   db.prepare(`DELETE FROM workspaces WHERE id = ?`).run(id);
+  if (archiveDir) await removeArchives(archiveDir, grows);
   await Promise.all(photos.map((p) =>
     unlink(join(photoDir, `${p.id}.${PHOTO_EXT[p.content_type] ?? "bin"}`)).catch(() => undefined),
   ));
 }
 
 /** The daily job: workspaces deleted more than the restore window ago. */
-export async function purgeDeletedWorkspaces(db: Database, photoDir: string, now: Date = new Date()): Promise<{ purged: number }> {
+export async function purgeDeletedWorkspaces(db: Database, photoDir: string, now: Date = new Date(), archiveDir?: string): Promise<{ purged: number }> {
   const cutoff = new Date(now.getTime() - WORKSPACE_RESTORE_DAYS * DAY_MS).toISOString();
   const due = db.prepare(`SELECT id FROM workspaces WHERE deleted_at IS NOT NULL AND deleted_at <= ?`).all(cutoff) as { id: string }[];
-  for (const { id } of due) await purgeWorkspace(db, photoDir, id);
+  for (const { id } of due) await purgeWorkspace(db, photoDir, id, archiveDir);
   return { purged: due.length };
 }
