@@ -121,9 +121,9 @@ numbers. What remains:
 
 - **Actuator state ✅ built** (see "Before Phase 9", A). Devices' echoes are
   held and shown on the Overview and in Settings.
-- **No archive database.** Completed grows are never moved out of the live DB,
-  so it grows without bound. The `archive_grow` job type exists and has no
-  handler. See "Retention".
+- **Grow archives ✅ built** (see "Before Phase 9", D). The live database
+  was already bounded by retention; what grows lost was hourly detail, which
+  now moves into each grow's own archive instead of being pruned.
 - **Derived metrics: VPD done, DLI outstanding.** VPD is computed on the ingest
   path and stored under `device_id = "__derived__"`, so the Overview's VPD card
   fills once the canopy roles are assigned. DLI still needs PPFD integrated over
@@ -163,8 +163,6 @@ Overview. It is the one page with no prototype design behind it.
 
 ### Not started
 
-- **Archiving completed grows.** `archive_grow` is scheduled and has no
-  handler. See "Retention".
 - WebSocket has no per-workspace subscription filtering. `subscribe` /
   `unsubscribe` frames are parsed and then ignored, so every client receives
   every workspace's traffic. Harmless with one tent and one window; wrong as
@@ -481,7 +479,8 @@ Lifecycle: jobs keep running while `paused` (aggregating is monitoring);
 automations do not (acting is not). `stopped` halts both.
 
 Not done here, and both deliberately: **`archive_grow`** needs the separate
-archive-database design from "Retention" below, and **`maintenance_check`**
+archive-database design from "Retention" below (done since: "Before Phase 9",
+D), and **`maintenance_check`**
 cannot do anything useful while nothing accumulates device runtime hours. Both
 job types are rescheduled rather than repeatedly failed.
 
@@ -2085,9 +2084,62 @@ fixing before the real-device testing.
 7. **Still to check by hand**: the Logging page's 6H and 24H, and the
    loading overlay when opening a range for the first time.
 
-#### D. Archiving completed grows *(open)*
+#### D. Grow archives ✅ built — awaiting a hands-on check
 
-`archive_grow` is scheduled and has no handler. See "Retention".
+**Measured first, 2026-10-02, and the plan changed.** "Retention" planned
+moving completed grows out of the live database to keep it small. But the
+live database is already bounded: raw is pruned at 7 days, hourly at 90,
+and daily grows by a few thousand rows a year. At 0.2 readings a second per
+channel that is about 350 MB, nearly all of it raw, which no grow archive
+would touch. What a grow does lose is detail: 90 days on, only daily
+averages are left, and a grow often runs longer than that. Decided
+2026-10-02: **keep each grow's hourly detail, and fill in its summary.**
+
+1. **The hourly prune archives instead of deleting** rows that fall inside a
+   grow (`grow/archive.ts`, `archiveBeforePrune`, called from `prune_hourly`
+   with the cutoff the prune really uses, which the daily rollup may hold
+   back). They go into `archive/grow-<id>.db` in the data folder, during the
+   grow as much as after it, so a grow longer than the retention window
+   keeps all of it. Rows outside every grow are deleted as before. Raw is
+   not archived: hourly carries each hour's min and max, which is what a
+   past grow's chart draws, and a week of raw is a million rows.
+2. **Moving is two steps.** SQLite under WAL does not make a transaction
+   across attached databases atomic, so rows are inserted into the archive
+   first (ignoring any already there, by a unique key) and deleted from live
+   after. A crash between leaves a row in both, which the next prune
+   finishes and readers drop; it can never leave one in neither. If the
+   archiving throws, nothing is deleted.
+3. **Reading.** An hourly chart whose window reaches back past what live
+   holds adds the archived rows of the workspace's grows overlapping it
+   (`archivedHourly`, `withArchived`), and so does the hourly CSV export.
+   Daily is kept in live for good, so it needs nothing.
+4. **The environment summary**, which Compare in the Journal shows, had
+   been "stored at completion" since the first commit with nothing writing
+   it, so Compare's Avg VPD, Temp and RH were always "—". `archive_grow`
+   now works it out, hourly, for finished grows (completed or aborted)
+   without one, once the hourly rollup has run past the grow's end.
+   Temperature and humidity come from the **canopy** roles, as VPD does, so
+   a reservoir probe is never averaged in; with no role, that part stays
+   empty. Each hour counts once, with its own min and max for the range. A
+   grow from before this whose hourly rows are gone falls back to daily. A
+   grow with no readings is marked done, so it is not looked at again, and
+   any change of status clears it to be worked out again.
+5. **Export, import and deletion.** A `.canopy` export carries the archives
+   (`archive/…`, snapshotted with the backup API, as the database is).
+   Import copies each imported grow's archive under the grow's new id and
+   rewrites the workspace and device ids inside it. Deleting a workspace for
+   good removes its grows' archives.
+6. **Verified**: 13 new tests against real SQLite files (545 in total):
+   moving inside and outside grows, an active grow, the daily rollup's hold
+   on the cutoff, a re-run after a crash, a failed move deleting nothing,
+   reading back with live, the duplicate dropped, the summary with archived
+   hours and the reservoir left out, waiting on the rollup, an empty grow,
+   active grows left alone, deletion removing the files, and an export and
+   import carrying an archive with its ids remapped. The dev controller
+   picked up the new job and column, and the charts' timings are unchanged.
+7. **Still to check by hand**: complete or abort a grow, and after the next
+   hour's rollup see Compare's Avg VPD, Temp and RH filled in. The archiving
+   itself only shows after 90 days, so the tests stand in for it.
 
 #### E. After Phase 9, or with the first screen that needs it
 
@@ -2367,9 +2419,9 @@ Journal) · Service (Maintenance, Logging) · Config (Settings).
 GitHub style), not external modal dialogs, wherever possible.
 
 **Retention** — tiered: keep `raw` about a week, roll up to `hourly` / `daily`
-long-term. The live operational SQLite DB stays hot; a separate archive DB file
-is opened on demand for completed grows, keeping the live DB and its backups
-small. Rollups, archiving and `VACUUM INTO` backups run as internal scheduled
+long-term. The live operational SQLite DB stays hot, bounded by those windows.
+Each grow has its own archive file, opened on demand, holding its hourly
+readings once they age out of the live DB (see "Before Phase 9", D). Rollups, archiving and `VACUUM INTO` backups run as internal scheduled
 jobs (reusing the scheduler, not a separate cron).
 
 ---
