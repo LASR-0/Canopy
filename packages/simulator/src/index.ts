@@ -50,17 +50,23 @@ const CREDENTIAL_WAIT_MS = 30_000;
 async function fetchCredential(): Promise<{ username: string; password: string } | null> {
   const until = Date.now() + CREDENTIAL_WAIT_MS;
   while (Date.now() < until) {
-    try {
-      const res = await fetch(`${CONTROLLER_URL}/mqtt`);
-      const body = (await res.json()) as { data?: { username: string; password: string } };
-      if (body.data) return { username: body.data.username, password: body.data.password };
-    } catch {
-      // Not up yet.
-    }
+    const credential = await readCredential();
+    if (credential) return credential;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   console.warn(`[sim] no controller at ${CONTROLLER_URL} to read the broker credential from; connecting without one`);
   return null;
+}
+
+/** One attempt at reading the credential; null while the controller is not answering. */
+async function readCredential(): Promise<{ username: string; password: string } | null> {
+  try {
+    const res = await fetch(`${CONTROLLER_URL}/mqtt`, { signal: AbortSignal.timeout(2000) });
+    const body = (await res.json()) as { data?: { username: string; password: string } };
+    return body.data ? { username: body.data.username, password: body.data.password } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Mean-reverting random walk — drifts plausibly instead of jittering. */
@@ -234,7 +240,16 @@ async function main(): Promise<void> {
   let announceTimer: ReturnType<typeof setInterval> | null = null;
   let telemetryTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Every reconnect fires "connect" again. Timers left running from the last
+  // connection would publish the fleet once more per reconnect.
+  const stopTimers = (): void => {
+    if (announceTimer) clearInterval(announceTimer);
+    if (telemetryTimer) clearInterval(telemetryTimer);
+    announceTimer = telemetryTimer = null;
+  };
+
   client.on("connect", () => {
+    stopTimers();
     const sensors = FLEET.filter((d) => d.kind === "sensor").length;
     const actuators = FLEET.length - sensors;
     console.log(`[sim] connected — ${sensors} sensors, ${actuators} actuators, +1 Shelly announce`);
@@ -256,12 +271,23 @@ async function main(): Promise<void> {
 
   client.on("message", (topic, payload) => handleCommand(client, topic, payload));
   client.on("error", (err) => console.error("[sim] mqtt error:", err.message));
-  client.on("close", () => console.log("[sim] connection closed"));
+  client.on("close", () => {
+    console.log("[sim] connection closed");
+    stopTimers();
+    // The broker drops every client on the old password when Settings issues a
+    // new one. Read it again before mqtt.js reconnects (it uses these options
+    // on every attempt), or the simulator comes back with no valid login.
+    void readCredential().then((next) => {
+      if (!next || next.password === client.options.password) return;
+      client.options.username = next.username;
+      client.options.password = next.password;
+      console.log(`[sim] broker credential changed; reconnecting as ${next.username}`);
+    });
+  });
 
   const shutdown = (): void => {
     console.log("\n[sim] shutting down");
-    if (announceTimer) clearInterval(announceTimer);
-    if (telemetryTimer) clearInterval(telemetryTimer);
+    stopTimers();
     client.end(false, {}, () => process.exit(0));
   };
 
