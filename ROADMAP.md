@@ -172,7 +172,7 @@ Overview. It is the one page with no prototype design behind it.
   the renderer never *sends* a subscribe frame, so server-side filtering today
   would be either inert or would cut the UI off from its own data. Both halves
   belong with the first multi-tent screen.
-### Reading volume and query cost — measured, not yet optimised
+### Reading volume and query cost — measured, then optimised (before Phase 9, C)
 
 Loading the 6H and 24H ranges is slow. Measured on the dev database rather than
 guessed at, because the obvious diagnosis was wrong.
@@ -213,6 +213,7 @@ in the wrong place.
 Two things to do when this is picked up: move decimation into SQL, and give the
 chart cards a real loading state. The page currently holds the previous render at
 reduced opacity, which is right for a refetch and says nothing on a first load.
+Both done, 2026-10-02: see "Before Phase 9", C.
 
 ### Derived metrics — VPD lands, DLI does not
 
@@ -2049,10 +2050,40 @@ would likely pair with no topics: nothing ingested and nothing to command.
 The simulator uses full names, which is why nothing has shown it. Worth
 fixing before the real-device testing.
 
-#### C. Slow 6H and 24H charts *(open)*
+#### C. Slow 6H and 24H charts ✅ built — awaiting a hands-on check
 
-See "Reading volume and query cost": decimate in SQL, and give the chart
-cards a real loading state.
+1. **Measured first, 2026-10-02.** 24H was not slow: it reads the hourly
+   rollups, about 50 ms for all nine metrics. 6H reads raw rows, and took
+   411 ms for nine metrics on the dev database. SQLite found one metric's
+   5,472 rows in 25 ms through `idx_readings_raw_lookup`; the rest went on
+   building an object per row and then `decimate` dropping most of them,
+   with nine requests queued behind a synchronous driver.
+2. **The sample rate was doubled again**, by a second simulator: one started
+   by hand for a test in Phase 8 G, whose `npx` wrapper was killed but not
+   the simulator under it. Stopped. With one simulator the rate is back to
+   0.2 a second per channel.
+3. **Raw is thinned in SQL** (`readings/raw-series.ts`). The window is cut
+   into 2,000 equal time buckets per line, and SQLite keeps the first
+   reading of each, using its bare-column rule with `MIN(recorded_at)`.
+   Every point is still a real sample, never an average, since raw has no
+   min/max band to show an average's spread. Buckets are by time, so a gap
+   stays a gap. At 0.2 a second nothing is dropped up to almost three hours.
+   The bucket is integer milliseconds over an integer width: with
+   `julianday()` alone, a reading on a bucket's edge came out a hair short
+   and fell into the bucket before, and better-sqlite3 binds every
+   JavaScript number as REAL, so the parameters are cast. Rollups keep the
+   Drizzle query, with `decimate` left as a guard.
+4. **Result**: 6H for all nine metrics in about 210 ms, from 411; 1H in
+   58 ms, from 110. What remains is SQLite reading the rows in the window,
+   which is the only part still growing with the sample rate.
+5. **Loading state.** A range with nothing loaded yet shows "Loading
+   readings…" over the empty chart instead of an empty chart that reads as
+   "no data". A refetch still holds the old lines at reduced opacity.
+6. **Verified**: 7 tests against real SQLite (532 in total): no loss at the
+   normal rate, at most `limit` points, first sample per bucket, a reading
+   at exactly `to`, gaps kept, lines thinned separately, one device.
+7. **Still to check by hand**: the Logging page's 6H and 24H, and the
+   loading overlay when opening a range for the first time.
 
 #### D. Archiving completed grows *(open)*
 
