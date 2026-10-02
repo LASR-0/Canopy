@@ -119,10 +119,8 @@ This was the headline: a finished UI over a pipe that never delivered. The
 inbound half is closed as of Phase 3. Readings flow, so the Overview shows real
 numbers. What remains:
 
-- **No actuator state.** Commands go out and devices echo their new state on
-  the state topic, but ingestion treats that as proof of life only. Nothing
-  stores or reports whether a fan is actually running, so a rule can fire and
-  the UI still cannot show the result.
+- **Actuator state ✅ built** (see "Before Phase 9", A). Devices' echoes are
+  held and shown on the Overview and in Settings.
 - **No archive database.** Completed grows are never moved out of the live DB,
   so it grows without bound. The `archive_grow` job type exists and has no
   handler. See "Retention".
@@ -165,7 +163,6 @@ Overview. It is the one page with no prototype design behind it.
 
 ### Not started
 
-- **Actuator state.** See "The data pipe" above.
 - **Archiving completed grows.** `archive_grow` is scheduled and has no
   handler. See "Retention".
 - WebSocket has no per-workspace subscription filtering. `subscribe` /
@@ -427,8 +424,8 @@ when the service starts at boot without anyone present.
 
 Not done here: nothing records or reports **actuator state**. The device echoes
 it on the state topic and ingestion treats it as proof of life only, because
-there is no `ServerMessage` for it and no UI consuming one. Adding both belongs
-with the first screen that shows a control.
+there is no `ServerMessage` for it and no UI consuming one. Done since: see
+"Before Phase 9", A.
 
 ### Phase 5 — Scheduler ✅ done
 
@@ -858,6 +855,12 @@ Phase 7 is complete, apart from the small follow-ups noted under items 4, 5
 and 6. Those, and a walk through the running app, feed Phase 7.5.
 
 ### Phase 7.5 — Polish & additions ✅ done, apart from I
+
+**Checked by hand, 2026-10-02**: everything in B to G that shows on screen.
+Left until there is a setup with real data, rather than the simulator's:
+the exports and imports. That is the Logging report with its CSV and PNG,
+the quick CSV and PNG buttons (D.4), the Journal's PDF (E.2), and the
+`.canopy` export and import (F), including Electron's save dialogs.
 
 Everything needed before Canopy becomes a service. Most of it is polish or
 builds on pages that already work. Numbered 7.5 rather than renumbering, so
@@ -1983,6 +1986,81 @@ rather than the `.dmg`, because a disk image cannot run install scripts. The
 bundled Node runtime from A already covers darwin, so this is mostly the
 plist and the installer. Pick it up when there is a Mac to verify it on.
 Until then `mac:` stays in `electron-builder.yml`, but nothing is built for it.
+
+### Before Phase 9 — the remaining gaps
+
+Phase 9 starts once the functionality is where it should be. Listed
+2026-10-02, after Phase 8, in the order to build them. The ones that matter
+for real hardware come first.
+
+#### A. Actuator state ✅ done — two hands-on checks left (item 7)
+
+Decided 2026-10-02: **show state, no manual switch.** Switching stays with
+automations, so nothing in the UI fights the next automation tick. Shown on
+the Overview's device strip and on each control chip in Settings' device
+cards.
+
+1. **The device's word, not the last command.** `actuate` answers 202
+   because a command published at QoS 0 is not a device that acted. What a
+   channel reports on its state topic is held instead
+   (`device-manager/actuator-state.ts`).
+2. **Parsing.** The channel's declared words first, exactly as declared
+   (Home Assistant's `state_on` / `state_off`, now captured at discovery,
+   then `payload_on` / `payload_off`). Then on/off, true/false, 1/0 and
+   open/closed, in any case. A JSON object is read by its `state` (HA's JSON
+   schema), `POWER` (Tasmota) or `ison` (Shelly) key. A variable channel
+   also takes a level: `brightness` on its declared scale, Tasmota's
+   `Dimmer`, or a bare number echoed back. A dimmer's plain "ON" keeps the
+   last level it reported.
+3. **In memory only**, like the latest readings. The broker is embedded, so a
+   controller restart drops every device's connection, and firmware reports
+   its state again when it reconnects. A table would have meant a schema
+   change and an import path for something that returns within seconds.
+   `since` is when it changed as far as this controller has seen, so the
+   first report after a restart counts as a change.
+4. **Changes only.** Devices repeat their state on a timer, so a repeat is
+   not pushed. `actuator.state` is a new `ServerMessage`, and
+   `GET /workspaces/:id/actuators/state` is the snapshot the UI starts from.
+   `useActuatorStates` merges the two by `since`, the way `useLiveReadings`
+   merges readings by `ts`.
+5. **The UI** shows "On", "Off" or a dimmer's "40%", with when it changed on
+   hover. Nothing is shown until a channel has reported. An offline device's
+   last report is shown faded, and its tip says it may have changed.
+6. **Verified**: 34 new tests (525 in total): the parser across HA, Shelly,
+   Tasmota, declared and inverted words, levels and junk; changes-only;
+   dimmer levels kept; workspaces kept apart; the index's actuator bindings.
+   Against the running dev controller and simulator: all three actuators
+   reported, switching the pump on and off through `actuate` pushed each
+   echo to a websocket client in about 60 ms, and 6 s of the simulator's
+   repeats pushed nothing.
+7. **Checked by hand, 2026-10-02**: the tags on the Overview and in
+   Settings, their tooltips, both themes, live flips from `actuate`, and an
+   automation switching the pump. **Still to try**: an offline device's tag
+   fading, and the tags coming back after a controller restart.
+8. **Not covered**: a Shelly dimmer's level, which Gen 1 reports on
+   `light/0/status` rather than its state topic.
+
+#### B. Found on the way: abbreviated discovery keys *(open)*
+
+Home Assistant discovery allows abbreviated keys (`stat_t`, `cmd_t`,
+`pl_on`, `dev`, `ids`, and a `~` topic base), and ESPHome and Tasmota send
+them. `parseHaDiscovery` reads only the full names, so such a device
+would likely pair with no topics: nothing ingested and nothing to command.
+The simulator uses full names, which is why nothing has shown it. Worth
+fixing before the real-device testing.
+
+#### C. Slow 6H and 24H charts *(open)*
+
+See "Reading volume and query cost": decimate in SQL, and give the chart
+cards a real loading state.
+
+#### D. Archiving completed grows *(open)*
+
+`archive_grow` is scheduled and has no handler. See "Retention".
+
+#### E. After Phase 9, or with the first screen that needs it
+
+DLI, per-workspace WebSocket filtering, and keyboard-only use (7.5 I).
 
 ### Phase 9 — Setup View 3D render *(last)*
 
