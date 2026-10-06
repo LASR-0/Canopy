@@ -74,7 +74,7 @@ as blocked. All three were wrong. What follows was checked against the code.
 - **Broker publish ACL** — command topics are closed to MQTT clients, so nothing
   on the LAN can switch hardware. See "MQTT hardening".
 - **All eight pages are built** and wired to real endpoints; the Setup View
-  3D render is the one piece left, as Phase 9. See Phase 7.
+  3D render is the one piece left, under way as Phase 9. See Phase 7.
 - **Tests** — 359 passing across 20 files.
 
 ### Recently fixed (Phase 0)
@@ -150,8 +150,9 @@ and plants), `workspaces`,
 
 ### Placeholder pages
 
-None. Setup View was the last; its 3D mode is a deliberate placeholder until
-Phase 9.
+None. Setup View was the last. Its 3D mode draws the tent since Phase 9's
+spike, with generated equipment and stand-in plants until the plant pack
+replaces them.
 
 **Maintenance, Automation, Logging, Grow Cycle, Journal and Setup View are built** (Phase 7). Their CSS was
 ported wholesale from the prototype and resolves entirely against the existing
@@ -2229,6 +2230,109 @@ Settle two things before building:
   can't do this. Load it lazily when the view is opened, so it stays out of
   the main bundle.
 
+#### The spike ✅ done on WSLg, 2026-10-06 — Hyprland still to check
+
+Built as the real view rather than a throwaway, so what it draws stays
+(`components/setup3d/TentView.tsx`).
+
+1. **Renderer: three.js through react-three-fiber.** three 0.186,
+   @react-three/fiber 9. Loaded with `React.lazy` when 3D view is opened:
+   the `TentView` chunk is 2.2 MB (445 KB gzipped) and the main bundle has
+   no three.js in it.
+2. **WebGL on WSLg: off by default, the GPU once Mesa is pointed at it.**
+   WSL passes the Windows GPU through as `/dev/dxg`, which Mesa reaches with
+   its d3d12 driver, but Mesa here does not pick that driver itself. It
+   falls back to llvmpipe, Chromium's blocklist refuses llvmpipe, and with
+   the GPU off there is no WebGL at all (Chromium no longer falls back to
+   SwiftShader for WebGL without `--enable-unsafe-swiftshader`).
+   `GALLIUM_DRIVER=d3d12` is the whole fix: the blocklist accepts d3d12, and
+   no Chromium flag is needed. See "WSL2 (work)" for where it goes.
+   **It is not free, though:** with d3d12 the GPU composites the whole
+   window, and other components show visual bugs (seen 2026-10-07, not yet
+   pinned down). So it is set for a 3D session, not left on.
+3. **It cannot be set from the main process.** Chromium starts its GPU
+   process before Electron runs `main/index.ts`, so setting the variable
+   there arrives too late (checked: set in main, GPU still off). It belongs
+   in the environment the app starts from. Native Linux loads the real GPU's
+   driver and native Windows draws through Direct3D, so this is the WSL dev
+   machine's setting, not a product fix.
+4. **Measured** with a timed full turn (dev builds have a diagnostics bar
+   with the renderer and a Spin test button):
+
+   | Work machine, WSLg | Renderer | 3 s full turn |
+   |---|---|---|
+   | default | none: WebGL unavailable | — |
+   | `GALLIUM_DRIVER=d3d12` | Intel Iris Xe through D3D12 | 55 fps, worst frame 35 ms |
+   | llvmpipe, blocklist ignored | software | 38 fps, worst frame 77 ms |
+
+5. **No WebGL fails inside the view.** three throws while the canvas
+   mounts, and with nothing to catch it React unmounted the whole app to a
+   black window. An error boundary now shows "The 3D view needs WebGL" with
+   the reason, and the rest of the page keeps working.
+6. **What it draws.** The tent generated from its dimensions: four
+   uprights, top and bottom rails, the floor, four walls, and the door's
+   arch-topped zip on the front. Orthographic camera at true isometric
+   elevation (35.26°), yaw only: the arrow buttons or keys turn it by 45°, a
+   drag turns it freely and settles on the nearest of the eight views, as a
+   view cube does. Walls facing the camera fade out, so it reads as a
+   cutaway. The zoom fits the tent at every yaw, so turning never changes
+   its size. Pots at their real size from `POT_SIZES` with a low-poly plant,
+   and each placed device as a block with a nub on the side it faces
+   (`rotationDeg`). Grays follow the theme. Frames are drawn on demand, so
+   a still view costs nothing.
+7. **Still to check at home**: on Hyprland, `pnpm dev`, Setup View → 3D
+   view, read the diagnostics bar and press Spin test. Native Mesa should
+   give the real GPU with no setting.
+
+#### Next
+
+1. **Device and plant models** — equipment ✅ built, plant pack pending.
+   **Decided 2026-10-06: equipment generated, plants from a CC0 pack, and
+   plants follow the grow's stage.** Checked first: no CC0 pack has grow
+   equipment. Kenney's Furniture and Nature kits (downloaded) have a ceiling
+   fan, a ceiling lamp and kitchen appliances; Quaternius's catalogue is
+   game packs; Poly Pizza has one-off models in mixed styles and licences
+   (CC0 and CC-BY). An inline fan or a bar light is a few boxes and
+   cylinders, so generating them keeps everything to scale and in one style
+   with no files to ship.
+
+   - **One lookup** (`setup3d/models.ts`) maps a role to a model, with its
+     height and whether it hangs on cords or stands. By role, not family:
+     the family is the firmware (Shelly, Tasmota, ESPHome), which says
+     nothing about shape. A device with no role is a plain block. Keyed by
+     `RoleKind`, so a new role without a model fails to compile.
+   - **Fourteen generated models** (`setup3d/equipment.tsx`): inline fan on
+     two straps, clip fan, bar LED light sized to the tent (70 % of the
+     footprint, 40–110 cm) on four cords, hanging temperature/humidity
+     sensor, light-sensor puck, CO₂ monitor, soil stake, reservoir meter
+     with pen probe, smart plug, 20 L reservoir bucket with the pump's line,
+     humidifier, dehumidifier, oil-filled radiator and CO₂ cylinder with
+     regulator. A model's base sits at the mounting height, held inside the
+     tent, and turns with `rotationDeg`.
+   - **Plants by stage** (`setup3d/plants.tsx`), from `calcGrowStage`:
+     seedling 6–14 cm, growing through veg, stretching in the first half of
+     flower, full in flush, all kept under the light for the tent's height.
+     No active grow draws mid-veg. The shape is a stand-in (stem and tiers)
+     until the pack's models replace it at the same size.
+   - **Plant pack: Quaternius's Ultimate Crops** has growth stages of
+     several crops (a tomato plant reads as a generic grow plant). It is on
+     Google Drive, in OBJ/FBX/Blend only, and Drive refused the download on
+     2026-10-06 ("quota exceeded"). Retry; convert the chosen stages to GLB
+     once, and force their material to the palette. Kenney's Nature Kit is
+     in hand (CC0, GLB) but its plants are ground-cover bushes.
+   - **Seen with the dev data**: every device sits at the default 100 cm
+     mounting height (`DEFAULT_MOUNT_CM`), so the reservoir bucket floats
+     beside the light. The 3D view shows the plan as it is; a default by
+     role (floor equipment at 0, the light high) belongs to Layout.
+2. **The tent's detail**: a roof panel, the corner connectors, door
+   proportions for very small and very large tents, and perhaps a faint
+   floor grid at Layout's grid step.
+3. **Read-only touches**: a device's name and role on hover, perhaps its
+   live reading; selecting one could open it in Layout. Nothing is
+   controlled from the view.
+4. **Robustness**: recover from a lost WebGL context, free GPU memory on
+   leaving the view, and check a 600 × 600 × 300 cm tent full of equipment.
+
 
 ### After Phase 9 — real devices, then TLS
 
@@ -2321,6 +2425,23 @@ re-resolve.
 - **Enable systemd** in `/etc/wsl.conf` (`[boot]\nsystemd=true`) so the Phase 8
   service unit can be developed and tested at work too.
 - WSLg handles the Electron GUI; `--no-sandbox` may be needed.
+- **WebGL needs `GALLIUM_DRIVER=d3d12`.** Without it Mesa falls back to
+  llvmpipe, Chromium blocklists that, and Setup View's 3D view has no WebGL.
+  **Set it per run, only when working on the 3D view**, not in the shell
+  profile: it moves the whole window onto the GPU, and other components then
+  show visual bugs (seen 2026-10-07, not yet pinned down). WSL only; native
+  Linux has no d3d12 driver. It cannot be set from Electron's main process
+  (Phase 9, the spike):
+
+  ```bash
+  GALLIUM_DRIVER=d3d12 pnpm dev
+  ```
+
+- **`ELECTRON_RUN_AS_NODE=1` makes Electron run as plain Node** (`ipcMain`
+  is undefined at startup). Shells started by VS Code extensions inherit it
+  from the extension host; seen in Claude Code's shell, 2026-10-06.
+  electron-vite passes the environment through, so `pnpm dev` from such a
+  shell fails the same way. Unset it first.
 - **Corporate TLS interception.** The work network MITMs TLS — the certificate
   served for `registry.npmjs.org` is issued by `CN=firewall.intern.ksb.com`, not
   by a public root. Windows git survives this because it uses the `schannel`
