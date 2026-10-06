@@ -312,9 +312,12 @@ function WorkspaceRow({ workspace, isActive, isOnly, isLast, onDelete, onArchive
           <Tip content="Only used when the canopy light sensor reads lux: it converts lux to PPFD for DLI, and depends on the light's spectrum. DLI from lux is shown as an estimate.">
             <label>Grow light</label>
           </Tip>
-          <select className="role-select ws-light" value={light} onChange={(e) => setLight(e.target.value as GrowLightType)}>
-            {GROW_LIGHT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <Select value={light} onValueChange={(v) => setLight(v as GrowLightType)}>
+            <SelectTrigger className="ws-light"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {GROW_LIGHT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           {light === "custom" && (
             <input
               value={factor}
@@ -821,7 +824,7 @@ export function Settings() {
               )}
             {settings && (
               <div>
-                <div className="sec-head" style={{ marginTop: 0 }}>
+                <div className="sec-head" style={{ marginTop: 28 }}>
                   <h2>Device connections</h2><span className="rule" />
                 </div>
                 <BrokerSettings />
