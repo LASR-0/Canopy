@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent, type ReactNode } from "react";
 import { ContentHeader } from "@/components/ContentHeader";
 import { PageBody } from "@/components/PageBody";
 import { Icon, type IconName } from "@/components/Icon";
@@ -622,6 +622,9 @@ function Panel({ icon, title, count, children }: { icon: IconName; title: string
   );
 }
 
+/** three.js is large, so the 3D view loads only when it is opened. */
+const TentView = lazy(() => import("@/components/setup3d/TentView"));
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function SetupView() {
@@ -751,21 +754,9 @@ export function SetupView() {
             />
 
             {mode === "3d" ? (
-              <div className="plan-box">
-                <div className="set-empty" style={{ margin: 0, padding: "60px 40px", border: "none" }}>
-                  <div className="se-ico"><Icon name="cube" size={28} /></div>
-                  <h2>3D view</h2>
-                  <p>
-                    An isometric render of this tent is coming later. Your{" "}
-                    <b>{dims.widthCm}×{dims.depthCm}×{dims.heightCm} cm</b> enclosure, {pins.length} placed
-                    device{pins.length === 1 ? "" : "s"} and {plants.length} plant{plants.length === 1 ? "" : "s"} will
-                    render here. Placement stays in <b>Layout</b>.
-                  </p>
-                  <div className="se-actions">
-                    <button className="btn" onClick={() => setMode("layout")}><Icon name="map" size={14} /> Back to Layout</button>
-                  </div>
-                </div>
-              </div>
+              <Suspense fallback={<div className="plan-box tent-3d-loading">Loading 3D view…</div>}>
+                <TentView dims={dims} devices={pins.map((p) => ({ placement: p.placement, role: p.role }))} plants={plants} />
+              </Suspense>
             ) : (
               <div className="sv-layout">
                 <div className="plan-box">

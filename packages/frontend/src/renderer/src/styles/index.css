@@ -1091,6 +1091,18 @@ body {
 .plan-head { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-bottom: 1px solid var(--border-default); background: var(--canvas-subtle); }
 .plan-head h3 { font-size: 12.5px; font-weight: 600; }
 .plan-head .ph-hint { margin-left: auto; font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); display: flex; align-items: center; gap: 5px; }
+/* Setup View → 3D (components/setup3d/TentView.tsx). */
+.tent-3d { height: 560px; cursor: grab; touch-action: none; outline: none; }
+.tent-3d:active { cursor: grabbing; }
+.tent-3d-fallback, .tent-3d-loading { display: grid; place-items: center; height: 100%; font-size: 12.5px; color: var(--fg-muted); }
+.tent-3d-loading { height: 640px; }
+.tent-3d-fallback { text-align: center; line-height: 1.6; padding: 0 24px; }
+.tent-3d-error { font-family: var(--mono); font-size: 11px; color: var(--fg-subtle); }
+.tent-3d-diag { font-family: var(--mono); }
+.tent-3d-renderer { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tent-3d-hw { color: var(--success-fg); }
+.tent-3d-sw { color: var(--attention-fg); }
+.tent-3d-diag .pf-scale .btn { margin-left: 8px; padding: 2px 9px; font-size: 11.5px; }
 .plan-canvas { position: relative; padding: 22px; background:
    repeating-linear-gradient(0deg, transparent, transparent 23px, var(--border-muted) 23px, var(--border-muted) 24px),
    repeating-linear-gradient(90deg, transparent, transparent 23px, var(--border-muted) 24px); }
@@ -1691,10 +1703,17 @@ body {
   cursor: pointer;
 }
 [data-slot="select-item"][data-highlighted],
-[data-slot="select-item"]:focus {
+[data-slot="select-item"]:focus,
+[data-slot="select-item"]:hover {
   background: var(--canvas-hover);
   color: var(--fg-default);
   outline: none;
+}
+/* Radix highlights the selected item on open and only moves the highlight on
+   pointer events it recognises, so under the pointer the hovered item alone
+   is grey — never it and the selected one together. */
+[data-slot="select-content"]:hover [data-slot="select-item"]:not(:hover) {
+  background: transparent;
 }
 
 /* ── workspace picker popover ──────────────────────────────── */
@@ -1796,7 +1815,7 @@ body {
 .ws-mgmt-form { display: flex; flex-direction: column; gap: 10px; width: fit-content; margin-inline: auto; }
 .ws-mgmt-form .gc-field input { width: 0; min-width: 100%; box-sizing: border-box; }
 .ws-mgmt-form .gc-field .ws-light { width: 0; min-width: 100%; max-width: none; box-sizing: border-box; }
-.ws-mgmt-form .gc-field input + input, .ws-mgmt-form .gc-field select + input { margin-top: 6px; }
+.ws-mgmt-form .gc-field input + input, .ws-mgmt-form .gc-field .ws-light ~ input { margin-top: 6px; }
 .ws-mgmt-actions { display: flex; gap: 8px; margin-top: 2px; }
 /* One line each: a wrapped "Are you sure?" made the row two lines tall and
    stretched the buttons beside it. Armed, the delete also sets smaller. */
