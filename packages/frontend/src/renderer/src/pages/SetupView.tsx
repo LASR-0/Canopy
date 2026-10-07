@@ -755,7 +755,12 @@ export function SetupView() {
 
             {mode === "3d" ? (
               <Suspense fallback={<div className="plan-box tent-3d-loading">Loading 3D view…</div>}>
-                <TentView dims={dims} devices={pins.map((p) => ({ placement: p.placement, role: p.role }))} plants={plants} />
+                <TentView
+                  dims={dims}
+                  devices={pins.map((p) => ({ placement: p.placement, name: p.device.name, role: p.role }))}
+                  plants={plants}
+                  onOpen={(item) => { setSel(item); setMode("layout"); }}
+                />
               </Suspense>
             ) : (
               <div className="sv-layout">

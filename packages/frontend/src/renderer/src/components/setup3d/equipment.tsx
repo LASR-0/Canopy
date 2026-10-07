@@ -15,7 +15,8 @@ import * as THREE from "three";
 import type { EnclosureDimensions } from "@canopy/shared-types";
 import type { ModelKind } from "./models";
 import type { Palette } from "./palette";
-import { LeafMark, mergeGeometries } from "./leaf";
+import { mergeGeometries } from "./bake";
+import { LeafMark } from "./leaf";
 import { Box, Cords, Cyl, ALONG_X, ALONG_Z, type V3 } from "./shapes";
 
 export interface Duct {
@@ -136,16 +137,15 @@ function ClipFan({ p }: ModelProps) {
 /**
  * An LED panel light, sized to the tent as growers size theirs: about 70 % of
  * the width, between 40 and 110 cm across and inside the walls. Its base is the emitting face, so
- * the mounting height is the light's height above the floor. The face glows,
- * and casts a warm, shadowed light down onto the canopy.
+ * the mounting height is the light's height above the floor. The face glows;
+ * the light it gives is the tent's one overhead light (`Lights` in tent.tsx),
+ * however many panels there are.
  */
 function LedLight({ p, dims, roofY }: ModelProps) {
   const across = Math.min(dims.widthCm, dims.depthCm);
   // Never wider than the tent leaves room for, however small it is.
   const s = Math.min(110, across - 8, Math.max(40, across * 0.7));
   const depth = s * 0.55;
-  const target = useMemo(() => new THREE.Object3D(), []);
-  const spread = Math.atan2(Math.max(dims.widthCm, dims.depthCm) * 0.6, Math.max(40, roofY + 40));
   const hang: [number, number][] = [[-s / 2 + 4, 0], [s / 2 - 4, 0]];
   return (
     <>
@@ -162,20 +162,6 @@ function LedLight({ p, dims, roofY }: ModelProps) {
         </group>
       ))}
       <Cords at={hang} fromY={16} toY={roofY} color={p.cord} />
-      <primitive object={target} position={[0, -100, 0]} />
-      <spotLight
-        position={[0, -0.5, 0]}
-        target={target}
-        color={p.led}
-        intensity={1.3}
-        decay={0}
-        angle={Math.min(1.2, spread + 0.25)}
-        penumbra={0.9}
-        castShadow
-        shadow-mapSize={[1024, 1024]}
-        shadow-bias={-0.0005}
-        shadow-normalBias={0.4}
-      />
     </>
   );
 }

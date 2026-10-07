@@ -11,12 +11,14 @@
  * look at when the view is slow or blank on a new machine.
  */
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Canvas, invalidate, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, invalidate, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { DevicePlacement, EnclosureDimensions, Plant, RoleKind } from "@canopy/shared-types";
 import { Icon } from "@/components/Icon";
+import { ROLE_META } from "@/lib/roles";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { calcGrowStage } from "@/lib/growStage";
+import { Baked } from "./bake";
 import { Equipment, type Duct } from "./equipment";
 import { MODEL_SPECS, modelFor } from "./models";
 import { PALETTE, type Palette } from "./palette";
@@ -26,13 +28,30 @@ import { Lights, RAIL_DROP_CM, Tent } from "./tent";
 
 export interface PlacedDevice {
   placement: DevicePlacement;
+  name: string;
   role: RoleKind | undefined;
 }
+
+/** Something in the tent that can be opened in Layout. */
+export interface TentItem { kind: "device" | "plant"; id: string }
 
 export interface TentViewProps {
   dims: EnclosureDimensions;
   devices: PlacedDevice[];
   plants: Plant[];
+  /** Clicking a device or plant: Setup View selects it in Layout. */
+  onOpen?: (item: TentItem) => void;
+}
+
+/**
+ * Hover and click on things in the tent. The tooltip is a DOM element updated
+ * directly, not React state: a re-render per pointer move would rebuild the
+ * scene's children and redraw the overhead shadow on every move.
+ */
+interface Pointing {
+  show: (e: ThreeEvent<PointerEvent>, title: string, detail: string) => void;
+  hide: () => void;
+  open: (e: ThreeEvent<MouseEvent>, item: TentItem) => void;
 }
 
 const STEP = Math.PI / 4;
@@ -40,7 +59,8 @@ const SPIN_SECONDS = 3;
 
 const FACES = ["Front", "Front-right", "Right", "Back-right", "Back", "Back-left", "Left", "Front-left"];
 
-export interface SpinResult { fps: number; worstMs: number }
+/** Draw calls and triangles are the last frame's, shadow passes included. */
+export interface SpinResult { fps: number; worstMs: number; calls: number; triangles: number }
 
 interface GlInfo { version: string; renderer: string; software: boolean }
 
@@ -101,7 +121,8 @@ function Rig({ dims, yaw, onSpinDone }: { dims: EnclosureDimensions; yaw: React.
       if (elapsed >= SPIN_SECONDS) {
         y.spin = null;
         y.current = y.target = s.start;
-        onSpinDone({ fps: s.frames / elapsed, worstMs: s.worstMs });
+        const { calls, triangles } = state.gl.info.render;
+        onSpinDone({ fps: s.frames / elapsed, worstMs: s.worstMs, calls, triangles });
       }
       state.invalidate();
     } else {
@@ -127,17 +148,28 @@ function Rig({ dims, yaw, onSpinDone }: { dims: EnclosureDimensions; yaw: React.
  * base, held inside the tent; hung models get cords up to the roof rails, and
  * inline fans a duct out through the wall they point at.
  */
-function DeviceMesh({ dims, device, palette }: { dims: EnclosureDimensions; device: PlacedDevice; palette: Palette }) {
-  const { placement, role } = device;
+function DeviceMesh({ dims, device, palette, pointing }: {
+  dims: EnclosureDimensions; device: PlacedDevice; palette: Palette; pointing: Pointing;
+}) {
+  const { placement, role, name } = device;
   const kind = modelFor(role);
   const baseY = Math.min(Math.max(placement.zCm, 0), Math.max(0, dims.heightCm - MODEL_SPECS[kind].heightCm));
   const [x, , z] = toScene(dims, placement.xCm, placement.yCm, 0);
   // 0° faces the door (+z), clockwise seen from above; three.js turns counter-clockwise.
   const rotationY = (-placement.rotationDeg * Math.PI) / 180;
+  const roofY = dims.heightCm - RAIL_DROP_CM - baseY;
   const duct = kind === "inline_fan" ? ductTo(dims, x, z, rotationY, role === "intake" ? -1 : 1) : undefined;
   return (
-    <group position={[x, baseY, z]} rotation={[0, rotationY, 0]}>
-      <Equipment kind={kind} p={palette} dims={dims} roofY={dims.heightCm - RAIL_DROP_CM - baseY} duct={duct} />
+    <group
+      position={[x, baseY, z]}
+      rotation={[0, rotationY, 0]}
+      onPointerMove={(e) => pointing.show(e, name, role ? ROLE_META[role].name : "No role")}
+      onPointerOut={pointing.hide}
+      onClick={(e) => pointing.open(e, { kind: "device", id: placement.deviceId })}
+    >
+      <Baked version={JSON.stringify([kind, dims, roofY, duct])}>
+        <Equipment kind={kind} p={palette} dims={dims} roofY={roofY} duct={duct} />
+      </Baked>
     </group>
   );
 }
@@ -199,7 +231,7 @@ function readGlInfo(gl: THREE.WebGLRenderer): GlInfo {
   };
 }
 
-export default function TentView({ dims, devices, plants }: TentViewProps) {
+export default function TentView({ dims, devices, plants, onOpen }: TentViewProps) {
   const palette = PALETTE;
   const { data: grow } = useActiveGrow();
   const stageInfo = grow ? calcGrowStage(grow) : undefined;
@@ -209,7 +241,50 @@ export default function TentView({ dims, devices, plants }: TentViewProps) {
   const [glInfo, setGlInfo] = useState<GlInfo | null>(null);
   const [glFailed, setGlFailed] = useState(false);
   const [spin, setSpin] = useState<SpinResult | "running" | null>(null);
-  const drag = useRef<{ x: number; startYaw: number } | null>(null);
+  // A lost context (a driver reset, the GPU process restarting) usually comes
+  // back by itself; until it does, or if it never does, the view says so and
+  // offers a fresh canvas.
+  const [contextLost, setContextLost] = useState(false);
+  const [canvasKey, setCanvasKey] = useState(0);
+  const liveCanvas = useRef<HTMLCanvasElement | null>(null);
+  const drag = useRef<{ x: number; startYaw: number; moved: boolean } | null>(null);
+  // Whether the press that ends in a click turned the tent, so a drag that
+  // starts on a device does not also open it.
+  const lastPressMoved = useRef(false);
+  const box = useRef<HTMLDivElement>(null);
+  const tip = useRef<HTMLDivElement>(null);
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+
+  const pointing = useMemo<Pointing>(() => {
+    const hide = () => {
+      if (tip.current) tip.current.hidden = true;
+      if (box.current) box.current.style.cursor = "";
+    };
+    return {
+      hide,
+      show: (e, title, detail) => {
+        e.stopPropagation();
+        const t = tip.current;
+        const b = box.current;
+        if (!t || !b || drag.current?.moved || yaw.current.spin) return hide();
+        const rect = b.getBoundingClientRect();
+        t.firstElementChild!.textContent = title;
+        t.children[1]!.textContent = detail;
+        t.hidden = false;
+        const left = e.clientX - rect.left + 14;
+        t.style.left = `${left + t.offsetWidth > rect.width ? left - t.offsetWidth - 28 : left}px`;
+        t.style.top = `${e.clientY - rect.top + 14}px`;
+        if (onOpenRef.current) b.style.cursor = "pointer";
+      },
+      open: (e, item) => {
+        e.stopPropagation();
+        if (lastPressMoved.current) return;
+        hide();
+        onOpenRef.current?.(item);
+      },
+    };
+  }, []);
 
   const turn = useCallback((steps: number) => {
     const y = yaw.current;
@@ -232,11 +307,15 @@ export default function TentView({ dims, devices, plants }: TentViewProps) {
   // as a view cube does.
   const onPointerDown = (e: React.PointerEvent) => {
     if (yaw.current.spin) return;
-    drag.current = { x: e.clientX, startYaw: yaw.current.target };
+    drag.current = { x: e.clientX, startYaw: yaw.current.target, moved: false };
+    lastPressMoved.current = false;
     (e.target as Element).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drag.current) return;
+    if (!drag.current.moved && Math.abs(e.clientX - drag.current.x) < 4) return;
+    drag.current.moved = true;
+    pointing.hide();
     const y = yaw.current;
     y.target = drag.current.startYaw - (e.clientX - drag.current.x) * 0.01;
     y.current = y.target;
@@ -244,6 +323,7 @@ export default function TentView({ dims, devices, plants }: TentViewProps) {
   };
   const onPointerUp = () => {
     if (!drag.current) return;
+    lastPressMoved.current = drag.current.moved;
     drag.current = null;
     turn(0);
   };
@@ -259,6 +339,7 @@ export default function TentView({ dims, devices, plants }: TentViewProps) {
         </div>
       </div>
       <div
+        ref={box}
         className="tent-3d"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -276,20 +357,58 @@ export default function TentView({ dims, devices, plants }: TentViewProps) {
             frameloop="demand"
             dpr={[1, 2]}
             camera={{ near: 1, far: 5000, position: [0, 0, 2000] }}
-            shadows="soft"
+            key={canvasKey}
+            shadows="percentage"
             gl={{ antialias: true, powerPreference: "high-performance", toneMapping: THREE.NeutralToneMapping }}
-            onCreated={({ gl }) => setGlInfo(readGlInfo(gl))}
+            onCreated={({ gl }) => {
+              setGlInfo(readGlInfo(gl));
+              const canvas = gl.domElement;
+              liveCanvas.current = canvas;
+              // Only the live canvas counts: a replaced one is released on purpose.
+              canvas.addEventListener("webglcontextlost", () => {
+                if (canvas === liveCanvas.current) setContextLost(true);
+              });
+              canvas.addEventListener("webglcontextrestored", () => {
+                if (canvas !== liveCanvas.current) return;
+                // three re-uploads everything itself; the re-render redraws the overhead shadow.
+                setContextLost(false);
+                invalidate();
+              });
+            }}
             fallback={<div className="tent-3d-fallback">WebGL is not available on this machine, so the 3D view cannot be drawn.</div>}
           >
-            <Lights dims={dims} yaw={yaw} />
+            <Lights dims={dims} yaw={yaw} growLight={devices.some((d) => d.role === "light") ? palette.led : undefined} />
             <Rig dims={dims} yaw={yaw} onSpinDone={setSpin} />
             <Tent dims={dims} palette={palette} yaw={yaw} />
-            {plants.map((p) => (
-              <PlantInPot key={p.id} plant={p} dims={dims} growth={growth} palette={palette} position={toScene(dims, p.xCm, p.yCm, 0)} />
+            {plants.map((p, i) => (
+              <group
+                key={p.id}
+                onPointerMove={(e) => pointing.show(e, p.label || `Plant ${i + 1}`, `${p.potLitres} L pot`)}
+                onPointerOut={pointing.hide}
+                onClick={(e) => pointing.open(e, { kind: "plant", id: p.id })}
+              >
+                <PlantInPot plant={p} dims={dims} growth={growth} palette={palette} position={toScene(dims, p.xCm, p.yCm, 0)} />
+              </group>
             ))}
-            {devices.map((d) => <DeviceMesh key={d.placement.deviceId} dims={dims} device={d} palette={palette} />)}
+            {devices.map((d) => <DeviceMesh key={d.placement.deviceId} dims={dims} device={d} palette={palette} pointing={pointing} />)}
           </Canvas>
         </WebGlBoundary>
+        <div ref={tip} className="tent-3d-tip" hidden>
+          <b />
+          <span />
+          {onOpen && <small>Click to open in Layout</small>}
+        </div>
+        {contextLost && (
+          <div className="tent-3d-fallback tent-3d-lost">
+            <span>
+              The graphics driver reset, so the 3D view stopped drawing.
+              <br />
+              <button className="btn" onClick={() => { setContextLost(false); setCanvasKey((k) => k + 1); }}>
+                Redraw
+              </button>
+            </span>
+          </div>
+        )}
       </div>
       {import.meta.env.DEV && (
         <div className="plan-foot tent-3d-diag">
@@ -306,7 +425,7 @@ export default function TentView({ dims, devices, plants }: TentViewProps) {
             {spin === "running"
               ? "Spinning…"
               : spin
-                ? `${spin.fps.toFixed(0)} fps · worst frame ${spin.worstMs.toFixed(1)} ms`
+                ? `${spin.fps.toFixed(0)} fps · worst frame ${spin.worstMs.toFixed(1)} ms · ${spin.calls} draws · ${(spin.triangles / 1000).toFixed(0)}k tris`
                 : null}
             <button className="btn" onClick={startSpin} disabled={spin === "running" || !glInfo}>Spin test</button>
           </span>

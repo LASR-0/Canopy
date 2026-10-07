@@ -8,10 +8,11 @@
  * Only the front's zip is a door, so only the front shows it while closed.
  */
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { EnclosureDimensions } from "@canopy/shared-types";
 import type { Palette } from "./palette";
+import { Baked } from "./bake";
 import { cameraDir, type YawState } from "./rig";
 import { Box, Cyl, ALONG_X, ALONG_Z, type V3 } from "./shapes";
 
@@ -244,33 +245,28 @@ export function Tent({ dims, palette, yaw }: { dims: EnclosureDimensions; palett
         <Vent at={[d / 2 - 22, Math.min(18, h * 0.15), 0]} palette={palette} />
       </Wall>
       <Wall width={d} height={h} position={[w / 2, 0, 0]} normal={[1, 0]} palette={palette} yaw={yaw} />
-      <Seams dims={dims} palette={palette} />
-      <Poles dims={dims} palette={palette} />
+      <Baked version={JSON.stringify(dims)}>
+        <Seams dims={dims} palette={palette} />
+        <Poles dims={dims} palette={palette} />
+      </Baked>
     </group>
   );
 }
 
 /**
  * Daylight that turns with the camera: a sky-and-ground fill, and a key light
- * over the viewer's shoulder casting soft shadows. Kept on the viewer's side so
- * every one of the eight views is lit the same way.
+ * over the viewer's shoulder, so every one of the eight views is lit the same
+ * way. Shadows come only from the overhead light, which never moves, so a
+ * turn redraws the scene once a frame and no shadow map at all.
  */
-export function Lights({ dims, yaw }: { dims: EnclosureDimensions; yaw: React.RefObject<YawState> }) {
+export function Lights({ dims, yaw, growLight }: {
+  dims: EnclosureDimensions;
+  yaw: React.RefObject<YawState>;
+  /** The grow light's colour when the tent has one; without, the overhead light is plain daylight. */
+  growLight: string | undefined;
+}) {
   const key = useRef<THREE.DirectionalLight>(null);
   const centre = useMemo(() => new THREE.Vector3(0, dims.heightCm / 2, 0), [dims.heightCm]);
-  const reach = Math.max(dims.widthCm, dims.depthCm, dims.heightCm) * 0.9;
-
-  useEffect(() => {
-    const l = key.current;
-    if (!l) return;
-    const cam = l.shadow.camera;
-    cam.left = cam.bottom = -reach;
-    cam.right = cam.top = reach;
-    cam.near = 1;
-    cam.far = 6000;
-    cam.updateProjectionMatrix();
-    l.shadow.needsUpdate = true;
-  }, [reach]);
 
   useFrame(() => {
     const l = key.current;
@@ -283,16 +279,52 @@ export function Lights({ dims, yaw }: { dims: EnclosureDimensions; yaw: React.Re
   return (
     <>
       <hemisphereLight args={["#ffffff", "#d6cdbf", 1.75]} />
-      <directionalLight
-        ref={key}
-        intensity={1.9}
-        color="#fffaf2"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-bias={-0.0004}
-        shadow-normalBias={0.4}
-        shadow-radius={4}
-      />
+      <directionalLight ref={key} intensity={1.9} color="#fffaf2" />
+      <OverheadLight dims={dims} color={growLight ?? "#fffaf2"} intensity={growLight ? 0.9 : 0.6} />
     </>
+  );
+}
+
+/**
+ * One light straight down over the whole footprint, and the only one casting
+ * shadows: the grow lights' warm light however many panels hang there, or
+ * daylight in a tent without one. It never moves, so its shadow map is redrawn
+ * only when what is in the tent changes (any render of this component), not
+ * on every frame of a turn; nine panels do not cost nine shadow maps.
+ */
+function OverheadLight({ dims, color, intensity }: { dims: EnclosureDimensions; color: string; intensity: number }) {
+  const light = useRef<THREE.DirectionalLight>(null);
+  const invalidate = useThree((s) => s.invalidate);
+  const reach = Math.max(dims.widthCm, dims.depthCm) / 2 + 10;
+
+  useEffect(() => {
+    const l = light.current;
+    if (!l) return;
+    const cam = l.shadow.camera;
+    cam.left = cam.bottom = -reach;
+    cam.right = cam.top = reach;
+    cam.near = 1;
+    cam.far = dims.heightCm + 100;
+    cam.updateProjectionMatrix();
+    l.shadow.autoUpdate = false;
+  }, [reach, dims.heightCm]);
+
+  useEffect(() => {
+    if (light.current) light.current.shadow.needsUpdate = true;
+    invalidate();
+  });
+
+  return (
+    <directionalLight
+      ref={light}
+      // A hair off vertical: straight down leaves the shadow camera no "up".
+      position={[0, dims.heightCm + 50, 0.01]}
+      color={color}
+      intensity={intensity}
+      castShadow
+      shadow-mapSize={[2048, 2048]}
+      shadow-bias={-0.0004}
+      shadow-normalBias={0.4}
+    />
   );
 }

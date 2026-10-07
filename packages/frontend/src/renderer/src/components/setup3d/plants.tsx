@@ -14,7 +14,8 @@ import * as THREE from "three";
 import type { EnclosureDimensions, GrowStageName, Plant } from "@canopy/shared-types";
 import { potSize } from "@canopy/shared-types";
 import type { Palette } from "./palette";
-import { fanLeafGeometry, mergeGeometries } from "./leaf";
+import { Baked, mergeGeometries } from "./bake";
+import { fanLeafGeometry } from "./leaf";
 import { Box, Cyl } from "./shapes";
 
 export interface Growth {
@@ -73,7 +74,9 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
   const seedling = stage === "seedling";
   const flowering = stage === "flowering" || stage === "flush" || stage === "harvest";
   const late = stage === "flush" || stage === "harvest";
-  const leafUnit = fanLeafGeometry(1, seedling ? 5 : 7, 7);
+  // Five teeth a side read as serrated at any size the view draws a plant, at
+  // two-thirds the triangles of seven: a full 6 m tent is 36 plants.
+  const leafUnit = fanLeafGeometry(1, seedling ? 5 : 7, 5);
 
   const leaves: THREE.BufferGeometry[] = [];
   const leavesDark: THREE.BufferGeometry[] = [];
@@ -233,7 +236,9 @@ export function PlantInPot({ plant, dims, growth, palette, position }: {
   const size = plantSize(growth, dims, pot.heightCm);
   return (
     <group position={position}>
-      <FabricPot diameterCm={pot.diameterCm} heightCm={pot.heightCm} p={palette} />
+      <Baked version={`${pot.diameterCm}|${pot.heightCm}`}>
+        <FabricPot diameterCm={pot.diameterCm} heightCm={pot.heightCm} p={palette} />
+      </Baked>
       <group position={[0, pot.heightCm * 0.94, 0]}>
         <PlantShape {...size} stage={growth.stage} seed={plant.id} p={palette} />
       </group>

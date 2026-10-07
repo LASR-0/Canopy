@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
+import { mergeGeometries } from "./bake";
 
 /**
  * One leaflet: a long pointed blade, widest a third of the way up. Serrated
@@ -56,25 +57,6 @@ export function fanLeafGeometry(length: number, count = 7, teeth = 0): THREE.Buf
   const merged = mergeGeometries(parts);
   parts.forEach((p) => p.dispose());
   return merged;
-}
-
-/** Joins non-indexed copies of simple geometries (positions and normals only). */
-export function mergeGeometries(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const flat = parts.map((p) => (p.index ? p.toNonIndexed() : p));
-  const count = flat.reduce((n, g) => n + g.attributes.position!.count, 0);
-  const position = new Float32Array(count * 3);
-  const normal = new Float32Array(count * 3);
-  let offset = 0;
-  for (const g of flat) {
-    position.set(g.attributes.position!.array as Float32Array, offset * 3);
-    normal.set(g.attributes.normal!.array as Float32Array, offset * 3);
-    offset += g.attributes.position!.count;
-  }
-  flat.forEach((g, i) => { if (g !== parts[i]) g.dispose(); });
-  const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(position, 3));
-  out.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
-  return out;
 }
 
 /** The mark on equipment: a small white five-leaflet leaf, facing +z. */

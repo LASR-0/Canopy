@@ -1100,6 +1100,15 @@ body {
 .tent-3d-fallback, .tent-3d-loading { display: grid; place-items: center; height: 100%; font-size: 12.5px; color: var(--fg-muted); }
 .tent-3d-loading { height: 640px; }
 .tent-3d-fallback { text-align: center; line-height: 1.6; padding: 0 24px; }
+.tent-3d { position: relative; }
+.tent-3d-lost { position: absolute; inset: 0; height: auto; background: color-mix(in srgb, var(--canvas-default) 80%, transparent); cursor: default; }
+.tent-3d-lost .btn { margin-top: 10px; }
+/* Hover in the 3D view: positioned by TentView beside the pointer. */
+.tent-3d-tip { position: absolute; z-index: 2; pointer-events: none; display: flex; flex-direction: column; gap: 1px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--border-default); background: var(--canvas-overlay); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); font-size: 12px; white-space: nowrap; }
+.tent-3d-tip[hidden] { display: none; }
+.tent-3d-tip b { font-weight: 600; color: var(--fg-default); }
+.tent-3d-tip span { color: var(--fg-muted); }
+.tent-3d-tip small { margin-top: 3px; font-size: 11px; color: var(--fg-subtle); }
 .tent-3d-error { font-family: var(--mono); font-size: 11px; color: var(--fg-subtle); }
 .tent-3d-diag { font-family: var(--mono); }
 .tent-3d-renderer { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
