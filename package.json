@@ -14,6 +14,7 @@
     "dev:ui": "pnpm build:types && pnpm --filter @canopy/frontend dev",
     "dev:backend": "pnpm build:types && pnpm --filter @canopy/backend dev",
     "dev:sim": "pnpm --filter @canopy/simulator dev",
+    "dev:sim:full": "SIM_FLEET=full pnpm --filter @canopy/simulator dev",
     "build:ui": "pnpm build:types && pnpm --filter @canopy/frontend build",
     "build:controller": "pnpm build:types && pnpm --filter @canopy/backend build:controller",
     "package:linux": "pnpm build:controller && pnpm --filter @canopy/backend build:tarball && pnpm --filter @canopy/frontend package:linux",
