@@ -2333,8 +2333,8 @@ offscreen at each step and comparing against it.
   was a hundred meshes (now two).
 - **Sensor screens stay blank.** *Decided 2026-10-07*: the 3D view shows
   the setup, not its readings; those live on the Overview.
-- **Still open**: the roof hides lights in a big tent (Next, 5); no floor grid; the
-  mount-height default by role (below) still belongs to Layout.
+- **Still open**: no floor grid; the mount-height default by role (below)
+  still belongs to Layout.
 
 #### Next
 
@@ -2391,13 +2391,132 @@ offscreen at each step and comparing against it.
      hand (merged geometry, the ground shadow's texture) is disposed with
      its component. Twelve mount/unmount cycles left one canvas and no
      "too many WebGL contexts" warning.
-5. **Open: the roof in a big tent.** At 600 × 600 × 300 the solid roof
-   covers most of the view and every light hung under it. Hover still finds
-   them, but they cannot be seen. Options: open the roof like a facing wall
-   (it always faces the camera, so it would always be open, as in the
-   reference's top view), or only above a footprint-to-height ratio.
-   Waiting on a decision.
+5. **The roof and the corners** ✅ decided and built, 2026-10-07.
+   - **The roof is toggled**, by a Roof button in the view's header,
+     remembered per viewer (local storage). Closed by default; open, it
+     works like a facing wall: the border and zip stay, the panel goes, and
+     a 6 m tent's lights and ducts can be seen from above.
+   - **On a corner view the near corner is sliced away**: the upright's
+     piping, the frame pole inside it, and the fabric border of both open
+     walls on that side (each border becomes a C, its zip running out
+     through the edge). Nothing stands in the middle of the view any more.
+     The roof seams, floor tray and joints stay, so the tent keeps its
+     outline.
 6. **Still to check at home**: the spike's Hyprland check (above).
+
+#### Polish ✅ tent, pot and soil, 2026-10-07 — the other models next
+
+After the reference, and checked offscreen against it at each step.
+
+- **Tent** (`setup3d/tent.tsx`): moulded corner joints with a sleeve down
+  each seam; a charcoal floor tray round the bottom; vents low on the sides
+  and back, a charcoal frame round dark mesh with the fabric flap hinged at
+  its top and toggle straps; round duct ports, a collar and a fabric sock
+  tied off with its drawstring, on the back wall and the roof; the door's
+  two zip pulls; and soft shading into each panel's edges, darkest where
+  fabric meets floor, as a stand-in for ambient occlusion. **The view
+  mostly sees walls from inside** (a wall facing the camera is open), so
+  vents and ports are sewn through: frame, mesh and weave, and the port's
+  collar, show on the inside face too.
+- **Pot and soil** (`setup3d/plants.tsx`): eight soft sides with a slight
+  belly (a lathe, smooth-shaded), a rolled rim, a webbing handle each side,
+  and the soil mounded toward the stem with dark clumps and white perlite
+  scattered by the plant's seed. The soil has the pot's eight sides, in
+  step with them, so its edge stays inside the flat faces.
+- **Draws**: the extra parts first cost 70 draws on the 6 m tent. `Baked`
+  now writes each part's colour into its vertices, so only the finish
+  (roughness, flat or smooth, sides) separates draws; everything in a pot
+  shares three finishes; and plants and devices are each baked tent-wide,
+  so their draws no longer grow with their number (hover still works: the
+  hidden parts they were baked from still catch the pointer). 6 m tent: 465
+  draws to 56–61, 43–51 fps (the commit before: 41–51); the 150 cm tent
+  with every model a steady 60 fps, worst frame 22–27 ms. The 6 m tent is
+  now bound by its 600k triangles, not by draws.
+- **Measuring on the work machine is noisy**: the GPU is shared with the
+  Windows desktop, and one spin can read 41 fps and the next 57. Compare
+  three spins back to back, against the previous commit measured in the
+  same session.
+- **Veg plants bigger and leafier** (2026-10-07). There was too much of a
+  jump into flower: mid-veg drew about 30 cm against 76 cm in flower in a
+  160 cm tent. Veg now grows fastest early (ease-out), ends at 55 % of the
+  headroom (was 45 %), and flower stretches it to about 1.4× (to 78 %), so
+  mid-veg is about 48 cm, the end of veg 60 cm, flower 85 cm. Veg plants are
+  denser (a node every 6 cm, side shoots up to the top node, larger fan
+  leaves) and as wide as they are tall; flower narrows them to 0.85 as it
+  stretches, rather than at once.
+
+#### Model walkthrough — the checklist
+
+Every model, checked in the real app in a workspace that holds one device of
+every role, and then the device types growers use that Canopy has no role
+for yet, to decide what to cover.
+
+**Setting it up**
+
+1. `GALLIUM_DRIVER=d3d12 pnpm dev` (WSL), and in a second terminal
+   `pnpm dev:sim:full`: the everyday simulated fleet plus one device for each
+   remaining role (`FULL_EXTRAS` in the simulator's fleet; 18 devices in all,
+   one per role).
+2. A new workspace; scan, and add all 18. Assign each its role (Settings).
+3. Layout: place each where it would really be, with a real mount height
+   (the light and fans high, floor equipment at 0, sensors at canopy
+   height), facing the right way; add two or three plants.
+4. Setup View → 3D view. Turn through all eight views, with the roof both
+   open and closed, and go through the list below.
+
+**Each model** — for every one: it reads as the real thing at a glance, its
+size is to scale beside the plants and the tent, it hangs or stands as
+placed (cords up to the rails when hung), it faces its rotation, and hover
+shows its name and role.
+
+- [ ] `canopy_temp`, `canopy_rh` → temperature/humidity sensor (white, LCD)
+- [ ] `canopy_light` → light-sensor puck. Also: a PPFD (quantum) sensor can
+      take this role, as DLI already reads PPFD
+- [ ] `co2_probe` → CO₂ monitor
+- [ ] `rootzone` → soil sensor (blue head on a stake). Sits in a pot, not on
+      the floor?
+- [ ] `res_temp`, `res_ph`, `res_ec` → reservoir meter with pen probe
+- [ ] `power_draw` → smart plug
+- [ ] `exhaust` → inline fan, duct out through the wall it faces
+- [ ] `intake` → inline fan, duct in through the wall behind it
+- [ ] `circ` → clip fan
+- [ ] `light` → LED panel on V-hangers; size against the tent; glow
+- [ ] `pump` → 20 L reservoir with the pump's line
+- [ ] `humidifier` → humidifier
+- [ ] `dehumidifier` → dehumidifier
+- [ ] `heater` → oil-filled radiator
+- [ ] `co2_valve` → CO₂ cylinder and regulator
+- [ ] No role → plain white block
+- [ ] Plants: seedling, early, mid and late veg, flower, flush
+- [ ] Tent: every view, roof open and closed, corner slicing, vents and
+      ports from inside
+
+Flagged weakest before the walkthrough: clip fan, CO₂ tank, reservoir
+bucket, smart plug, light sensor, soil sensor.
+
+**Not covered yet: device types growers use that have no role.** A role is
+what the controller acts on and what picks a model, so each needs a
+decision: a new role (and model), mapped to an existing role, or out of
+scope for v1. Suggested, not decided:
+
+| Type | Why growers have it | Suggested |
+|---|---|---|
+| Room temp/RH (outside the tent) | Whether intake air helps or hurts | New roles; same sensor model. Layout places only inside the tent, so it needs a spot outside |
+| Leaf temperature (IR) | Leaf VPD, more accurate than air VPD | New role; small IR sensor aimed at the canopy |
+| Substrate temperature | Root-zone temperature, cold floors | New role; probe in the pot |
+| Substrate EC (pore water) | Feeding in coco/rockwool | New role; probe in the pot |
+| Reservoir water level | Refill, pump protection. A `water_level` metric already exists | New role; float or ultrasonic sensor on the reservoir |
+| Leak / water on floor | Safety: cut the pump | New role; flat puck on the floor |
+| Door / tent open | Light leaks in flower, pausing rules | New role; contact sensor on the door |
+| Air conditioner | Cooling, the usual answer to a hot tent | New role; portable AC with its hose to a port |
+| Reservoir chiller / heater | Water temperature for DWC and hydro | New roles; chiller box with hoses, aquarium heater |
+| Air pump | DWC oxygenation | New role; small pump with airline |
+| Dosing pumps | pH up/down, nutrients | New role(s); peristaltic pump head |
+| Irrigation solenoid | Drip lines from mains or a header tank | New role, or the pump role |
+| Oscillating floor or wall fan | Circulation in bigger tents | The `circ` role; a model variant |
+| Supplemental bars (UV, far red) | Lighting add-ons | The `light` role; a bar model variant |
+| Carbon filter | Odour; on almost every exhaust | Not a device: draw it on the exhaust fan's intake side |
+| Dissolved oxygen, ORP, VOC, smoke, pot scales, cameras | Specialist or not a sensor the controller acts on | Out of scope for v1 |
 
 
 ### After Phase 9 — real devices, then TLS
