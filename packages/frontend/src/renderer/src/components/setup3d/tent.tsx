@@ -1,11 +1,15 @@
 /**
  * The tent, generated from its dimensions, and the lights it is shown under.
  *
- * Fabric panels with charcoal piping on every seam and caps on the corners,
- * over a thin metal frame inside. Every wall is a fabric border around a
- * zipped panel; while a wall faces the camera its panel is unzipped (faded
- * out), so the tent reads as a cutaway from whichever side it is turned to.
- * Only the front's zip is a door, so only the front shows it while closed.
+ * Fabric panels with charcoal piping on the seams, moulded joints on the
+ * corners, a floor tray, vents with flaps and round duct ports, over a thin
+ * metal frame inside. Every wall is a fabric border around a zipped panel;
+ * while a wall faces the camera its panel is unzipped (faded out), so the
+ * tent reads as a cutaway from whichever side it is turned to. On a corner
+ * view the corner between the two open walls is sliced away too, upright,
+ * pole and the fabric either side, so nothing stands in the middle of the
+ * view. The roof is the same kind of panel, opened by the view's Roof toggle.
+ * Only the front's zip is a door, so only it shows while closed.
  */
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -17,13 +21,18 @@ import { cameraDir, type YawState } from "./rig";
 import { Box, Cyl, ALONG_X, ALONG_Z, type V3 } from "./shapes";
 
 const PANEL_CM = 1.2;
-const PIPING_CM = 1.25;
-const CAP_CM = 4.5;
+const PIPING_CM = 1.3;
+const JOINT_CM = 5.5;
+const TRAY_CM = 4.5;
 /** The roof rails sit this far below the roof; hung equipment's cords end there. */
 export const RAIL_DROP_CM = 3;
 const POLE_CM = 1.1;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+type N2 = [number, number];
+/** Whether a wall with horizontal normal `n` faces a viewer looking along `c`. */
+const facing = (n: N2, c: THREE.Vector3) => n[0] * c.x + n[1] * c.z > 0.01;
 
 /** A rectangle with rounded corners, from its bottom-left corner. */
 function roundedRect(path: THREE.Path, x: number, y: number, w: number, h: number, r: number) {
@@ -48,63 +57,174 @@ function opening(width: number, height: number) {
   return { x: -w / 2, y: bottom, w, h, r: clamp(Math.min(w, h) / 4, 2, 14) };
 }
 
-function disposeOnChange(...things: { dispose(): void }[]) {
-  return () => things.forEach((t) => t.dispose());
+/**
+ * Which side of a wall is sliced away with its corner: none, or its +x side
+ * ("right"); a "left" slice is the right one mirrored.
+ */
+type Slice = "none" | "left" | "right";
+
+/**
+ * A wall's border, its fabric around the opening. Sliced on one side, the
+ * opening runs out through that edge, leaving a C of fabric.
+ */
+function borderGeometry(width: number, height: number, slice: Slice): THREE.BufferGeometry {
+  const o = opening(width, height);
+  const s = new THREE.Shape();
+  if (slice === "none") {
+    s.moveTo(-width / 2, 0);
+    s.lineTo(width / 2, 0);
+    s.lineTo(width / 2, height);
+    s.lineTo(-width / 2, height);
+    s.lineTo(-width / 2, 0);
+    const hole = new THREE.Path();
+    roundedRect(hole, o.x, o.y, o.w, o.h, o.r);
+    s.holes.push(hole);
+  } else {
+    const { x, y, h, r } = o;
+    s.moveTo(-width / 2, 0);
+    s.lineTo(width / 2, 0);
+    s.lineTo(width / 2, y);
+    s.lineTo(x + r, y);
+    s.quadraticCurveTo(x, y, x, y + r);
+    s.lineTo(x, y + h - r);
+    s.quadraticCurveTo(x, y + h, x + r, y + h);
+    s.lineTo(width / 2, y + h);
+    s.lineTo(width / 2, height);
+    s.lineTo(-width / 2, height);
+    s.lineTo(-width / 2, 0);
+  }
+  const g = new THREE.ExtrudeGeometry(s, { depth: PANEL_CM, bevelEnabled: false, curveSegments: 6 });
+  g.translate(0, 0, -PANEL_CM);
+  if (slice === "left") g.scale(-1, 1, 1);
+  return g;
+}
+
+/** The zip round the opening: a closed loop, or a C that runs out through a sliced side. */
+function zipGeometry(width: number, height: number, slice: Slice): THREE.BufferGeometry {
+  const o = opening(width, height);
+  const path = new THREE.Path();
+  if (slice === "none") {
+    roundedRect(path, o.x, o.y, o.w, o.h, o.r);
+  } else {
+    const { x, y, h, r } = o;
+    path.moveTo(width / 2, y);
+    path.lineTo(x + r, y);
+    path.quadraticCurveTo(x, y, x, y + r);
+    path.lineTo(x, y + h - r);
+    path.quadraticCurveTo(x, y + h, x + r, y + h);
+    path.lineTo(width / 2, y + h);
+  }
+  const pts = path.getSpacedPoints(64).map((p) => new THREE.Vector3(p.x, p.y, 0.15));
+  const closed = slice === "none";
+  const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, closed, "catmullrom", 0.1), 128, 0.55, 5, closed);
+  if (slice === "left") g.scale(-1, 1, 1);
+  return g;
 }
 
 /**
- * One wall, built in its own frame (x across, y up, +z out of the tent) and
- * turned into place. The border is always drawn; the panel inside it, and
- * anything sewn onto it (`children`), fades while the wall faces the camera.
+ * Soft shading into a panel's edges, darkest along the bottom: the stand-in
+ * for ambient occlusion where fabric meets floor and corners. One canvas,
+ * shared; each panel maps it across its own size.
  */
-function Wall({ width, height, position, normal, door = false, palette, yaw, children }: {
+function edgeShade(bottom: number, sides: number, top: number): HTMLCanvasElement {
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, size, size);
+  const band = (x0: number, y0: number, x1: number, y1: number, strength: number) => {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, `rgba(60,48,32,${strength})`);
+    g.addColorStop(1, "rgba(60,48,32,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+  };
+  band(0, size, 0, size * 0.72, bottom);
+  band(0, 0, size * 0.1, 0, sides);
+  band(size, 0, size * 0.9, 0, sides);
+  band(0, 0, 0, size * 0.08, top);
+  return canvas;
+}
+
+/** A shading texture mapped across a panel `width` × `height` built in its own frame (x centred, y from 0). */
+function shadeTexture(canvas: HTMLCanvasElement, width: number, height: number) {
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  // Extruded shapes take their plan coordinates, in cm, as UVs.
+  t.repeat.set(1 / width, 1 / height);
+  t.offset.set(0.5, 0);
+  return t;
+}
+
+const WALL_SHADE = typeof document === "undefined" ? null : edgeShade(0.2, 0.1, 0.06);
+const FLAT_SHADE = typeof document === "undefined" ? null : edgeShade(0.12, 0.12, 0.12);
+
+interface Openness {
+  open: boolean;
+  slice: Slice;
+}
+
+/**
+ * One panel of the tent, built in its own frame (x across, y up, +z out of the
+ * tent) and turned into place. The border is always drawn; the zipped panel
+ * inside it, and anything sewn onto it (`children`), fades while open.
+ */
+function Panel({ width, height, position, rotation, door = false, shade, palette, state, children }: {
   width: number;
   height: number;
   position: V3;
-  normal: [number, number];
+  rotation: V3;
   door?: boolean;
+  shade: HTMLCanvasElement | null;
   palette: Palette;
-  yaw: React.RefObject<YawState>;
+  /** Whether it is open, and which side is sliced, for the current view. */
+  state: () => Openness;
   children?: React.ReactNode;
 }) {
   const panel = useRef<THREE.Group>(null);
-  const zip = useRef<THREE.MeshStandardMaterial>(null);
+  const border = useRef<THREE.Mesh>(null);
+  const zip = useRef<THREE.Mesh>(null);
+  const zipMat = useRef<THREE.MeshStandardMaterial>(null);
   const shown = useRef(1);
+  const slice = useRef<Slice>("none");
 
-  const { border, infill, zipPath } = useMemo(() => {
+  const geo = useMemo(() => {
     const o = opening(width, height);
-    const hole = new THREE.Path();
-    roundedRect(hole, o.x, o.y, o.w, o.h, o.r);
-    const outer = new THREE.Shape();
-    outer.moveTo(-width / 2, 0);
-    outer.lineTo(width / 2, 0);
-    outer.lineTo(width / 2, height);
-    outer.lineTo(-width / 2, height);
-    outer.lineTo(-width / 2, 0);
-    outer.holes.push(hole);
-    const border = new THREE.ExtrudeGeometry(outer, { depth: PANEL_CM, bevelEnabled: false, curveSegments: 6 });
-    border.translate(0, 0, -PANEL_CM);
     const inner = new THREE.Shape();
     roundedRect(inner, o.x, o.y, o.w, o.h, o.r);
-    // Flush with the border on both faces, so a closed wall shows no seam.
+    // Flush with the border on both faces, so a closed panel shows no seam.
     const infill = new THREE.ExtrudeGeometry(inner, { depth: PANEL_CM, bevelEnabled: false, curveSegments: 6 });
     infill.translate(0, 0, -PANEL_CM);
-    const pts = hole.getSpacedPoints(64).map((p) => new THREE.Vector3(p.x, p.y, 0.15));
-    const zipPath = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.1), 128, 0.55, 5, true);
-    return { border, infill, zipPath };
-  }, [width, height]);
-  useEffect(() => disposeOnChange(border, infill, zipPath), [border, infill, zipPath]);
+    const slices: Slice[] = ["none", "left", "right"];
+    return {
+      infill,
+      border: Object.fromEntries(slices.map((k) => [k, borderGeometry(width, height, k)])) as Record<Slice, THREE.BufferGeometry>,
+      zip: Object.fromEntries(slices.map((k) => [k, zipGeometry(width, height, k)])) as Record<Slice, THREE.BufferGeometry>,
+      texture: shade ? shadeTexture(shade, width, height) : null,
+    };
+  }, [width, height, shade]);
+  useEffect(() => () => {
+    geo.infill.dispose();
+    Object.values(geo.border).forEach((g) => g.dispose());
+    Object.values(geo.zip).forEach((g) => g.dispose());
+    geo.texture?.dispose();
+  }, [geo]);
 
-  useFrame((state) => {
-    const c = cameraDir(yaw.current.current);
-    const facing = normal[0] * c.x + normal[1] * c.z > 0.01;
-    const want = facing ? 0 : 1;
+  useFrame((frame) => {
+    const { open, slice: want } = state();
+    if (want !== slice.current) {
+      slice.current = want;
+      if (border.current) border.current.geometry = geo.border[want];
+      if (zip.current) zip.current.geometry = geo.zip[want];
+    }
+    const target = open ? 0 : 1;
     let v = shown.current;
-    if (Math.abs(v - want) > 0.01) {
-      v += (want - v) * 0.25;
-      state.invalidate();
+    if (Math.abs(v - target) > 0.01) {
+      v += (target - v) * 0.25;
+      frame.invalidate();
     } else {
-      v = want;
+      v = target;
     }
     if (v === shown.current && panel.current?.userData.applied === v) return;
     shown.current = v;
@@ -113,7 +233,7 @@ function Wall({ width, height, position, normal, door = false, palette, yaw, chi
       g.userData.applied = v;
       g.visible = v > 0.01;
       // Only opacity changes: switching `transparent` would recompile the
-      // shaders, a visible stall the first time each wall opens.
+      // shaders, a visible stall the first time each panel opens.
       g.traverse((o) => {
         const m = (o as THREE.Mesh).material as THREE.Material | undefined;
         if (!m) return;
@@ -123,79 +243,167 @@ function Wall({ width, height, position, normal, door = false, palette, yaw, chi
       });
     }
     // A side's zip only shows while it is open; the door's always does.
-    if (zip.current && !door) {
-      zip.current.opacity = 1 - v;
-      zip.current.visible = v < 0.99;
+    if (zipMat.current && !door) {
+      zipMat.current.opacity = 1 - v;
+      zipMat.current.visible = v < 0.99;
     }
   });
 
+  const o = opening(width, height);
   return (
-    <group position={position} rotation={[0, Math.atan2(normal[0], normal[1]), 0]}>
-      <mesh geometry={border} receiveShadow>
-        <meshStandardMaterial color={palette.fabric} roughness={0.95} side={THREE.DoubleSide} />
+    <group position={position} rotation={rotation}>
+      <mesh ref={border} geometry={geo.border.none} receiveShadow>
+        <meshStandardMaterial color={palette.fabric} map={geo.texture} roughness={0.95} side={THREE.DoubleSide} />
       </mesh>
-      <mesh geometry={zipPath}>
-        <meshStandardMaterial ref={zip} color={palette.zip} roughness={0.6} transparent={!door} />
+      <mesh ref={zip} geometry={geo.zip.none}>
+        <meshStandardMaterial ref={zipMat} color={palette.zip} roughness={0.6} transparent={!door} />
       </mesh>
+      {door && <ZipPulls at={[0, o.y + o.h, 0]} palette={palette} />}
       <group ref={panel}>
-        <mesh geometry={infill} receiveShadow>
-          <meshStandardMaterial color={palette.fabric} roughness={0.95} side={THREE.DoubleSide} transparent />
+        <mesh geometry={geo.infill} receiveShadow>
+          <meshStandardMaterial color={palette.fabric} map={geo.texture} roughness={0.95} side={THREE.DoubleSide} transparent />
         </mesh>
-        {children}
+        {children && <Baked version={`${width}|${height}`}>{children}</Baked>}
       </group>
     </group>
   );
 }
 
-/** A vent window low on a wall: a framed mesh panel with its flap rolled shut. */
-function Vent({ at, palette }: { at: V3; palette: Palette }) {
+/** The door's two sliders, met at the top of the zip, their pulls hanging. */
+function ZipPulls({ at, palette }: { at: V3; palette: Palette }) {
   return (
     <group position={at}>
-      <Box size={[22, 15, 1.2]} at={[0, 0, 0.6]} color={palette.frame} r={1} />
-      <Box size={[17, 10, 1]} at={[0, -0.5, 1.2]} color={palette.zip} r={0.6} />
-      <Box size={[18, 2.2, 2]} at={[0, 5.2, 1.6]} color={palette.frame} r={0.9} />
+      {[-1.6, 1.6].map((x) => (
+        <group key={x} position={[x, 0, 0.7]} rotation={[0, 0, x * 0.06]}>
+          <Box size={[1.6, 1.6, 0.8]} at={[0, 0, 0]} color={palette.zip} r={0.3} shadow={false} />
+          <Box size={[0.9, 3.6, 0.4]} at={[0, -2.4, 0.2]} color={palette.frame} r={0.2} shadow={false} />
+        </group>
+      ))}
     </group>
   );
 }
 
-/** Charcoal piping along all twelve seams, and a cap on each corner. */
-function Seams({ dims, palette }: { dims: EnclosureDimensions; palette: Palette }) {
-  const { widthCm: w, depthCm: d, heightCm: h } = dims;
-  const pipes: { at: V3; len: number; rotation: V3; r: number }[] = [];
-  for (const y of [0, h]) {
-    // The floor tray's seam is the heavier one, as on a real tent.
-    const r = y === 0 ? PIPING_CM * 1.5 : PIPING_CM;
-    const yy = y === 0 ? r : y;
-    for (const z of [-d / 2, d / 2]) pipes.push({ at: [0, yy, z], len: w, rotation: ALONG_X, r });
-    for (const x of [-w / 2, w / 2]) pipes.push({ at: [x, yy, 0], len: d, rotation: ALONG_Z, r });
-  }
-  for (const x of [-w / 2, w / 2]) for (const z of [-d / 2, d / 2]) {
-    pipes.push({ at: [x, h / 2, z], len: h, rotation: [0, 0, 0], r: PIPING_CM });
-  }
-  const caps: V3[] = [];
-  for (const x of [-w / 2, w / 2]) for (const y of [CAP_CM / 2, h]) for (const z of [-d / 2, d / 2]) caps.push([x, y, z]);
+/**
+ * A vent window low on a wall: a charcoal frame round dark mesh, and a fabric
+ * flap hinged along its top, hanging a little open as on the reference. The
+ * view mostly sees walls from inside (a wall facing the camera is open), so
+ * the frame and mesh are sewn through to the inside face too.
+ */
+function Vent({ at, scale = 1, palette }: { at: V3; scale?: number; palette: Palette }) {
+  const w = 24 * scale;
+  const h = 16 * scale;
+  const strands = Math.max(1, Math.round((w - 4) / 3) - 1);
   return (
-    <group>
-      {pipes.map((p, i) => <Cyl key={i} r={p.r} h={p.len} at={p.at} rotation={p.rotation} color={palette.frame} seg={10} shadow={false} />)}
-      {caps.map((at, i) => <Box key={i} size={[CAP_CM, CAP_CM, CAP_CM]} at={at} color={palette.frame} r={1.6} shadow={false} />)}
+    <group position={at}>
+      <Box size={[w, h, 0.8]} at={[0, 0, 0.4]} color={palette.frame} r={1.2} />
+      <Box size={[w - 4, h - 4, 0.4]} at={[0, 0, 0.9]} color={palette.zip} r={0.6} />
+      <Box size={[w, h, 0.8]} at={[0, 0, -PANEL_CM - 0.4]} color={palette.frame} r={1.2} />
+      <Box size={[w - 4, h - 4, 0.4]} at={[0, 0, -PANEL_CM - 0.9]} color={palette.zip} r={0.6} />
+      {/* The mesh's weave, seen from inside. */}
+      {Array.from({ length: strands }, (_, i) => (
+        <Box key={i} size={[0.25, h - 4.4, 0.2]} at={[-(w - 4) / 2 + ((i + 1) * (w - 4)) / (strands + 1), 0, -PANEL_CM - 1.15]} color={palette.frame} r={0} shadow={false} />
+      ))}
+      {/* The flap, hinged at the top edge and swung out. */}
+      <group position={[0, h / 2 - 0.6, 1.2]} rotation={[-0.22, 0, 0]}>
+        <Box size={[w - 2, h - 2.5, 0.7]} at={[0, -(h - 2.5) / 2, 0.35]} color={palette.fabric} r={0.35} />
+        <Box size={[w - 2, 1.4, 0.9]} at={[0, -(h - 2.5) + 0.7, 0.4]} color={palette.frame} r={0.4} />
+      </group>
+      {/* Toggle straps either side, for rolling the flap up. */}
+      {[-1, 1].map((sx) => (
+        <Box key={sx} size={[1.6, 4, 0.5]} at={[sx * (w / 2 - 3), h / 2 + 1.2, 0.5]} color={palette.frame} r={0.25} />
+      ))}
     </group>
   );
 }
 
-/** The metal frame inside: four uprights and the roof rails the equipment hangs from. */
-function Poles({ dims, palette }: { dims: EnclosureDimensions; palette: Palette }) {
+/**
+ * A round duct port: a charcoal collar sewn to the panel and the fabric sock
+ * tied off with its drawstring outside; inside, the collar round the opening.
+ */
+function DuctPort({ at, palette }: { at: V3; palette: Palette }) {
+  return (
+    <group position={at}>
+      <mesh position={[0, 0, -PANEL_CM - 0.6]}>
+        <torusGeometry args={[8.5, 1.3, 8, 24]} />
+        <meshStandardMaterial color={palette.frame} roughness={0.7} />
+      </mesh>
+      <Cyl r={7.4} h={0.3} at={[0, 0, -PANEL_CM - 0.2]} rotation={ALONG_Z} color={palette.zip} seg={24} />
+      <mesh position={[0, 0, 0.6]} castShadow>
+        <torusGeometry args={[8.5, 1.3, 8, 24]} />
+        <meshStandardMaterial color={palette.frame} roughness={0.7} />
+      </mesh>
+      <Cyl r={7.8} r2={7} h={5} at={[0, 0, 3]} rotation={ALONG_Z} color={palette.fabric} seg={20} />
+      <Cyl r={7.2} r2={4.5} h={3} at={[0, 0, 6.8]} rotation={ALONG_Z} color={palette.fabric} seg={20} />
+      <mesh position={[0, 0, 5.4]}>
+        <torusGeometry args={[7.3, 0.35, 6, 24]} />
+        <meshStandardMaterial color={palette.zip} roughness={0.6} />
+      </mesh>
+      <Box size={[0.6, 4, 0.6]} at={[0.8, -8.5, 5.6]} color={palette.zip} r={0.25} shadow={false} />
+    </group>
+  );
+}
+
+/**
+ * A moulded corner joint, where three seams meet: a rounded block with a
+ * short sleeve down each seam into the tent.
+ */
+function Joint({ at, dir, palette }: { at: V3; dir: V3; palette: Palette }) {
+  const [sx, sy, sz] = dir;
+  const arm = JOINT_CM * 0.9;
+  const r = PIPING_CM * 1.45;
+  return (
+    <group position={at}>
+      <Box size={[JOINT_CM, JOINT_CM, JOINT_CM]} at={[0, 0, 0]} color={palette.frame} r={2} shadow={false} />
+      <Cyl r={r} h={arm} at={[sx * arm / 2, 0, 0]} rotation={ALONG_X} color={palette.frame} seg={12} shadow={false} />
+      <Cyl r={r} h={arm} at={[0, sy * arm / 2, 0]} color={palette.frame} seg={12} shadow={false} />
+      <Cyl r={r} h={arm} at={[0, 0, sz * arm / 2]} rotation={ALONG_Z} color={palette.frame} seg={12} shadow={false} />
+    </group>
+  );
+}
+
+/**
+ * Everything on the tent's edges that never moves: the roof seams, the floor
+ * tray round the bottom, the corner joints and the roof rails inside.
+ * The uprights are drawn by `Corner`, so a corner can be sliced away.
+ */
+function Edges({ dims, palette }: { dims: EnclosureDimensions; palette: Palette }) {
   const { widthCm: w, depthCm: d, heightCm: h } = dims;
   const inset = RAIL_DROP_CM;
-  const x0 = w / 2 - inset;
-  const z0 = d / 2 - inset;
-  const top = h - inset;
+  const rail = h - inset;
   return (
     <group>
-      {[-x0, x0].flatMap((x) => [-z0, z0].map((z) => (
-        <Cyl key={`${x}${z}`} r={POLE_CM} h={top} at={[x, top / 2, z]} color={palette.pole} seg={8} shadow={false} />
-      )))}
-      {[-z0, z0].map((z) => <Cyl key={`x${z}`} r={POLE_CM} h={w - 2 * inset} at={[0, top, z]} rotation={ALONG_X} color={palette.pole} seg={8} shadow={false} />)}
-      {[-x0, x0].map((x) => <Cyl key={`z${x}`} r={POLE_CM} h={d - 2 * inset} at={[x, top, 0]} rotation={ALONG_Z} color={palette.pole} seg={8} shadow={false} />)}
+      {/* Roof seams */}
+      {[-d / 2, d / 2].map((z) => <Cyl key={`x${z}`} r={PIPING_CM} h={w} at={[0, h, z]} rotation={ALONG_X} color={palette.frame} seg={10} shadow={false} />)}
+      {[-w / 2, w / 2].map((x) => <Cyl key={`z${x}`} r={PIPING_CM} h={d} at={[x, h, 0]} rotation={ALONG_Z} color={palette.frame} seg={10} shadow={false} />)}
+      {/* The floor tray: a charcoal band round the bottom. */}
+      {[-d / 2, d / 2].map((z) => <Box key={`tx${z}`} size={[w + 1, TRAY_CM, 2]} at={[0, TRAY_CM / 2, z]} color={palette.frame} r={0.9} shadow={false} />)}
+      {[-w / 2, w / 2].map((x) => <Box key={`tz${x}`} size={[2, TRAY_CM, d + 1]} at={[x, TRAY_CM / 2, 0]} color={palette.frame} r={0.9} shadow={false} />)}
+      {[-1, 1].flatMap((sx) => [-1, 1].flatMap((sz) => [
+        <Joint key={`t${sx}${sz}`} at={[sx * w / 2, h, sz * d / 2]} dir={[-sx, -1, -sz]} palette={palette} />,
+        <Joint key={`b${sx}${sz}`} at={[sx * w / 2, JOINT_CM / 2, sz * d / 2]} dir={[-sx, 1, -sz]} palette={palette} />,
+      ]))}
+      {/* Roof rails */}
+      {[-(d / 2 - inset), d / 2 - inset].map((z) => <Cyl key={`rx${z}`} r={POLE_CM} h={w - 2 * inset} at={[0, rail, z]} rotation={ALONG_X} color={palette.pole} seg={8} shadow={false} />)}
+      {[-(w / 2 - inset), w / 2 - inset].map((x) => <Cyl key={`rz${x}`} r={POLE_CM} h={d - 2 * inset} at={[x, rail, 0]} rotation={ALONG_Z} color={palette.pole} seg={8} shadow={false} />)}
+    </group>
+  );
+}
+
+/** One upright corner: the seam's piping outside and the frame's pole inside, hidden while the corner is sliced. */
+function Corner({ dims, sx, sz, palette, yaw }: {
+  dims: EnclosureDimensions; sx: 1 | -1; sz: 1 | -1; palette: Palette; yaw: React.RefObject<YawState>;
+}) {
+  const { widthCm: w, depthCm: d, heightCm: h } = dims;
+  const group = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const c = cameraDir(yaw.current.current);
+    if (group.current) group.current.visible = !(facing([sx, 0], c) && facing([0, sz], c));
+  });
+  const top = h - RAIL_DROP_CM;
+  return (
+    <group ref={group}>
+      <Cyl r={PIPING_CM} h={h} at={[sx * w / 2, h / 2, sz * d / 2]} color={palette.frame} seg={10} shadow={false} />
+      <Cyl r={POLE_CM} h={top} at={[sx * (w / 2 - RAIL_DROP_CM), top / 2, sz * (d / 2 - RAIL_DROP_CM)]} color={palette.pole} seg={8} shadow={false} />
     </group>
   );
 }
@@ -225,29 +433,90 @@ function GroundShadow({ dims }: { dims: EnclosureDimensions }) {
   );
 }
 
-export function Tent({ dims, palette, yaw }: { dims: EnclosureDimensions; palette: Palette; yaw: React.RefObject<YawState> }) {
+/** The floor, shaded into its edges. */
+function Floor({ dims, palette }: { dims: EnclosureDimensions; palette: Palette }) {
+  const texture = useMemo(() => {
+    if (!FLAT_SHADE) return null;
+    const t = new THREE.CanvasTexture(FLAT_SHADE);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
+  useEffect(() => () => texture?.dispose(), [texture]);
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} receiveShadow>
+      <planeGeometry args={[dims.widthCm, dims.depthCm]} />
+      <meshStandardMaterial color={palette.floor} map={texture} roughness={1} />
+    </mesh>
+  );
+}
+
+/** Where a wall's vents go: low down, toward the front on the sides, and across the back. */
+function ventsFor(width: number, height: number, kind: "side" | "back"): { at: V3; scale: number }[] {
+  const o = opening(width, height);
+  const scale = Math.min(1, (o.w - 6) / 30, (o.h - 6) / 40);
+  if (scale < 0.5) return [];
+  const y = o.y + 8 * scale + 4;
+  if (kind === "side") return [{ at: [-(o.w / 2) + 12 * scale + 6, y, 0], scale }];
+  const count = width >= 160 ? 2 : 1;
+  return Array.from({ length: count }, (_, i) => ({ at: [count === 1 ? 0 : (i ? 1 : -1) * width * 0.25, y, 0], scale }));
+}
+
+export function Tent({ dims, palette, yaw, roofOpen }: {
+  dims: EnclosureDimensions;
+  palette: Palette;
+  yaw: React.RefObject<YawState>;
+  roofOpen: boolean;
+}) {
   const { widthCm: w, depthCm: d, heightCm: h } = dims;
+  const roof = useRef(roofOpen);
+  roof.current = roofOpen;
+
+  // Each wall opens while it faces the camera; on a corner view the corner
+  // between two open walls is sliced, so each loses its border on that side.
+  const wallState = (n: N2) => (): Openness => {
+    const c = cameraDir(yaw.current.current);
+    const open = facing(n, c);
+    // A wall's +x side, in its own frame, is toward the wall with normal (nz, -nx).
+    const right = open && facing([n[1], -n[0]], c);
+    const left = open && facing([-n[1], n[0]], c);
+    return { open, slice: right ? "right" : left ? "left" : "none" };
+  };
+  const portY = h - Math.max(14, Math.min(28, h * 0.14));
+  const portsBack = w >= 90 ? [-w / 2 + 22, w / 2 - 22] : [0];
+
   return (
     <group>
       <GroundShadow dims={dims} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} receiveShadow>
-        <planeGeometry args={[w, d]} />
-        <meshStandardMaterial color={palette.floor} roughness={1} />
-      </mesh>
-      <mesh position={[0, h - PANEL_CM / 2, 0]} receiveShadow>
-        <boxGeometry args={[w, PANEL_CM, d]} />
-        <meshStandardMaterial color={palette.fabric} roughness={0.95} />
-      </mesh>
-      <Wall width={w} height={h} position={[0, 0, d / 2]} normal={[0, 1]} door palette={palette} yaw={yaw} />
-      <Wall width={w} height={h} position={[0, 0, -d / 2]} normal={[0, -1]} palette={palette} yaw={yaw} />
-      <Wall width={d} height={h} position={[-w / 2, 0, 0]} normal={[-1, 0]} palette={palette} yaw={yaw}>
-        {/* +x on the left wall is toward the front. */}
-        <Vent at={[d / 2 - 22, Math.min(18, h * 0.15), 0]} palette={palette} />
-      </Wall>
-      <Wall width={d} height={h} position={[w / 2, 0, 0]} normal={[1, 0]} palette={palette} yaw={yaw} />
+      <Floor dims={dims} palette={palette} />
+      <Panel width={w} height={h} position={[0, 0, d / 2]} rotation={[0, 0, 0]} door shade={WALL_SHADE} palette={palette} state={wallState([0, 1])} />
+      <Panel width={w} height={h} position={[0, 0, -d / 2]} rotation={[0, Math.PI, 0]} shade={WALL_SHADE} palette={palette} state={wallState([0, -1])}>
+        {ventsFor(w, h, "back").map((v, i) => <Vent key={i} at={v.at} scale={v.scale} palette={palette} />)}
+        {h >= 90 && portsBack.map((x) => <DuctPort key={x} at={[x, portY, 0]} palette={palette} />)}
+      </Panel>
+      {/* On the left wall +x is toward the front, on the right toward the back. */}
+      <Panel width={d} height={h} position={[-w / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]} shade={WALL_SHADE} palette={palette} state={wallState([-1, 0])}>
+        {ventsFor(d, h, "side").map((v, i) => <Vent key={i} at={[-v.at[0], v.at[1], 0]} scale={v.scale} palette={palette} />)}
+      </Panel>
+      <Panel width={d} height={h} position={[w / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]} shade={WALL_SHADE} palette={palette} state={wallState([1, 0])}>
+        {ventsFor(d, h, "side").map((v, i) => <Vent key={i} at={v.at} scale={v.scale} palette={palette} />)}
+      </Panel>
+      {/* The roof, built like a wall lying down: its +z is up, its y runs from the front to the back. */}
+      <Panel
+        width={w}
+        height={d}
+        position={[0, h, d / 2]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        shade={FLAT_SHADE}
+        palette={palette}
+        state={() => ({ open: roof.current, slice: "none" })}
+      >
+        {w >= 70 && d >= 70 && <DuctPort at={[w / 2 - 20, d - 20, 0]} palette={palette} />}
+      </Panel>
+      {([1, -1] as const).flatMap((sx) => ([1, -1] as const).map((sz) => (
+        <Corner key={`${sx}${sz}`} dims={dims} sx={sx} sz={sz} palette={palette} yaw={yaw} />
+      )))}
       <Baked version={JSON.stringify(dims)}>
-        <Seams dims={dims} palette={palette} />
-        <Poles dims={dims} palette={palette} />
+        <Edges dims={dims} palette={palette} />
       </Baked>
     </group>
   );

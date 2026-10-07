@@ -114,6 +114,25 @@ export const FLEET: DeviceSpec[] = [
   },
 ];
 
+/**
+ * The rest of the role catalogue, one device each, so a workspace can hold
+ * every model the Setup View's 3D view draws: with `SIM_FLEET=full`, the
+ * fleet is FLEET plus these. Kept apart so the everyday fleet stays small.
+ */
+export const FULL_EXTRAS: DeviceSpec[] = [
+  {
+    kind: "sensor", id: "res-temp", name: "Reservoir Temperature",
+    deviceClass: "temperature", unit: "°C", model: "SIM-HYDRO",
+    start: 20, min: 14, max: 28, drift: 0.05, reversion: 0.05, precision: 1,
+  },
+  { kind: "actuator", id: "intake-fan", name: "Intake Fan", component: "fan", model: "SIM-FAN4", initialOn: true },
+  { kind: "actuator", id: "circ-fan", name: "Circulation Fan", component: "fan", model: "SIM-CLIP6", initialOn: true },
+  { kind: "actuator", id: "humidifier", name: "Humidifier", component: "switch", model: "SIM-HUM", initialOn: false },
+  { kind: "actuator", id: "dehumidifier", name: "Dehumidifier", component: "switch", model: "SIM-DEHUM", initialOn: false },
+  { kind: "actuator", id: "co2-valve", name: "CO2 Valve", component: "switch", model: "SIM-CO2V", initialOn: false },
+  { kind: "actuator", id: "heater", name: "Heater", component: "switch", model: "SIM-HEAT", initialOn: false },
+];
+
 /** Topic helpers — kept in one place so the dedup invariant stays visible. */
 export const topics = {
   discovery: (component: string, id: string) => `homeassistant/${component}/${id}/config`,

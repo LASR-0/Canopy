@@ -20,11 +20,12 @@
  *   SIM_LOCK_PORT     default 47653  — loopback port used as a single-instance
  *                                      lock; change it to run a second fleet
  *   SIM_ALLOW_MULTIPLE  set to 1 to skip the lock entirely
+ *   SIM_FLEET         set to "full" for one device of every role (FULL_EXTRAS)
  */
 import mqtt from "mqtt";
 import { createServer } from "node:net";
 import { mulberry32 } from "./rng.js";
-import { FLEET, topics, componentOf, MANUFACTURER, SW_VERSION } from "./fleet.js";
+import { FLEET as BASE_FLEET, FULL_EXTRAS, topics, componentOf, MANUFACTURER, SW_VERSION } from "./fleet.js";
 import type { DeviceSpec, SensorSpec } from "./fleet.js";
 
 const BROKER_URL = process.env["SIM_BROKER_URL"] ?? "mqtt://127.0.0.1:1883";
@@ -34,6 +35,7 @@ const ANNOUNCE_MS = Number(process.env["SIM_ANNOUNCE_MS"] ?? 5000);
 const TELEMETRY_MS = Number(process.env["SIM_TELEMETRY_MS"] ?? 5000);
 const LOCK_PORT = Number(process.env["SIM_LOCK_PORT"] ?? 47_653);
 const ALLOW_MULTIPLE = process.env["SIM_ALLOW_MULTIPLE"] === "1";
+const FLEET = process.env["SIM_FLEET"] === "full" ? [...BASE_FLEET, ...FULL_EXTRAS] : BASE_FLEET;
 
 const rng = mulberry32(SEED);
 

@@ -14,9 +14,8 @@ import * as THREE from "three";
 import type { EnclosureDimensions, GrowStageName, Plant } from "@canopy/shared-types";
 import { potSize } from "@canopy/shared-types";
 import type { Palette } from "./palette";
-import { Baked, mergeGeometries } from "./bake";
+import { mergeGeometries } from "./bake";
 import { fanLeafGeometry } from "./leaf";
-import { Box, Cyl } from "./shapes";
 
 export interface Growth {
   /** No active grow leaves this undefined, and the plant is drawn mid-veg. */
@@ -30,21 +29,36 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * Math.min(1, Math
 /** Height and spread in cm, kept under the light and inside the walls whatever the tent's size. */
 export function plantSize(growth: Growth, dims: EnclosureDimensions, potHeightCm: number) {
   const room = Math.max(20, dims.heightCm - potHeightCm - 25);
-  const vegMax = Math.min(70, room * 0.45);
-  const flowerMax = Math.min(130, room * 0.7);
+  // Flower stretches a plant to about 1.4× its height at the end of veg, so
+  // the change between the two is growth, not a jump.
+  const vegMax = Math.min(85, room * 0.55);
+  const flowerMax = Math.min(140, room * 0.78);
+  // Veg grows fastest early: most of a plant's veg height is reached by halfway.
+  const easeOut = (t: number) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 2;
   let heightCm: number;
+  // Spread to height: bushy through veg, narrowing as flower stretches it.
+  let shape: number;
   switch (growth.stage) {
-    case "seedling":   heightCm = lerp(6, 14, growth.pct); break;
-    case "vegetative": heightCm = lerp(14, vegMax, growth.pct); break;
+    case "seedling":   heightCm = lerp(6, 14, growth.pct); shape = 1.1; break;
+    case "vegetative": heightCm = lerp(14, vegMax, easeOut(growth.pct)); shape = 1; break;
     // Most of the stretch comes in the first half of flower.
-    case "flowering":  heightCm = lerp(vegMax, flowerMax, growth.pct * 2); break;
+    case "flowering":  heightCm = lerp(vegMax, flowerMax, growth.pct * 2); shape = lerp(1, 0.85, growth.pct * 2); break;
     case "flush":
-    case "harvest":    heightCm = flowerMax; break;
-    default:           heightCm = vegMax * 0.7;
+    case "harvest":    heightCm = flowerMax; shape = 0.85; break;
+    default:           heightCm = vegMax * 0.8; shape = 1;
   }
-  const spreadCm = Math.min(heightCm * (growth.stage === "seedling" ? 1.1 : 0.85), Math.min(dims.widthCm, dims.depthCm) * 0.85);
+  const spreadCm = Math.min(heightCm * shape, Math.min(dims.widthCm, dims.depthCm) * 0.85);
   return { heightCm, spreadCm };
 }
+
+/**
+ * Three finishes for everything in a pot, so a tent of plants bakes into
+ * three draws (TentView bakes them together): colour goes into the vertices,
+ * only the finish separates draws.
+ */
+const FOLIAGE = { roughness: 0.7, side: THREE.DoubleSide } as const;
+const MATTE = { roughness: 0.95, flatShading: true, side: THREE.DoubleSide } as const;
+const FABRIC = { roughness: 0.95, side: THREE.DoubleSide } as const;
 
 /** A small seeded generator, so a plant looks the same every time it is drawn. */
 function random(seed: string) {
@@ -116,7 +130,10 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
   };
 
   const stemR = Math.max(0.35, heightCm * 0.012);
-  const nodes = seedling ? 2 : Math.min(11, Math.max(3, Math.round(heightCm / 7)));
+  // Veg plants are denser, a node every 6 cm, with side shoots up to the top
+  // node: the leafy bush flower then stretches.
+  const veg = !seedling && !flowering;
+  const nodes = seedling ? 2 : veg ? Math.min(12, Math.max(3, Math.round(heightCm / 6))) : Math.min(11, Math.max(3, Math.round(heightCm / 7)));
   const top = new THREE.Vector3(0, heightCm, 0);
   stalk(new THREE.Vector3(0, 0, 0), top, stemR, stemR * 0.35);
 
@@ -125,7 +142,7 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
     const t = nodes === 1 ? 1 : i / (nodes - 1);
     const y = heightCm * (seedling ? 0.55 + 0.35 * t : 0.14 + 0.78 * t);
     const az = turn0 + (i * Math.PI) / 2 + (rand() - 0.5) * 0.4;
-    const leafLen = spreadCm * (seedling ? 0.38 : 0.42) * (1 - 0.45 * t);
+    const leafLen = spreadCm * (seedling ? 0.38 : veg ? 0.46 : 0.42) * (1 - 0.45 * t);
     const reach = spreadCm * (seedling ? 0.05 : 0.17) * (1 - 0.55 * t);
     // Lower leaves droop; upper ones reach for the light.
     const tilt = lerp(-0.15, 0.6, t) + (rand() - 0.5) * 0.2;
@@ -139,7 +156,7 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
       leaf(tip, a, tilt, leafLen, into);
 
       // Side shoots from the lower nodes, a quarter turn round, each with a small leaf and, in flower, a bud.
-      if (!seedling && i < nodes - 2 && heightCm > 25) {
+      if (!seedling && i < nodes - (veg ? 1 : 2) && heightCm > 20) {
         const b = a + Math.PI / 2;
         const bdir = new THREE.Vector3(-Math.sin(b), 0, -Math.cos(b));
         const len = spreadCm * 0.3 * (1 - 0.5 * t);
@@ -184,7 +201,7 @@ function PlantShape({ heightCm, spreadCm, stage, seed, p }: {
   useEffect(() => () => {
     for (const g of Object.values(parts)) g?.dispose();
   }, [parts]);
-  const leaf = { roughness: 0.7, side: THREE.DoubleSide } as const;
+  const leaf = FOLIAGE;
   return (
     <>
       <mesh geometry={parts.leaves} castShadow receiveShadow>
@@ -199,27 +216,90 @@ function PlantShape({ heightCm, spreadCm, stage, seed, p }: {
         </mesh>
       )}
       <mesh geometry={parts.stems} castShadow>
-        <meshStandardMaterial color={p.stem} roughness={0.8} flatShading />
+        <meshStandardMaterial color={p.stem} {...MATTE} />
       </mesh>
       {parts.buds && (
         <mesh geometry={parts.buds} castShadow>
-          <meshStandardMaterial color={p.bud} roughness={0.9} flatShading />
+          <meshStandardMaterial color={p.bud} {...MATTE} />
         </mesh>
       )}
     </>
   );
 }
 
-/** A fabric pot: eight soft sides, a stitched rim, a handle each side and the soil showing. */
-function FabricPot({ diameterCm, heightCm, p }: { diameterCm: number; heightCm: number; p: Palette }) {
+/** The soil's surface, as a share of the pot's height: just below the rim. */
+const SOIL_TOP = 0.93;
+
+/**
+ * A fabric pot after the reference: eight soft sides with a slight belly, a
+ * rolled rim, a strap handle each side, and the soil mounded toward the stem,
+ * with clumps and a few white specks of perlite scattered by the plant's seed.
+ */
+function FabricPot({ diameterCm, heightCm, seed, p }: { diameterCm: number; heightCm: number; seed: string; p: Palette }) {
   const r = diameterCm / 2;
+  const h = heightCm;
+  const parts = useMemo(() => {
+    // The side's profile, bottom to rim: rounded at the foot, a little fuller at the middle.
+    const profile = [
+      [0, 0], [r * 0.8, 0], [r * 0.86, h * 0.03], [r * 0.9, h * 0.15],
+      [r * 0.96, h * 0.5], [r * 0.985, h * 0.85], [r, h],
+    ].map(([x, y]) => new THREE.Vector2(x, y));
+    const body = new THREE.LatheGeometry(profile, 8, Math.PI / 8);
+    const soil = new THREE.LatheGeometry(
+      [[0, h * SOIL_TOP + Math.min(2, r * 0.12)], [r * 0.45, h * SOIL_TOP + Math.min(1, r * 0.06)], [r * 0.93, h * SOIL_TOP - 0.3], [r * 0.93, h * SOIL_TOP - 2]]
+        .map(([x, y]) => new THREE.Vector2(x, y)),
+      // The pot's eight sides, in step with them, so its edge stays inside the flat faces.
+      8,
+      Math.PI / 8,
+    );
+    const rand = random(seed + "soil");
+    const bits = (count: number, size: number) => Array.from({ length: count }, () => {
+      const a = rand() * Math.PI * 2;
+      const d = Math.sqrt(rand()) * r * 0.8;
+      const k = size * (0.6 + rand() * 0.8);
+      // Sitting on the mound: higher toward the middle.
+      const y = h * SOIL_TOP + Math.min(2, r * 0.12) * (1 - d / r) - k * 0.3;
+      return { at: [Math.cos(a) * d, y, Math.sin(a) * d] as [number, number, number], size: k, turn: rand() * 3 };
+    });
+    const scale = Math.max(0.6, r / 14);
+    return { body, soil, clumps: bits(Math.round(10 * scale), 0.9 * scale), perlite: bits(Math.round(8 * scale), 0.45 * scale) };
+  }, [r, h, seed]);
+  useEffect(() => () => { parts.body.dispose(); parts.soil.dispose(); }, [parts]);
+
+  const rimTube = Math.max(0.8, Math.min(1.6, h * 0.045));
+  const handle = Math.max(2.2, r * 0.24);
   return (
     <>
-      <Cyl r={r} r2={r * 0.9} h={heightCm} at={[0, heightCm / 2, 0]} color={p.pot} seg={8} faceted />
-      <Cyl r={r * 1.015} h={Math.max(1, heightCm * 0.06)} at={[0, heightCm - heightCm * 0.03, 0]} color={p.potRim} seg={8} faceted />
-      <Cyl r={r * 0.94} h={0.6} at={[0, heightCm * 0.94, 0]} color={p.soil} seg={8} faceted />
-      {[1, -1].map((side) => (
-        <Box key={side} size={[1.2, heightCm * 0.18, r * 0.5]} at={[side * r * 1.0, heightCm * 0.82, 0]} color={p.potRim} r={0.5} />
+      <mesh geometry={parts.body} castShadow receiveShadow>
+        <meshStandardMaterial color={p.pot} {...FABRIC} />
+      </mesh>
+      <mesh position={[0, h, 0]} rotation={[Math.PI / 2, 0, Math.PI / 8]} castShadow>
+        <torusGeometry args={[r - rimTube * 0.3, rimTube, 8, 8]} />
+        <meshStandardMaterial color={p.potRim} {...FABRIC} />
+      </mesh>
+      <mesh geometry={parts.soil} receiveShadow>
+        <meshStandardMaterial color={p.soil} {...MATTE} />
+      </mesh>
+      {parts.clumps.map((c, i) => (
+        <mesh key={`c${i}`} position={c.at} rotation={[c.turn, c.turn * 2, 0]}>
+          <icosahedronGeometry args={[c.size, 0]} />
+          <meshStandardMaterial color={p.soilDark} {...MATTE} />
+        </mesh>
+      ))}
+      {parts.perlite.map((c, i) => (
+        <mesh key={`p${i}`} position={c.at} rotation={[c.turn, 0, c.turn]}>
+          <icosahedronGeometry args={[c.size, 0]} />
+          <meshStandardMaterial color={p.perlite} {...MATTE} />
+        </mesh>
+      ))}
+      {/* Strap handles: a loop of webbing sewn on at both ends, standing out from each side. */}
+      {[-Math.PI / 2, Math.PI / 2].map((turn) => (
+        <group key={turn} rotation={[0, turn, 0]}>
+          <mesh position={[0, h * 0.8, -r * 0.93]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+            <torusGeometry args={[handle, Math.max(0.45, r * 0.035), 4, 10, Math.PI]} />
+            <meshStandardMaterial color={p.potRim} {...FABRIC} />
+          </mesh>
+        </group>
       ))}
     </>
   );
@@ -236,10 +316,8 @@ export function PlantInPot({ plant, dims, growth, palette, position }: {
   const size = plantSize(growth, dims, pot.heightCm);
   return (
     <group position={position}>
-      <Baked version={`${pot.diameterCm}|${pot.heightCm}`}>
-        <FabricPot diameterCm={pot.diameterCm} heightCm={pot.heightCm} p={palette} />
-      </Baked>
-      <group position={[0, pot.heightCm * 0.94, 0]}>
+      <FabricPot diameterCm={pot.diameterCm} heightCm={pot.heightCm} seed={plant.id} p={palette} />
+      <group position={[0, pot.heightCm * SOIL_TOP, 0]}>
         <PlantShape {...size} stage={growth.stage} seed={plant.id} p={palette} />
       </group>
     </group>

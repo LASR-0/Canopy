@@ -11,9 +11,11 @@ export const PALETTE = {
   pole: "#b9bcbf",
   zip: "#2a2c2f",
   // Plants
-  pot: "#575a5f",
-  potRim: "#3f4246",
+  pot: "#64676c",
+  potRim: "#46494e",
   soil: "#5b3f2c",
+  soilDark: "#3f2b1f",
+  perlite: "#eeede8",
   leaf: "#5c9e2e",
   leafDark: "#447d22",
   leafOld: "#a8a33c",

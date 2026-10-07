@@ -55,6 +55,12 @@ interface Pointing {
 }
 
 const STEP = Math.PI / 4;
+
+/** Whether the roof is open is the viewer's preference, kept between visits. */
+const ROOF_KEY = "canopy.setup3d.roof";
+function readRoofOpen(): boolean {
+  try { return localStorage.getItem(ROOF_KEY) === "open"; } catch { return false; }
+}
 const SPIN_SECONDS = 3;
 
 const FACES = ["Front", "Front-right", "Right", "Back-right", "Back", "Back-left", "Left", "Front-left"];
@@ -167,9 +173,7 @@ function DeviceMesh({ dims, device, palette, pointing }: {
       onPointerOut={pointing.hide}
       onClick={(e) => pointing.open(e, { kind: "device", id: placement.deviceId })}
     >
-      <Baked version={JSON.stringify([kind, dims, roofY, duct])}>
-        <Equipment kind={kind} p={palette} dims={dims} roofY={roofY} duct={duct} />
-      </Baked>
+      <Equipment kind={kind} p={palette} dims={dims} roofY={roofY} duct={duct} />
     </group>
   );
 }
@@ -244,6 +248,14 @@ export default function TentView({ dims, devices, plants, onOpen }: TentViewProp
   // A lost context (a driver reset, the GPU process restarting) usually comes
   // back by itself; until it does, or if it never does, the view says so and
   // offers a fresh canvas.
+  const [roofOpen, setRoofOpen] = useState(readRoofOpen);
+  const toggleRoof = () => {
+    setRoofOpen((open) => {
+      try { localStorage.setItem(ROOF_KEY, open ? "closed" : "open"); } catch { /* private window: not remembered */ }
+      return !open;
+    });
+    invalidate();
+  };
   const [contextLost, setContextLost] = useState(false);
   const [canvasKey, setCanvasKey] = useState(0);
   const liveCanvas = useRef<HTMLCanvasElement | null>(null);
@@ -334,6 +346,16 @@ export default function TentView({ dims, devices, plants, onOpen }: TentViewProp
         <Icon name="cube" size={14} /><h3>Isometric view</h3>
         <span className="ph-hint"><Icon name="move" size={12} /> drag to turn · {FACES[face]}</span>
         <div className="sv-modes" style={{ marginLeft: 8 }}>
+          <button
+            className={roofOpen ? "on" : ""}
+            onClick={toggleRoof}
+            aria-pressed={roofOpen}
+            title={roofOpen ? "Close the roof" : "Open the roof to see in from above"}
+          >
+            <Icon name="eye" size={13} /> Roof
+          </button>
+        </div>
+        <div className="sv-modes" style={{ marginLeft: 8 }}>
           <button onClick={() => turn(1)} aria-label="Turn left"><Icon name="arrow-left" size={13} /></button>
           <button onClick={() => turn(-1)} aria-label="Turn right"><Icon name="arrow-right" size={13} /></button>
         </div>
@@ -379,7 +401,13 @@ export default function TentView({ dims, devices, plants, onOpen }: TentViewProp
           >
             <Lights dims={dims} yaw={yaw} growLight={devices.some((d) => d.role === "light") ? palette.led : undefined} />
             <Rig dims={dims} yaw={yaw} onSpinDone={setSpin} />
-            <Tent dims={dims} palette={palette} yaw={yaw} />
+            <Tent dims={dims} palette={palette} yaw={yaw} roofOpen={roofOpen} />
+            {/*
+              Plants and devices are each baked together, so the draws stay a
+              handful however many there are. Hover still works: the hidden
+              parts each group was baked from still catch the pointer.
+            */}
+            <Baked version={JSON.stringify([dims, plants, growth])}>
             {plants.map((p, i) => (
               <group
                 key={p.id}
@@ -390,7 +418,10 @@ export default function TentView({ dims, devices, plants, onOpen }: TentViewProp
                 <PlantInPot plant={p} dims={dims} growth={growth} palette={palette} position={toScene(dims, p.xCm, p.yCm, 0)} />
               </group>
             ))}
-            {devices.map((d) => <DeviceMesh key={d.placement.deviceId} dims={dims} device={d} palette={palette} pointing={pointing} />)}
+            </Baked>
+            <Baked version={JSON.stringify([dims, devices])}>
+              {devices.map((d) => <DeviceMesh key={d.placement.deviceId} dims={dims} device={d} palette={palette} pointing={pointing} />)}
+            </Baked>
           </Canvas>
         </WebGlBoundary>
         <div ref={tip} className="tent-3d-tip" hidden>
