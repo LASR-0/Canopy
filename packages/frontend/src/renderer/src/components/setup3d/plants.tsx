@@ -15,7 +15,7 @@ import type { EnclosureDimensions, GrowStageName, Plant } from "@canopy/shared-t
 import { potSize } from "@canopy/shared-types";
 import type { Palette } from "./palette";
 import { mergeGeometries } from "./bake";
-import { fanLeafGeometry } from "./leaf";
+import { plantLeafGeometry } from "./leaf";
 
 export interface Growth {
   /** No active grow leaves this undefined, and the plant is drawn mid-veg. */
@@ -56,7 +56,8 @@ export function plantSize(growth: Growth, dims: EnclosureDimensions, potHeightCm
  * three draws (TentView bakes them together): colour goes into the vertices,
  * only the finish separates draws.
  */
-const FOLIAGE = { roughness: 0.7, side: THREE.DoubleSide } as const;
+// Flat-shaded, so each leaflet's fold shows as a lit half and a shaded half.
+const FOLIAGE = { roughness: 0.65, flatShading: true, side: THREE.DoubleSide } as const;
 const MATTE = { roughness: 0.95, flatShading: true, side: THREE.DoubleSide } as const;
 const FABRIC = { roughness: 0.95, side: THREE.DoubleSide } as const;
 
@@ -88,9 +89,11 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
   const seedling = stage === "seedling";
   const flowering = stage === "flowering" || stage === "flush" || stage === "harvest";
   const late = stage === "flush" || stage === "harvest";
-  // Five teeth a side read as serrated at any size the view draws a plant, at
-  // two-thirds the triangles of seven: a full 6 m tent is 36 plants.
-  const leafUnit = fanLeafGeometry(1, seedling ? 5 : 7, 5);
+  // Big fan leaves have nine leaflets, smaller ones seven, the youngest five,
+  // as on the reference. Four teeth a side read as serrated at any size the
+  // view draws a plant: a full 6 m tent is 36 plants.
+  const units = { 9: plantLeafGeometry(9), 7: plantLeafGeometry(7), 5: plantLeafGeometry(5) };
+  const leafCount = (length: number) => (seedling || length < spreadCm * 0.16 ? 5 : length < spreadCm * 0.3 ? 7 : 9);
 
   const leaves: THREE.BufferGeometry[] = [];
   const leavesDark: THREE.BufferGeometry[] = [];
@@ -106,7 +109,7 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
     o.rotateX(-Math.PI / 2 + tilt);
     o.scale.setScalar(length);
     o.updateMatrix();
-    into.push(leafUnit.clone().applyMatrix4(o.matrix));
+    into.push(units[leafCount(length)].clone().applyMatrix4(o.matrix));
   };
   /** A tapered stalk from `a` to `b`. */
   const stalk = (a: THREE.Vector3, b: THREE.Vector3, r0: number, r1: number) => {
@@ -142,7 +145,7 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
     const t = nodes === 1 ? 1 : i / (nodes - 1);
     const y = heightCm * (seedling ? 0.55 + 0.35 * t : 0.14 + 0.78 * t);
     const az = turn0 + (i * Math.PI) / 2 + (rand() - 0.5) * 0.4;
-    const leafLen = spreadCm * (seedling ? 0.38 : veg ? 0.46 : 0.42) * (1 - 0.45 * t);
+    const leafLen = spreadCm * (seedling ? 0.4 : veg ? 0.5 : 0.45) * (1 - 0.42 * t);
     const reach = spreadCm * (seedling ? 0.05 : 0.17) * (1 - 0.55 * t);
     // Lower leaves droop; upper ones reach for the light.
     const tilt = lerp(-0.15, 0.6, t) + (rand() - 0.5) * 0.2;
@@ -181,7 +184,7 @@ function buildPlant(heightCm: number, spreadCm: number, stage: GrowStageName | u
     parts.forEach((p) => p.dispose());
     return g;
   };
-  leafUnit.dispose();
+  Object.values(units).forEach((u) => u.dispose());
   return {
     leaves: merge(leaves),
     leavesDark: merge(leavesDark),

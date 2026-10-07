@@ -59,6 +59,65 @@ export function fanLeafGeometry(length: number, count = 7, teeth = 0): THREE.Buf
   return merged;
 }
 
+/**
+ * One leaflet of a plant's fan leaf, `length` long and `width` across at its
+ * widest: folded up along the midrib into a shallow V (`fold`, as a share of
+ * the half-width) and arching down toward the tip (`droop`, as a share of
+ * its length), with `teeth` serrations a side. Flat-shaded, the two halves
+ * of the fold catch the light differently, as in the reference, and the
+ * leaf keeps its body seen edge-on.
+ */
+function leafletGeometry(length: number, width: number, teeth: number, fold: number, droop: number): THREE.BufferGeometry {
+  const steps = Math.max(4, teeth * 2);
+  const position: number[] = [];
+  const mid: THREE.Vector3[] = [];
+  const edge: THREE.Vector3[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const y = t * length;
+    const z = -droop * length * t * t;
+    const serrate = i % 2 === 1 && i < steps ? 1.24 : 1;
+    const half = (width / 2) * Math.sin(Math.PI * Math.pow(t, 0.75)) * serrate;
+    mid.push(new THREE.Vector3(0, y, z));
+    // A tooth points forward along the blade, as a cannabis leaflet's do.
+    edge.push(new THREE.Vector3(half, y + (serrate > 1 ? length * 0.02 : 0), z + fold * half));
+  }
+  const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => position.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  const mirror = (v: THREE.Vector3) => new THREE.Vector3(-v.x, v.y, v.z);
+  for (let i = 0; i < steps; i++) {
+    tri(mid[i]!, edge[i]!, edge[i + 1]!);
+    tri(mid[i]!, edge[i + 1]!, mid[i + 1]!);
+    tri(mid[i]!, mirror(edge[i + 1]!), mirror(edge[i]!));
+    tri(mid[i]!, mid[i + 1]!, mirror(edge[i + 1]!));
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(position, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * A plant's fan leaf, one unit long (its middle leaflet), as one geometry:
+ * `count` folded, arching leaflets (odd) fanned from the stalk, the outer
+ * ones shorter and swept back. Lies in the x–y plane, middle leaflet up +y,
+ * its top face +z; plants scale and turn it into place.
+ */
+export function plantLeafGeometry(count: number, teeth = 4): THREE.BufferGeometry {
+  const side = (count - 1) / 2;
+  const sweep = count >= 9 ? 1.6 : count >= 7 ? 1.45 : 1.2;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = -side; i <= side; i++) {
+    const k = side ? Math.abs(i) / side : 0;
+    const length = 1 - 0.62 * Math.pow(k, 1.3);
+    const g = leafletGeometry(length, length * 0.27, teeth, 0.5, 0.16 + 0.1 * k);
+    g.rotateZ((-i / (side || 1)) * sweep);
+    parts.push(g);
+  }
+  const merged = mergeGeometries(parts);
+  parts.forEach((p) => p.dispose());
+  return merged;
+}
+
 /** The mark on equipment: a small white five-leaflet leaf, facing +z. */
 export function LeafMark({ size, at, rotation = [0, 0, 0], color = "#ffffff" }: {
   size: number; at: [number, number, number]; rotation?: [number, number, number]; color?: string;

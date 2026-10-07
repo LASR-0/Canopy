@@ -1103,6 +1103,10 @@ body {
 .tent-3d { position: relative; }
 .tent-3d-lost { position: absolute; inset: 0; height: auto; background: color-mix(in srgb, var(--canvas-default) 80%, transparent); cursor: default; }
 .tent-3d-lost .btn { margin-top: 10px; }
+/* The 3D view's header has more controls than Layout's: keep each on one line, and let the hint give way. */
+.plan-head h3, .plan-head .sv-modes button { white-space: nowrap; }
+.tent-3d-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tent-3d-hint svg { flex-shrink: 0; }
 /* Hover in the 3D view: positioned by TentView beside the pointer. */
 .tent-3d-tip { position: absolute; z-index: 2; pointer-events: none; display: flex; flex-direction: column; gap: 1px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--border-default); background: var(--canvas-overlay); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); font-size: 12px; white-space: nowrap; }
 .tent-3d-tip[hidden] { display: none; }

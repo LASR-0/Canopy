@@ -12,6 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDevices, useRoles, useAssignRole } from "@/hooks/useDevices";
+import { actuatorKey, useActuatorStates } from "@/hooks/useActuatorStates";
+// Type only: erased at build, so three.js stays in the lazy chunk.
+import type { DeviceStatus } from "@/components/setup3d/TentView";
 import { useElementWidth } from "@/hooks/useElementWidth";
 import {
   useAddPlant,
@@ -22,13 +25,14 @@ import {
   useUpdatePlant,
 } from "@/hooks/useLayout";
 import { useActiveWorkspace, usePatchWorkspace } from "@/hooks/useWorkspace";
-import { ROLE_META, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
+import { ROLE_COLOR, ROLE_META, UNASSIGNED_COLOR, isControlDevice, roleChannel, rolesFor } from "@/lib/roles";
 import {
   DEFAULT_ENCLOSURE,
   DEFAULT_POT_LITRES,
   ENCLOSURE_LIMITS,
   POT_SIZES,
   clampCm,
+  defaultMountCm,
   dimensionsProblem,
   potSize,
   type Device,
@@ -41,14 +45,6 @@ import {
 
 // ── Markers ───────────────────────────────────────────────────────────────────
 
-/** Pin colour by role — the prototype's palette. Sensors cool, equipment warm. */
-const ROLE_COLOR: Record<RoleKind, string> = {
-  canopy_temp: "#f78166", canopy_rh: "#2f81f7", canopy_light: "#e3b341", rootzone: "#d29922",
-  co2_probe: "#3fb950", res_temp: "#56d364", res_ph: "#56d364", res_ec: "#56d364", power_draw: "#8b949e",
-  exhaust: "#2f81f7", intake: "#79c0ff", circ: "#a371f7", light: "#e3b341", pump: "#56d364",
-  humidifier: "#2f81f7", dehumidifier: "#a371f7", co2_valve: "#3fb950", heater: "#f85149",
-};
-const UNASSIGNED_COLOR = "#8b949e";
 const PLANT_COLOR = "#3fb950";
 
 function roleIcon(role: RoleKind | undefined, device: Device): IconName {
@@ -634,6 +630,20 @@ export function SetupView() {
 
   const { data: devices = [] } = useDevices(workspace?.id);
   const { data: roles = [] } = useRoles(workspace?.id);
+  const actuatorStates = useActuatorStates(workspace?.id);
+
+  /**
+   * What the 3D view's status light shows: a sensor is on while it is online;
+   * equipment by what its channels last reported, on if any channel is.
+   */
+  const statusOf = (device: Device): DeviceStatus => {
+    if (!device.online) return "offline";
+    const channels = device.capabilities.filter((c) => c.kind === "actuator");
+    if (channels.length === 0) return "on";
+    const states = channels.flatMap((c) => actuatorStates.get(actuatorKey(device.id, c.channel)) ?? []);
+    if (states.length === 0) return "unknown";
+    return states.some((st) => st.on) ? "on" : "off";
+  };
   const { data: layout } = useLayout(dims ? workspace?.id : undefined);
 
   const patchWorkspace = usePatchWorkspace(workspaceId);
@@ -668,8 +678,17 @@ export function SetupView() {
   const placedIds = new Set(pins.map((p) => p.device.id));
   const available = devices.filter((d) => !placedIds.has(d.id));
 
+  /** Where a device starts: on the floor, high up or at the canopy, by what it is (`defaultMountCm`). */
+  const startHeight = (device: Device | undefined, role: RoleKind | undefined) =>
+    defaultMountCm(role, dims ?? DEFAULT_ENCLOSURE, device ? isControlDevice(device) : false);
+
   const place = (deviceId: string, xCm?: number, yCm?: number) => {
-    placeDevice.mutate({ deviceId, ...(xCm !== undefined && yCm !== undefined ? { xCm, yCm } : {}) });
+    const device = devices.find((d) => d.id === deviceId);
+    placeDevice.mutate({
+      deviceId,
+      zCm: startHeight(device, roleOf(deviceId)),
+      ...(xCm !== undefined && yCm !== undefined ? { xCm, yCm } : {}),
+    });
     setSel({ kind: "device", id: deviceId });
   };
   const plant = (potLitres: number, xCm?: number, yCm?: number) =>
@@ -757,7 +776,7 @@ export function SetupView() {
               <Suspense fallback={<div className="plan-box tent-3d-loading">Loading 3D view…</div>}>
                 <TentView
                   dims={dims}
-                  devices={pins.map((p) => ({ placement: p.placement, name: p.device.name, role: p.role }))}
+                  devices={pins.map((p) => ({ placement: p.placement, name: p.device.name, role: p.role, status: statusOf(p.device) }))}
                   plants={plants}
                   onOpen={(item) => { setSel(item); setMode("layout"); }}
                 />
@@ -824,7 +843,14 @@ export function SetupView() {
                               role={selectedPin.role}
                               roleBusy={assignRole.isPending}
                               onChange={(patch) => placeDevice.mutate({ deviceId: pin.device.id, ...patch })}
-                              onRole={(role) => assignRole.mutate({ role, deviceId: pin.device.id, channel: roleChannel(pin.device) })}
+                              onRole={(role) => {
+                                assignRole.mutate({ role, deviceId: pin.device.id, channel: roleChannel(pin.device) });
+                                // Still at the old role's starting height, so never moved by
+                                // hand: it follows the new role's (a pump drops to the floor).
+                                if (Math.round(pin.placement.zCm) === startHeight(pin.device, pin.role)) {
+                                  placeDevice.mutate({ deviceId: pin.device.id, zCm: startHeight(pin.device, role) });
+                                }
+                              }}
                               onRemove={() => { unplaceDevice.mutate(pin.device.id); setSel(null); }}
                               onClose={() => setSel(null)}
                             />

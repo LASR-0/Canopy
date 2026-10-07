@@ -4,6 +4,8 @@
  * do; `faceted` keeps a shape's facets flat-shaded, for the deliberately
  * low-poly parts (the octagonal fan housing, the fabric pot).
  */
+import { useEffect, useMemo } from "react";
+import * as THREE from "three";
 import { extend, type ThreeElement } from "@react-three/fiber";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
@@ -37,7 +39,7 @@ export function Mat({ color, faceted = false, emissive, roughness = 0.75 }: {
 
 /** A box with rounded edges; `r` is the radius, held under half the thinnest side. */
 export function Box({ size, at, color, r = 0.8, rotation = UPRIGHT, emissive, roughness, shadow = true }: {
-  size: V3; at: V3; color: string; r?: number; rotation?: V3; emissive?: string; roughness?: number; shadow?: boolean;
+  size: V3; at: V3; color: string; r?: number; rotation?: V3; emissive?: string | undefined; roughness?: number; shadow?: boolean;
 }) {
   const radius = Math.min(r, Math.min(...size) / 2 - 0.01);
   return (
@@ -52,7 +54,7 @@ export function Box({ size, at, color, r = 0.8, rotation = UPRIGHT, emissive, ro
 
 /** A cylinder, upright unless turned onto its side with `rotation`. */
 export function Cyl({ r, r2 = r, h, at, color, rotation = UPRIGHT, seg = 16, faceted = false, emissive, shadow = true }: {
-  r: number; r2?: number; h: number; at: V3; color: string; rotation?: V3; seg?: number; faceted?: boolean; emissive?: string; shadow?: boolean;
+  r: number; r2?: number; h: number; at: V3; color: string; rotation?: V3; seg?: number; faceted?: boolean; emissive?: string | undefined; shadow?: boolean;
 }) {
   return (
     <mesh position={at} rotation={rotation} castShadow={shadow} receiveShadow>
@@ -72,5 +74,22 @@ export function Cords({ at, fromY, toY, color }: { at: [number, number][]; fromY
         <Cyl key={i} r={0.3} h={length} at={[x, fromY + length / 2, z]} color={color} seg={5} shadow={false} />
       ))}
     </>
+  );
+}
+
+/** A cable or hose along a smooth curve through `points`, so leads hang and trail rather than jut. */
+export function Cable({ points, r = 0.35, color }: { points: V3[]; r?: number; color: string }) {
+  const key = JSON.stringify(points);
+  const geometry = useMemo(() => {
+    const curve = new THREE.CatmullRomCurve3(points.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+    return new THREE.TubeGeometry(curve, Math.max(12, points.length * 10), r, 6, false);
+    // `key` stands for `points`, which callers write inline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, r]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return (
+    <mesh geometry={geometry} receiveShadow>
+      <Mat color={color} roughness={0.6} />
+    </mesh>
   );
 }

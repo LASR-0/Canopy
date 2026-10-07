@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   POT_SIZES,
+  defaultMountCm,
   dimensionsProblem,
   potSize,
   rescalePoint,
@@ -148,5 +149,26 @@ describe("POT_SIZES", () => {
   it("looks sizes up by litres", () => {
     expect(potSize(12)).toEqual({ litres: 12, diameterCm: 27, heightCm: 24 });
     expect(potSize(13)).toBeUndefined();
+  });
+});
+
+describe("defaultMountCm", () => {
+  it("starts floor equipment, plugs, reservoirs and their probes on the floor", () => {
+    for (const role of ["pump", "power_draw", "res_ph", "res_ec", "res_temp", "rootzone", "humidifier", "dehumidifier", "heater", "co2_valve"] as const) {
+      expect(defaultMountCm(role, TENT, true)).toBe(0);
+    }
+  });
+  it("hangs the light and inline fans high, inside the tent", () => {
+    expect(defaultMountCm("light", TENT, true)).toBe(160);
+    expect(defaultMountCm("exhaust", TENT, true)).toBe(170);
+    expect(defaultMountCm("light", { widthCm: 60, depthCm: 60, heightCm: 30 }, true)).toBeLessThanOrEqual(30);
+  });
+  it("puts canopy sensors at canopy height", () => {
+    expect(defaultMountCm("canopy_temp", TENT, false)).toBe(100);
+    expect(defaultMountCm("co2_probe", TENT, false)).toBe(100);
+  });
+  it("places a device with no role by kind: a controllable one on the floor, a sensor at the canopy", () => {
+    expect(defaultMountCm(undefined, TENT, true)).toBe(0);
+    expect(defaultMountCm(undefined, TENT, false)).toBe(100);
   });
 });

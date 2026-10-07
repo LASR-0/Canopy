@@ -22,6 +22,7 @@
  * centimetre per round trip.
  */
 import type { Id, Timestamp } from "./common.js";
+import type { RoleKind } from "./device.js";
 
 export interface EnclosureDimensions {
   widthCm: number;
@@ -162,4 +163,29 @@ export function rescalePoint<P extends { xCm: number; yCm: number; zCm?: number 
   };
   if (point.zCm !== undefined) scaled.zCm = (point.zCm / from.heightCm) * to.heightCm;
   return scaled;
+}
+
+/**
+ * The height a device is first placed at, by what it is, before the grower
+ * moves it: floor equipment, plugs, reservoirs and their probes start on the
+ * floor; lights and inline fans high; circulation fans mid-height; canopy
+ * sensors at canopy height. A device with no role yet is placed by kind: a
+ * controllable device (a plug, a relay) on the floor, a sensor at canopy
+ * height. The grower can raise or wall-mount anything from there.
+ */
+export function defaultMountCm(role: RoleKind | undefined, dims: EnclosureDimensions, controllable: boolean): number {
+  const h = dims.heightCm;
+  const canopy = Math.round(h * 0.5);
+  switch (role) {
+    case "light": return Math.max(0, Math.round(Math.max(h * 0.6, h - 40)));
+    case "exhaust":
+    case "intake": return Math.max(0, h - 30);
+    case "circ": return Math.round(h * 0.55);
+    case "canopy_temp":
+    case "canopy_rh":
+    case "canopy_light":
+    case "co2_probe": return canopy;
+    case undefined: return controllable ? 0 : canopy;
+    default: return 0;
+  }
 }

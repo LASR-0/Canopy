@@ -16,8 +16,8 @@ export const PALETTE = {
   soil: "#5b3f2c",
   soilDark: "#3f2b1f",
   perlite: "#eeede8",
-  leaf: "#5c9e2e",
-  leafDark: "#447d22",
+  leaf: "#6cb52f",
+  leafDark: "#4f9426",
   leafOld: "#a8a33c",
   stem: "#6f9440",
   bud: "#9fc25a",
@@ -30,6 +30,13 @@ export const PALETTE = {
   screen: "#c8d2c4",
   ink: "#26292c",
   led: "#ffe6b8",
+  /** A grow light's face while it is off. */
+  ledOff: "#8f8a7e",
+  fanBlade: "#5d6168",
+  /** A heater's lamp while it is on. */
+  lamp: "#ff9a3c",
+  /** A controller's status light. */
+  ok: "#3fb950",
   cord: "#2a2b2d",
   duct: "#d9dadc",
   metal: "#9ca1a6",

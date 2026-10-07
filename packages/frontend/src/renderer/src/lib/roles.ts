@@ -53,6 +53,18 @@ export const ROLE_META: Record<RoleKind, RoleMeta> = {
   heater:        { name: "Heater",          kind: "control", unlocks: "temp floor",           subsystem: "climate" },
 };
 
+/**
+ * A role's colour: Layout's pins, and the 3D view's sensors, so a sensor is the
+ * same colour in both. The prototype's palette; sensors cool, equipment warm.
+ */
+export const ROLE_COLOR: Record<RoleKind, string> = {
+  canopy_temp: "#f78166", canopy_rh: "#2f81f7", canopy_light: "#e3b341", rootzone: "#d29922",
+  co2_probe: "#3fb950", res_temp: "#56d364", res_ph: "#56d364", res_ec: "#56d364", power_draw: "#8b949e",
+  exhaust: "#2f81f7", intake: "#79c0ff", circ: "#a371f7", light: "#e3b341", pump: "#56d364",
+  humidifier: "#2f81f7", dehumidifier: "#a371f7", co2_valve: "#3fb950", heater: "#f85149",
+};
+export const UNASSIGNED_COLOR = "#8b949e";
+
 /** Every role id, in catalogue order — sensing first, then equipment. */
 export const ROLE_IDS = Object.keys(ROLE_META) as RoleKind[];
 
