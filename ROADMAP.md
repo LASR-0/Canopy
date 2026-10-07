@@ -2333,8 +2333,7 @@ offscreen at each step and comparing against it.
   was a hundred meshes (now two).
 - **Sensor screens stay blank.** *Decided 2026-10-07*: the 3D view shows
   the setup, not its readings; those live on the Overview.
-- **Still open**: no floor grid; the mount-height default by role (below)
-  still belongs to Layout.
+- **Still open**: no floor grid.
 
 #### Next
 
@@ -2347,10 +2346,10 @@ offscreen at each step and comparing against it.
    `calcGrowStage`: seedling 6–14 cm, growing through veg, stretching in the
    first half of flower, full in flush, all kept under the light; no active
    grow draws mid-veg.
-   - **Seen with the dev data**: every device sits at the default 100 cm
-     mounting height (`DEFAULT_MOUNT_CM`), so the reservoir bucket floats
-     beside the light. The 3D view shows the plan as it is; a default by
-     role (floor equipment at 0, the light high) belongs to Layout.
+   - **Seen with the dev data**: every device sat at the default 100 cm
+     mounting height (`DEFAULT_MOUNT_CM`), so the reservoir bucket floated
+     beside the light. Fixed: starting heights by role, see "Placement
+     smarts".
 2. **The tent's detail** ✅ built, see "The look", except a floor grid at
    Layout's grid step, which is still a maybe.
 3. **Read-only touches** ✅ built, 2026-10-07. Hovering a device shows its
@@ -2445,6 +2444,110 @@ After the reference, and checked offscreen against it at each step.
   leaves) and as wide as they are tall; flower narrows them to 0.85 as it
   stretches, rather than at once.
 
+#### Polish, second round ✅ 2026-10-07 — after the first walkthrough notes
+
+- **Five models rebuilt** to the tent and pot's standard (`equipment.tsx`),
+  with leads drawn as curves (`Cable` in `shapes.tsx`) that hang and trail
+  instead of jutting:
+  - **Smart plug** (`power_draw`): a Shelly-style cube in the first socket of
+    a power strip on the floor, its LED ring in the role's colour, the metered
+    appliance's plug in it and that cable looping away.
+  - **Controller** (a device with no role): a small white enclosure, dark
+    face with status light, button and mark, antenna, cable glands with
+    leads to the floor, as a Shelly relay or ESP board usually is.
+  - **Circulation fan**: a deep octagonal housing, wire grille of three
+    rings on four spokes over five broad pitched blades and a domed hub,
+    motor and mark behind, on a knuckle above a clamp.
+  - **Heater**: fins with pressed channels between manifolds, a carry bar,
+    caster feet, and a side control box with dial, knob and a lamp lit while
+    it is on.
+  - **Water pump**: a 20 L bucket (lathe) with ribs and rolled rim, dark lid
+    with grommet, bail handle folded down, level window with its scale, the
+    hose arcing over the rim and away across the floor, and its power lead.
+- **Sensors take their role's colour**, the one Layout's pins use (moved to
+  `ROLE_COLOR` in `lib/roles.ts` so both share it), so sensors sharing a
+  model can be told apart. Layout gives `res_temp`, `res_ph` and `res_ec` one
+  green, so those three still match each other.
+- **The grow light glows while it is on**: its face lit, a faint warm beam
+  falling from it and widening toward the floor, and the pool it makes
+  there, all added on top (additive) so they brighten and never darken.
+  Off, the face goes dark and the overhead light turns to daylight.
+- **Models stand against walls, not through them.** Each model has a
+  footprint (`MODEL_SPECS`, the LED panel's from the tent's size); a device
+  pinned hard against a wall is drawn moved in until its footprint, turned
+  as placed, clears the wall's inner face. Layout's pin is a point; the
+  model is not.
+- **Status light over every device**: green while on (a sensor while it is
+  online), red while off, grey while offline or before it has reported a
+  state. Equipment counts as on if any of its channels is. Hover adds the
+  same as text. The same size on screen at any zoom.
+- **Cutaway toggle**: off, the walls stay closed from every side and only
+  the door is open, so the tent can be seen from outside, vents and ports
+  and all. Remembered per viewer, like the roof.
+- Measured: the 6 m tent with the roof open and nine lights on, 48–50 fps;
+  the walkthrough-style tent, 59 fps.
+
+#### Placement smarts ✅ 2026-10-07
+
+- **Inline fans use the tent's duct ports** (`ducts.tsx`, `ductPorts` in
+  tent.tsx). Exhausts are given ports first, then intakes; each takes the
+  nearest port still free, roof or wall (*decided 2026-10-07*, over the
+  roof first for exhausts), and is turned to face it. A port in use stays drawn when its panel opens:
+  with the roof open, the roof port used to fade with it and its duct looked
+  to leave through nothing. The duct bends from the fan's collar into the port
+  (exhaust from the fan's face, intake from its back) and the port's sock is
+  drawn open round it. A fan left without a port keeps its placed turn and
+  ducts straight to the wall it points at, through a collar of its own, kept
+  clear of the ports and of other fans' holes. Ducts are one ribbed tube each,
+  any length.
+- **Wall mounting.** A temperature/humidity sensor, CO₂ monitor or
+  controller up in the air within 15 cm of a wall is drawn on the wall: back
+  to it, facing into the tent, on a bracket with screws, no cord to the roof;
+  the controller's leads run down the wall. On the floor, or mid-tent, models
+  stand or hang as before. Only the 3D view changes: Layout keeps the pin
+  where it was put.
+- **Starting heights by role** (`defaultMountCm` in shared-types, tested).
+  A device dropped into Layout starts where it would really be: plugs,
+  reservoirs and their probes, root-zone sensors and floor equipment at 0;
+  the light at the tent's height less 40 cm; inline fans 30 cm under the
+  roof; circulation fans a little over half height; canopy sensors at half
+  height. With no role yet, a controllable device starts on the floor and a
+  sensor at canopy height. Assigning a role moves a device to the new role's
+  height only while it is still at the old role's, so a height set by hand
+  is never overwritten. Devices placed before this keep their heights.
+- Measured: the 6 m tent with the roof open, 47–48 fps, unchanged.
+
+#### Camera, ground and plants — Phase 9 wrapped for v1, 2026-10-07
+
+- **Zoom**: scroll over the view (toward the pointer), the − Fit + buttons,
+  or + − 0 on the keyboard; 0.7× to 6× the fit. Zoomed in, shift-drag (or
+  right- or middle-drag) moves the view, held so the tent cannot be lost off
+  the edge; a plain drag still turns it. The wheel listener is a native,
+  non-passive one, so scrolling over the view never scrolls the page too.
+- **Eye level**: an Isometric / Eye level switch in the header, remembered
+  per viewer. Eye level looks almost straight in (6° down) at its own fit;
+  the switch eases between the two angles. Everything else (cutaway, roof,
+  turning, zoom) works the same at either.
+- **Ground grid**: a grid in cm (25, 50 or 100 cm by the tent's size),
+  square to the tent with a line on each wall, fading into the background;
+  its line colour follows the theme, as the background does.
+- **The tent casts a shadow**: its box cast along the key light, so it
+  always falls away from the light on screen as the tent turns, with a soft
+  edge. A soft-edged polygon rebuilt from eight points when the yaw changes,
+  not a shadow map: a second shadow-casting light would redraw the scene's
+  shadows on every frame of a turn.
+- **Plants after the reference** (`plantLeafGeometry` in leaf.tsx):
+  leaflets folded up along the midrib into a shallow V and arching down to
+  the tip, flat-shaded so one half is lit and one shaded, serrated, broad
+  (27 % of their length); big fan leaves have nine leaflets swept round to
+  the sides, smaller ones seven, the youngest and the crown five; brighter
+  lime greens. Edge-on, at eye level, a leaf keeps its body where the flat
+  one became a spike. Fan leaves are larger for the plant.
+- Measured: the 6 m tent of 36 flowering plants, 986k triangles, 46–47 fps.
+
+**Phase 9 is done for v1.** What is left is the walkthrough below, in the
+real app with every role, and the Hyprland check.
+
 #### Model walkthrough — the checklist
 
 Every model, checked in the real app in a workspace that holds one device of
@@ -2492,7 +2595,8 @@ shows its name and role.
       ports from inside
 
 Flagged weakest before the walkthrough: clip fan, CO₂ tank, reservoir
-bucket, smart plug, light sensor, soil sensor.
+bucket, smart plug, light sensor, soil sensor. Clip fan, reservoir, smart
+plug, controller and heater were rebuilt in the second polish round.
 
 **Not covered yet: device types growers use that have no role.** A role is
 what the controller acts on and what picks a model, so each needs a
@@ -2532,6 +2636,18 @@ then.
 **TLS comes after that.** It depends on per-device identity (G) and on which
 device firmwares can take a certificate, which the real-device testing will
 show.
+
+### Future features (after v1)
+
+- **Plant models by what is being grown.** The 3D view draws one plant, a
+  cannabis plant, at the grow's stage. A grow already records what is grown
+  (`GrowCycle.strain`, free text, "generic field, not cannabis-specific"), so
+  the view could draw a different plant for each: tomatoes, peppers,
+  lettuce, herbs, cannabis by type (indica bushier and broad-leaved, sativa
+  taller with narrow leaflets). Needs a list of crops (or a crop field beside
+  the strain) for the view to key on, and a generator, or a CC0 asset, per
+  crop following the same stage sizing (`plantSize`). The plant code is
+  already one function per shape, so a crop would be one more.
 ---
 
 ## Two-machine workflow
