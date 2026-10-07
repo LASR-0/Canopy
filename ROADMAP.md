@@ -2333,7 +2333,7 @@ offscreen at each step and comparing against it.
   was a hundred meshes (now two).
 - **Sensor screens stay blank.** *Decided 2026-10-07*: the 3D view shows
   the setup, not its readings; those live on the Overview.
-- **Still open**: in a tall tent the roof hides lights hung near it; no floor grid; the
+- **Still open**: the roof hides lights in a big tent (Next, 5); no floor grid; the
   mount-height default by role (below) still belongs to Layout.
 
 #### Next
@@ -2353,11 +2353,51 @@ offscreen at each step and comparing against it.
      role (floor equipment at 0, the light high) belongs to Layout.
 2. **The tent's detail** ✅ built, see "The look", except a floor grid at
    Layout's grid step, which is still a maybe.
-3. **Read-only touches**: a device's name and role on hover (no readings,
-   see "The look"); selecting one could open it in Layout. Nothing is
-   controlled from the view.
-4. **Robustness**: recover from a lost WebGL context, free GPU memory on
-   leaving the view, and check a 600 × 600 × 300 cm tent full of equipment.
+3. **Read-only touches** ✅ built, 2026-10-07. Hovering a device shows its
+   name and role, a plant its label (or "Plant n") and pot; clicking either
+   selects it in Layout and switches to Layout. A press that turns the tent
+   does not also open what it started on. Nothing is controlled from the
+   view, and no readings: sensor screens stay blank by decision. The tooltip
+   is updated directly, not through React state, because a re-render per
+   pointer move rebuilt the scene's children and redrew the shadow.
+4. **Robustness** ✅ built, 2026-10-07.
+   - **The 6 m tent** (600 × 600 × 300 cm, 9 lights, 4 inline fans, 8 clip
+     fans, every other model, 36 flowering plants) spun at **10 fps** at
+     first, with 4,826 draws and 7.5M triangles a frame: each LED panel's
+     spotlight drew its own shadow map of the whole scene. Now **53 fps**
+     (449 draws, 585k triangles), and the 150 cm tent with every model 60
+     fps. Three changes, each measured (dev builds show draws and triangles
+     after a Spin test):
+     - **One overhead light** straight down over the footprint, the only one
+       casting shadows: the grow lights' warm light however many panels
+       there are, or daylight in a tent without one. It never moves, so its
+       shadow map is redrawn only when the tent's contents change, never
+       during a turn. The key light that turns with the camera shades but
+       casts nothing. Shadows now fall straight down, as in the reference.
+     - **Draw calls are the budget on the work machine**, not triangles:
+       ANGLE to D3D12 across WSL makes each one dear. The devices alone were
+       358 draws for 114k triangles (33 fps), plants 368 draws for 480k (49
+       fps). `Baked` (`setup3d/bake.tsx`) merges a model's parts into one
+       mesh per material once mounted, so models stay written as plain
+       parts; used for devices, pots, and the tent's seams and frame.
+     - Leaves have five teeth a side, not seven.
+   - **Lost WebGL context**: three re-uploads everything when the context
+     comes back, and the view redraws; until it does, or if it never does,
+     the view says the graphics driver reset and offers Redraw, a fresh
+     canvas. Checked by losing the context with `WEBGL_lose_context`, both
+     restored and not.
+   - **GPU memory on leaving the view**: react-three-fiber disposes the
+     renderer and releases the context on unmount, and everything built by
+     hand (merged geometry, the ground shadow's texture) is disposed with
+     its component. Twelve mount/unmount cycles left one canvas and no
+     "too many WebGL contexts" warning.
+5. **Open: the roof in a big tent.** At 600 × 600 × 300 the solid roof
+   covers most of the view and every light hung under it. Hover still finds
+   them, but they cannot be seen. Options: open the roof like a facing wall
+   (it always faces the camera, so it would always be open, as in the
+   reference's top view), or only above a footprint-to-height ratio.
+   Waiting on a decision.
+6. **Still to check at home**: the spike's Hyprland check (above).
 
 
 ### After Phase 9 — real devices, then TLS
