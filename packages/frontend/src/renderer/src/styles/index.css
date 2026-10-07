@@ -1092,7 +1092,10 @@ body {
 .plan-head h3 { font-size: 12.5px; font-weight: 600; }
 .plan-head .ph-hint { margin-left: auto; font-size: 11px; color: var(--fg-subtle); font-family: var(--mono); display: flex; align-items: center; gap: 5px; }
 /* Setup View → 3D (components/setup3d/TentView.tsx). */
-.tent-3d { height: 560px; cursor: grab; touch-action: none; outline: none; }
+.tent-3d { height: 560px; cursor: grab; touch-action: none; outline: none;
+  /* The tent keeps its real colours in both themes; only the room behind it follows the theme. */
+  background: radial-gradient(ellipse at 50% 42%, #f8f7f4 0%, #e8e5e0 100%); }
+[data-theme="dark"] .tent-3d { background: radial-gradient(ellipse at 50% 42%, #2b3038 0%, #15191e 100%); }
 .tent-3d:active { cursor: grabbing; }
 .tent-3d-fallback, .tent-3d-loading { display: grid; place-items: center; height: 100%; font-size: 12.5px; color: var(--fg-muted); }
 .tent-3d-loading { height: 640px; }

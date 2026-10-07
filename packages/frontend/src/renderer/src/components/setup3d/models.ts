@@ -57,17 +57,17 @@ const BY_ROLE: Record<RoleKind, ModelKind> = {
 };
 
 export const MODEL_SPECS: Record<ModelKind, ModelSpec> = {
-  inline_fan: { heightCm: 25, mount: "hung" },
-  clip_fan: { heightCm: 31, mount: "standing" },
+  inline_fan: { heightCm: 26, mount: "hung" },
+  clip_fan: { heightCm: 32, mount: "standing" },
   led_light: { heightCm: 8, mount: "hung" },
-  sensor: { heightCm: 10, mount: "hung" },
+  sensor: { heightCm: 8, mount: "hung" },
   light_sensor: { heightCm: 5, mount: "hung" },
   co2_sensor: { heightCm: 12, mount: "hung" },
-  soil_probe: { heightCm: 19, mount: "standing" },
+  soil_probe: { heightCm: 20, mount: "standing" },
   res_probe: { heightCm: 18, mount: "standing" },
   smart_plug: { heightCm: 8, mount: "standing" },
   reservoir_pump: { heightCm: 50, mount: "standing" },
-  humidifier: { heightCm: 36, mount: "standing" },
+  humidifier: { heightCm: 27, mount: "standing" },
   dehumidifier: { heightCm: 51, mount: "standing" },
   heater: { heightCm: 58, mount: "standing" },
   co2_tank: { heightCm: 70, mount: "standing" },

@@ -15,13 +15,14 @@ import { Canvas, invalidate, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { DevicePlacement, EnclosureDimensions, Plant, RoleKind } from "@canopy/shared-types";
 import { Icon } from "@/components/Icon";
-import { useTheme } from "@/theme/ThemeProvider";
 import { useActiveGrow } from "@/hooks/useActiveGrow";
 import { calcGrowStage } from "@/lib/growStage";
-import { Equipment } from "./equipment";
+import { Equipment, type Duct } from "./equipment";
 import { MODEL_SPECS, modelFor } from "./models";
 import { PALETTE, type Palette } from "./palette";
 import { PlantInPot, type Growth } from "./plants";
+import { cameraDir, type YawState } from "./rig";
+import { Lights, RAIL_DROP_CM, Tent } from "./tent";
 
 export interface PlacedDevice {
   placement: DevicePlacement;
@@ -34,24 +35,10 @@ export interface TentViewProps {
   plants: Plant[];
 }
 
-/** True isometric: the camera looks down the diagonal of a cube. */
-const ELEVATION = Math.atan(1 / Math.SQRT2);
 const STEP = Math.PI / 4;
-const POLE_CM = 2.5;
 const SPIN_SECONDS = 3;
 
 const FACES = ["Front", "Front-right", "Right", "Back-right", "Back", "Back-left", "Left", "Front-left"];
-
-/** Shared between the controls outside the canvas and the camera rig inside it. */
-interface YawState {
-  current: number;
-  target: number;
-  /**
-   * A timed full turn. Timed by the wall clock, not the frame delta: with
-   * frames on demand, the first frame's delta is however long the view sat idle.
-   */
-  spin: { start: number; t0: number | null; last: number; frames: number; worstMs: number } | null;
-}
 
 export interface SpinResult { fps: number; worstMs: number }
 
@@ -60,15 +47,6 @@ interface GlInfo { version: string; renderer: string; software: boolean }
 /** Plan coordinates (cm from the back-left corner, z up) to scene coordinates (y up, centred). */
 function toScene(dims: EnclosureDimensions, xCm: number, yCm: number, zCm: number): [number, number, number] {
   return [xCm - dims.widthCm / 2, zCm, yCm - dims.depthCm / 2];
-}
-
-/** Direction from the tent's centre toward the camera, for a yaw. */
-function cameraDir(yaw: number): THREE.Vector3 {
-  return new THREE.Vector3(
-    Math.cos(ELEVATION) * Math.sin(yaw),
-    Math.sin(ELEVATION),
-    Math.cos(ELEVATION) * Math.cos(yaw),
-  );
 }
 
 /**
@@ -142,112 +120,12 @@ function Rig({ dims, yaw, onSpinDone }: { dims: EnclosureDimensions; yaw: React.
   return null;
 }
 
-// ── Tent ──────────────────────────────────────────────────────────────────────
-
-/** A wall that fades out while it faces the camera, so the tent reads as a cutaway. */
-function Wall({ size, position, normal, palette, yaw }: {
-  size: [number, number];
-  position: [number, number, number];
-  normal: [number, number, number];
-  palette: Palette;
-  yaw: React.RefObject<YawState>;
-}) {
-  const material = useRef<THREE.MeshStandardMaterial>(null);
-  const rotationY = Math.atan2(normal[0], normal[2]);
-  useFrame((state) => {
-    const m = material.current;
-    if (!m) return;
-    const c = cameraDir(yaw.current.current);
-    const facing = normal[0] * c.x + normal[2] * c.z > 0.01;
-    const want = facing ? 0.07 : 1;
-    if (Math.abs(m.opacity - want) > 0.005) {
-      m.opacity += (want - m.opacity) * 0.25;
-      state.invalidate();
-    } else {
-      m.opacity = want;
-    }
-    m.depthWrite = m.opacity > 0.95;
-  });
-  return (
-    <mesh position={position} rotation={[0, rotationY, 0]}>
-      <planeGeometry args={size} />
-      <meshStandardMaterial ref={material} color={palette.wall} side={THREE.DoubleSide} transparent flatShading roughness={1} />
-    </mesh>
-  );
-}
-
-/** The frame: four uprights and the top and bottom rails. */
-function Frame({ dims, palette }: { dims: EnclosureDimensions; palette: Palette }) {
-  const { widthCm: w, depthCm: d, heightCm: h } = dims;
-  const poles: { pos: [number, number, number]; size: [number, number, number] }[] = [];
-  for (const x of [-w / 2, w / 2]) for (const z of [-d / 2, d / 2]) {
-    poles.push({ pos: [x, h / 2, z], size: [POLE_CM, h, POLE_CM] });
-  }
-  for (const y of [0, h]) {
-    for (const z of [-d / 2, d / 2]) poles.push({ pos: [0, y, z], size: [w + POLE_CM, POLE_CM, POLE_CM] });
-    for (const x of [-w / 2, w / 2]) poles.push({ pos: [x, y, 0], size: [POLE_CM, POLE_CM, d + POLE_CM] });
-  }
-  return (
-    <group>
-      {poles.map((p, i) => (
-        <mesh key={i} position={p.pos}>
-          <boxGeometry args={p.size} />
-          <meshStandardMaterial color={palette.pole} flatShading roughness={1} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-/** The door's zip on the front panel: an arch-topped outline. */
-function Door({ dims, palette }: { dims: EnclosureDimensions; palette: Palette }) {
-  const line = useMemo(() => {
-    const doorW = Math.min(dims.widthCm * 0.7, 160);
-    const doorH = dims.heightCm * 0.86;
-    const r = Math.min(doorW / 2, 25);
-    const shape = new THREE.Shape();
-    shape.moveTo(-doorW / 2, 0);
-    shape.lineTo(-doorW / 2, doorH - r);
-    shape.quadraticCurveTo(-doorW / 2, doorH, -doorW / 2 + r, doorH);
-    shape.lineTo(doorW / 2 - r, doorH);
-    shape.quadraticCurveTo(doorW / 2, doorH, doorW / 2, doorH - r);
-    shape.lineTo(doorW / 2, 0);
-    // `<line>` is SVG's in JSX, so three's Line goes in as a primitive.
-    return new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(shape.getPoints(8)),
-      new THREE.LineBasicMaterial({ color: palette.door }),
-    );
-  }, [dims.widthCm, dims.heightCm, palette.door]);
-  useEffect(() => () => {
-    line.geometry.dispose();
-    (line.material as THREE.Material).dispose();
-  }, [line]);
-  return <primitive object={line} position={[0, 0, dims.depthCm / 2 + 0.5]} />;
-}
-
-function Tent({ dims, palette, yaw }: { dims: EnclosureDimensions; palette: Palette; yaw: React.RefObject<YawState> }) {
-  const { widthCm: w, depthCm: d, heightCm: h } = dims;
-  return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, 0]}>
-        <planeGeometry args={[w, d]} />
-        <meshStandardMaterial color={palette.floor} flatShading roughness={1} />
-      </mesh>
-      <Wall size={[w, h]} position={[0, h / 2, -d / 2]} normal={[0, 0, -1]} palette={palette} yaw={yaw} />
-      <Wall size={[w, h]} position={[0, h / 2, d / 2]} normal={[0, 0, 1]} palette={palette} yaw={yaw} />
-      <Wall size={[d, h]} position={[-w / 2, h / 2, 0]} normal={[-1, 0, 0]} palette={palette} yaw={yaw} />
-      <Wall size={[d, h]} position={[w / 2, h / 2, 0]} normal={[1, 0, 0]} palette={palette} yaw={yaw} />
-      <Frame dims={dims} palette={palette} />
-      <Door dims={dims} palette={palette} />
-    </group>
-  );
-}
-
 // ── Contents ──────────────────────────────────────────────────────────────────
 
 /**
  * A device, drawn by its role's model. The mounting height is the model's
- * base, held inside the tent; hung models get cords up to the roof bars.
+ * base, held inside the tent; hung models get cords up to the roof rails, and
+ * inline fans a duct out through the wall they point at.
  */
 function DeviceMesh({ dims, device, palette }: { dims: EnclosureDimensions; device: PlacedDevice; palette: Palette }) {
   const { placement, role } = device;
@@ -256,11 +134,29 @@ function DeviceMesh({ dims, device, palette }: { dims: EnclosureDimensions; devi
   const [x, , z] = toScene(dims, placement.xCm, placement.yCm, 0);
   // 0° faces the door (+z), clockwise seen from above; three.js turns counter-clockwise.
   const rotationY = (-placement.rotationDeg * Math.PI) / 180;
+  const duct = kind === "inline_fan" ? ductTo(dims, x, z, rotationY, role === "intake" ? -1 : 1) : undefined;
   return (
     <group position={[x, baseY, z]} rotation={[0, rotationY, 0]}>
-      <Equipment kind={kind} p={palette} dims={dims} roofY={dims.heightCm - baseY} />
+      <Equipment kind={kind} p={palette} dims={dims} roofY={dims.heightCm - RAIL_DROP_CM - baseY} duct={duct} />
     </group>
   );
+}
+
+/** The inline fan's collar sits this far from its centre. */
+const FAN_COLLAR_CM = 14;
+
+/**
+ * The duct from an inline fan at scene (x, z), turned by `rotationY`, to the
+ * wall in the direction it blows: out of its face for exhaust, out of its back
+ * for intake, which draws through that wall.
+ */
+function ductTo(dims: EnclosureDimensions, x: number, z: number, rotationY: number, dir: 1 | -1): Duct {
+  const dx = Math.sin(rotationY) * dir;
+  const dz = Math.cos(rotationY) * dir;
+  const hit = (pos: number, d: number, half: number) =>
+    d > 1e-6 ? (half - pos) / d : d < -1e-6 ? (-half - pos) / d : Infinity;
+  const distance = Math.min(hit(x, dx, dims.widthCm / 2), hit(z, dz, dims.depthCm / 2));
+  return { lengthCm: Math.max(0, distance - FAN_COLLAR_CM), dir };
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────
@@ -304,8 +200,7 @@ function readGlInfo(gl: THREE.WebGLRenderer): GlInfo {
 }
 
 export default function TentView({ dims, devices, plants }: TentViewProps) {
-  const { resolved } = useTheme();
-  const palette = PALETTE[resolved];
+  const palette = PALETTE;
   const { data: grow } = useActiveGrow();
   const stageInfo = grow ? calcGrowStage(grow) : undefined;
   const growth: Growth = { stage: stageInfo?.stage, pct: stageInfo?.pctInStage ?? 0.5 };
@@ -381,12 +276,12 @@ export default function TentView({ dims, devices, plants }: TentViewProps) {
             frameloop="demand"
             dpr={[1, 2]}
             camera={{ near: 1, far: 5000, position: [0, 0, 2000] }}
-            gl={{ antialias: true, powerPreference: "high-performance" }}
+            shadows="soft"
+            gl={{ antialias: true, powerPreference: "high-performance", toneMapping: THREE.NeutralToneMapping }}
             onCreated={({ gl }) => setGlInfo(readGlInfo(gl))}
             fallback={<div className="tent-3d-fallback">WebGL is not available on this machine, so the 3D view cannot be drawn.</div>}
           >
-            <ambientLight intensity={1.4} />
-            <directionalLight position={[-300, 600, 400]} intensity={1.6} />
+            <Lights dims={dims} yaw={yaw} />
             <Rig dims={dims} yaw={yaw} onSpinDone={setSpin} />
             <Tent dims={dims} palette={palette} yaw={yaw} />
             {plants.map((p) => (

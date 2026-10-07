@@ -1,13 +1,37 @@
-/** Grays per theme for the 3D view. Colour is kept for state, later. */
+/**
+ * Colours for the 3D view: what things are made of, so they stay the same in
+ * both themes. A tent does not change colour at night; only the background
+ * behind it follows the theme (`.tent-3d` in index.css).
+ */
 export const PALETTE = {
-  dark: {
-    wall: "#6e7681", floor: "#30363d", pole: "#a5adb6", door: "#c9d1d9",
-    pot: "#545d68", plant: "#8b949e", device: "#d0d7de", accent: "#7d8590", rope: "#a5adb6",
-  },
-  light: {
-    wall: "#c4ccd4", floor: "#e1e6eb", pole: "#57606a", door: "#424a53",
-    pot: "#8c959f", plant: "#6e7781", device: "#32383f", accent: "#8c959f", rope: "#57606a",
-  },
+  // The tent
+  fabric: "#e6e0d5",
+  floor: "#d9d1c4",
+  frame: "#45484d",
+  pole: "#b9bcbf",
+  zip: "#2a2c2f",
+  // Plants
+  pot: "#575a5f",
+  potRim: "#3f4246",
+  soil: "#5b3f2c",
+  leaf: "#5c9e2e",
+  leafDark: "#447d22",
+  leafOld: "#a8a33c",
+  stem: "#6f9440",
+  bud: "#9fc25a",
+  // Equipment
+  housing: "#4a4e54",
+  housingDark: "#33363a",
+  appliance: "#f2f1ee",
+  applianceTrim: "#d6d5d1",
+  sensor: "#2f7fd6",
+  screen: "#c8d2c4",
+  ink: "#26292c",
+  led: "#ffe6b8",
+  cord: "#2a2b2d",
+  duct: "#d9dadc",
+  metal: "#9ca1a6",
+  water: "#7fb2d9",
 };
 
-export type Palette = (typeof PALETTE)["dark"];
+export type Palette = typeof PALETTE;
