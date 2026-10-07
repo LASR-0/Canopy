@@ -2278,57 +2278,83 @@ Built as the real view rather than a throwaway, so what it draws stays
    cutaway. The zoom fits the tent at every yaw, so turning never changes
    its size. Pots at their real size from `POT_SIZES` with a low-poly plant,
    and each placed device as a block with a nub on the side it faces
-   (`rotationDeg`). Grays follow the theme. Frames are drawn on demand, so
-   a still view costs nothing.
+   (`rotationDeg`). Frames are drawn on demand, so a still view costs
+   nothing. (Superseded in look by "The look" below; the camera stands.)
 7. **Still to check at home**: on Hyprland, `pnpm dev`, Setup View → 3D
    view, read the diagnostics bar and press Spin test. Native Mesa should
    give the real GPU with no setting.
 
+#### The look ✅ built, 2026-10-07 — after `prototype/3dReferences.png`
+
+The design reference (a rendered tent with equipment, a colour key and three
+views) set the target; the aim was half its fidelity. Checked by rendering
+offscreen at each step and comparing against it.
+
+- **Real colours, not grays.** *Decided 2026-10-07*, reversing "grays follow
+  the theme, colour kept for state": things keep what they are made of in
+  both themes (warm off-white fabric, charcoal frame, green plants, white
+  appliances, blue sensors; `setup3d/palette.ts`), and only the background
+  behind the tent follows the theme (`.tent-3d` in index.css).
+- **Light.** A sky-and-ground fill and a key light that turns with the
+  camera, over the viewer's shoulder, so all eight views are lit alike, with
+  soft shadows. The LED panel's face glows and a warm spotlight under it
+  shadows the canopy onto the floor. Neutral tone mapping. A soft shadow on
+  the ground under the tent.
+- **Shapes.** Rounded boxes (three's `RoundedBoxGeometry`, no new
+  dependency) in place of sharp ones, smooth-shaded, with flat facets kept
+  where they are meant: the octagonal fan housings and the fabric pot
+  (`setup3d/shapes.tsx`).
+- **The tent** (`setup3d/tent.tsx`): fabric panels with charcoal piping on
+  every seam, a heavier floor seam, corner caps, a solid roof, a thin metal
+  frame inside, and a vent low on the left wall. **Walls facing the camera
+  unzip** instead of fading to a ghost: each wall is a fabric border around
+  a zipped panel, the panel fades out and the zip shows round the opening.
+  Only the front's zip is a door, so only it shows while closed. The
+  opening's margins scale with the wall, which settles door proportions for
+  small and large tents.
+- **Equipment restyled** after the reference's six: octagonal inline fan
+  with the leaf mark and **ribbed ducting out through the wall it points
+  at** (exhaust out of its face, intake through its back), octagonal clip
+  fan with blades, the LED panel on two V-hangers (never wider than the
+  tent), a white temperature/humidity sensor with an LCD, a blue soil
+  sensor; the other eight in the same language.
+- **Plants generated, not from a pack.** *Decided 2026-10-07*: generated
+  matches the reference, and the equipment, better than a CC0 tomato would.
+  A stem with pairs of serrated fan leaves at each node, each pair a quarter
+  turn from the last, side shoots, a crown, and buds from flower; lower
+  leaves yellow in flush. Merged by material, so a plant is five draw calls,
+  and seeded by its id so no two are identical. Spread is held inside the
+  walls. The fan-leaf shape doubles as the mark on equipment
+  (`setup3d/leaf.tsx`). Fabric pot: eight sides, a rim, handles and soil.
+- **Measured** on the work machine (d3d12), a 150 × 150 × 200 cm tent with
+  all fourteen models: 58 fps, worst frame 35 ms. Two stalls found and
+  fixed on the way: switching a wall material's `transparent` recompiled its
+  shader on the first open (230 ms; now only opacity changes), and a duct
+  was a hundred meshes (now two).
+- **Sensor screens stay blank.** *Decided 2026-10-07*: the 3D view shows
+  the setup, not its readings; those live on the Overview.
+- **Still open**: in a tall tent the roof hides lights hung near it; no floor grid; the
+  mount-height default by role (below) still belongs to Layout.
+
 #### Next
 
-1. **Device and plant models** — equipment ✅ built, plant pack pending.
-   **Decided 2026-10-06: equipment generated, plants from a CC0 pack, and
-   plants follow the grow's stage.** Checked first: no CC0 pack has grow
-   equipment. Kenney's Furniture and Nature kits (downloaded) have a ceiling
-   fan, a ceiling lamp and kitchen appliances; Quaternius's catalogue is
-   game packs; Poly Pizza has one-off models in mixed styles and licences
-   (CC0 and CC-BY). An inline fan or a bar light is a few boxes and
-   cylinders, so generating them keeps everything to scale and in one style
-   with no files to ship.
-
-   - **One lookup** (`setup3d/models.ts`) maps a role to a model, with its
-     height and whether it hangs on cords or stands. By role, not family:
-     the family is the firmware (Shelly, Tasmota, ESPHome), which says
-     nothing about shape. A device with no role is a plain block. Keyed by
-     `RoleKind`, so a new role without a model fails to compile.
-   - **Fourteen generated models** (`setup3d/equipment.tsx`): inline fan on
-     two straps, clip fan, bar LED light sized to the tent (70 % of the
-     footprint, 40–110 cm) on four cords, hanging temperature/humidity
-     sensor, light-sensor puck, CO₂ monitor, soil stake, reservoir meter
-     with pen probe, smart plug, 20 L reservoir bucket with the pump's line,
-     humidifier, dehumidifier, oil-filled radiator and CO₂ cylinder with
-     regulator. A model's base sits at the mounting height, held inside the
-     tent, and turns with `rotationDeg`.
-   - **Plants by stage** (`setup3d/plants.tsx`), from `calcGrowStage`:
-     seedling 6–14 cm, growing through veg, stretching in the first half of
-     flower, full in flush, all kept under the light for the tent's height.
-     No active grow draws mid-veg. The shape is a stand-in (stem and tiers)
-     until the pack's models replace it at the same size.
-   - **Plant pack: Quaternius's Ultimate Crops** has growth stages of
-     several crops (a tomato plant reads as a generic grow plant). It is on
-     Google Drive, in OBJ/FBX/Blend only, and Drive refused the download on
-     2026-10-06 ("quota exceeded"). Retry; convert the chosen stages to GLB
-     once, and force their material to the palette. Kenney's Nature Kit is
-     in hand (CC0, GLB) but its plants are ground-cover bushes.
+1. **Device and plant models** ✅ built, see "The look". One lookup
+   (`setup3d/models.ts`) maps a role to a model, with its height and whether
+   it hangs on cords or stands. By role, not family: the family is the
+   firmware (Shelly, Tasmota, ESPHome), which says nothing about shape. A
+   device with no role is a plain block. Keyed by `RoleKind`, so a new role
+   without a model fails to compile. Plants follow the grow's stage from
+   `calcGrowStage`: seedling 6–14 cm, growing through veg, stretching in the
+   first half of flower, full in flush, all kept under the light; no active
+   grow draws mid-veg.
    - **Seen with the dev data**: every device sits at the default 100 cm
      mounting height (`DEFAULT_MOUNT_CM`), so the reservoir bucket floats
      beside the light. The 3D view shows the plan as it is; a default by
      role (floor equipment at 0, the light high) belongs to Layout.
-2. **The tent's detail**: a roof panel, the corner connectors, door
-   proportions for very small and very large tents, and perhaps a faint
-   floor grid at Layout's grid step.
-3. **Read-only touches**: a device's name and role on hover, perhaps its
-   live reading; selecting one could open it in Layout. Nothing is
+2. **The tent's detail** ✅ built, see "The look", except a floor grid at
+   Layout's grid step, which is still a maybe.
+3. **Read-only touches**: a device's name and role on hover (no readings,
+   see "The look"); selecting one could open it in Layout. Nothing is
    controlled from the view.
 4. **Robustness**: recover from a lost WebGL context, free GPU memory on
    leaving the view, and check a 600 × 600 × 300 cm tent full of equipment.
