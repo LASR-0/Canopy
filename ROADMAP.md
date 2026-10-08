@@ -2752,6 +2752,51 @@ same machine (the home PC), or an SSH tunnel
 reaches the Pi. The tunnel needs no code change. MQTT already listens on
 every interface, so the devices reach the controller either way.
 
+#### A device is a board; compatibility is a format
+
+Decided 2026-10-08, after reading the README draft.
+
+**A Canopy device is a board on the network, not a sensor.** Most grow
+hardware cannot join a network: soil probes are analog, PWM fans and LED
+strips are driven from pins, and the rest plugs into a controller. So
+sensors and actuators wire to a **microcontroller node** (an ESP32, say),
+which reads them, drives its relay and PWM pins, holds its own failsafes,
+and talks to the controller over the network. The other kind of board is
+a **smart switch** (a plug or relay) that switches a mains load itself.
+Nothing is wired to the controller's machine. This is what the code
+already does: since 8 G, one board is one device with all its sensors and
+outputs as capabilities.
+
+Sensors sold as "USB" are mostly serial (UART) devices behind an adapter
+(an MH-Z19 CO₂ sensor, Atlas Scientific pH and EC boards), and wire to the
+node's serial pins. One that only speaks USB needs a small Linux board as
+its node, which Canopy accepts like any other if it publishes the same way.
+
+**Compatibility is a format, not a brand.** MQTT is only the transport: it
+carries a payload on a topic, and says nothing about what `23.4` on
+`node1/sensor/a` is. Canopy needs each board's topics, what each value is
+and its unit, the words that switch an output, and which channels belong
+together. Home Assistant's MQTT discovery format carries all four and is
+the de facto standard, so the promise is:
+
+> Canopy works with any microcontroller firmware that publishes over MQTT
+> using the Home Assistant discovery format.
+
+That covers ESPHome, Tasmota (in its HA mode), OpenMQTTGateway, and custom
+Arduino or MicroPython code (ArduinoHA and similar libraries). No firmware
+is the main path. The Shelly adapter stays as an extra for a family with
+its own scheme. To keep the promise:
+
+- **Read the whole format**, not the subset Canopy reads now: abbreviated
+  keys (gap 1), unrecognised sensor types (gap 3) and value templates
+  (gap 10).
+- **Add a device by hand** (gap 11), for firmware that announces nothing.
+  With it, the promise extends to any MQTT firmware: found automatically if
+  it announces itself, set up by hand if not.
+
+ESPHome is the quickest to flash for the test rig. That is a choice of
+test hardware, not a product direction.
+
 #### Devices and hardware
 
 Each device has a low-voltage or plug-in path, so nothing in the first rig
@@ -2778,20 +2823,20 @@ Notes that affect the software:
   an interval, not continuously. Canopy has to treat a quiet sensor as
   normal up to its expected interval.
 
-**Edge hardware: three options**, not decided. The plan recommends C,
-because it exercises two adapter families in one rig at low cost. The
+**Three setups.** These are the setups Canopy supports (the README
+describes them), and the three options for the rig. The plan recommends C
+for the rig, because it exercises both kinds of board at low cost. The
 software must not assume any one of them.
 
-| | A: all Shelly | B: all ESP32 (ESPHome) | C: hybrid (recommended) |
+| | A: smart switches | B: microcontroller nodes | C: hybrid (recommended) |
 |---|---|---|---|
-| Light and fan switching | Shelly plugs | ESP32 + MOSFET (low-voltage loads only) | Shelly plug for mains; ESP32 for a PWM fan |
-| Sensors | Plus Add-on (temp, analog) or H&T | ESP32 with SHT4x + capacitive probe | ESP32 sensor node |
+| Light and fan switching | Smart plugs: Shelly, or plugs pre-flashed with ESPHome or Tasmota (Athom, for one) | Node + MOSFET or relay (low-voltage loads; mains through a relay module or contactor) | Plug for mains loads; node for a PWM fan |
+| Sensors | Network sensors: Shelly H&T, or Shelly Plus Add-on with probes. Mostly temperature and humidity | Node with SHT4x + capacitive probe; anything with pins | Node |
 | Fan speed | No (on/off only) | Yes | Yes |
 | Soldering and wiring | None | Some (headers, jumper wires) | Some, low-voltage only |
-| Adapters exercised | Shelly | ESPHome over MQTT | Shelly + ESPHome |
-| Failsafe on the device | Plug auto-off timers | In the ESPHome config | Both |
-| Main risk | Analog soil input a weaker fit | Mains loads need a plug anyway | Two families to debug at once |
-| **Canopy today** | **Blocked**: Shelly Gen 2+ (gap 2) | Abbreviated keys (gap 1), stray sensors (gap 3) | Both of A's and B's gaps |
+| Failsafe on the device | Plug auto-off timers | In the node's firmware | Both |
+| Main risk | Few sensors available; soil means wiring a probe into an add-on anyway | Mains loads need a plug or relay module anyway | Two kinds of board to set up |
+| **Canopy today** | Shelly plugs: gap 2. Pre-flashed ESPHome/Tasmota plugs: gaps 1 and 3 | Gaps 1 and 3 | A's and B's gaps |
 
 #### What Canopy needs first
 
@@ -2801,15 +2846,17 @@ they block.
 1. **Abbreviated discovery keys** ("Before Phase 9", B, still open).
    ESPHome and Tasmota send `stat_t`, `cmd_t`, `dev`, `ids` and a `~` base,
    and `parseHaDiscovery` reads only full names, so an ESPHome board would
-   likely pair with no topics. Blocks discovery for options B and C.
+   likely pair with no topics. Blocks discovery for options B and C, and
+   for pre-flashed plugs in A.
 2. **Shelly Gen 2 and later are not supported.** Canopy speaks Shelly Gen 1:
    the `shellies/announce` topic, Gen 1's topic layout, and lowercase
    `on`/`off`. Gen 2+ (Plus, Pro, Gen 3, Gen 4) announces nothing on MQTT
    that Canopy reads, and found by mDNS it gets no capabilities, because
    `capsForModel` matches model prefixes such as `shellyplug`, which
    `shellyplusplugs` does not start with. It is also never polled or driven
-   over HTTP. The Shelly plugs sold now are Gen 2 or later, so options A
-   and C need this. Pushing the broker login (`shelly-push.ts`) already
+   over HTTP. The Shelly plugs sold now are Gen 2 or later, so Shelly
+   plugs in A or C need this; plugs pre-flashed with ESPHome or Tasmota
+   are the way round it. Pushing the broker login (`shelly-push.ts`) already
    handles Gen 2. Needed: identify the device (`Shelly.GetDeviceInfo`),
    build capabilities from its components (`Shelly.GetConfig`), and its
    MQTT topics and command format (lead: `<prefix>/status/switch:0` for
@@ -2845,6 +2892,25 @@ they block.
    so it stays wherever the last rule left it. Device-side failsafes may be
    enough for this phase.
 9. **The UI on another machine** (8 C.7), only if the tunnel is not enough.
+10. **Value templates.** Discovery may give a `value_template` that picks a
+    value out of a JSON payload (`{{ value_json.temperature }}`). Canopy
+    reads bare numbers and a few conventional JSON keys (Phase 3), so a
+    board publishing one JSON object for several sensors would not be
+    read. Part of reading the whole format; Tasmota depends on it.
+11. **Adding an MQTT device by hand**, for firmware that announces nothing:
+    a form for its state and command topics, what each value is and its
+    unit, and its on/off words, making the same capabilities discovery
+    would. Without it, the README can promise only firmware that uses the
+    discovery format.
+12. **An example node.** An ESPHome configuration in the repo for the rig:
+    SHT4x, a capacitive soil probe on an ADC1 pin, a PWM fan with tach, a
+    relay output, MQTT discovery, and failsafes on the node. Building the
+    hardware is then wiring and flashing. One way to build a node, not
+    *the* way: a small Arduino example later would show the firmware does
+    not matter.
+
+Gaps 1, 3, 10 and 11 are what make the compatibility promise true; gap 2
+matters only for Shelly.
 
 #### Leads from the plan, checked
 
@@ -2860,7 +2926,7 @@ they block.
    Tasmota device would need its legacy HA mode (`SetOption19 1`; lead:
    confirm current Tasmota still has it), and its JSON `tele/…/SENSOR`
    readings rely on `value_template`, which Canopy does not parse (Phase 3).
-   No option uses Tasmota, so leave it out of the first rig.
+   Prefer ESPHome-flashed plugs over Tasmota ones for the first rig.
 4. **ESPHome needs MQTT turned on.** Each node needs the `mqtt:` component
    with discovery on. Lead: the native `api:` can stay on alongside it for
    debugging. The broker login is set by hand: the shared login for the
@@ -2888,7 +2954,7 @@ for their stage. Each needs a sign-off before it is built on.
 
 | Decision | Options | Leaning | Needed by |
 |---|---|---|---|
-| Edge hardware | A: all Shelly · B: all ESP32 · C: hybrid | C, which needs gaps 1–3 | Stage 0 |
+| Edge hardware | A: smart switches · B: microcontroller nodes · C: hybrid | C, with ESPHome-flashed plugs (gaps 1 and 3) rather than Shelly (gap 2 as well) | Stage 0 |
 | Controller host | Home PC · Raspberry Pi · mini PC | Pi or mini PC for the soak; the home PC is fine for stages 0–4 | Stage 0 |
 | Grow light | Mains LED panel (on/off by plug) · 12/24 V LED strip (PWM dimming) | Open | Stage 0 |
 | Fan | 12 V 4-pin PWM · USB or mains clip fan | PWM, for speed and RPM (needs gaps 6 and 7) | Stage 0 |

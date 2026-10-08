@@ -2,9 +2,9 @@
 
 <p align="center">
   <strong>A local-first controller for indoor grows.</strong><br>
-  Discovers the smart sensors and switches on your network, charts what they
-  measure, and runs your lights, fans and pumps on schedules and rules. No
-  cloud account, no vendor app, no Home Assistant.
+  Works with the microcontrollers and smart switches on your network: charts
+  what your sensors measure, and runs your lights, fans and pumps on
+  schedules and rules. No cloud account, no vendor app, no Home Assistant.
 </p>
 
 <p align="center">
@@ -39,10 +39,13 @@
 ## About
 
 Canopy is an open-source desktop app for running a grow tent or room with
-ordinary smart devices: temperature and humidity sensors, smart plugs, relay
-boards and ESP32 nodes. It finds them on your local network, records what
-they measure, and switches equipment on a photoperiod, on a timer, or when a
-reading crosses a threshold.
+hardware you choose yourself. Most grow hardware cannot join a network on its
+own: soil probes are analog, and fans and LED drivers are switched from pins.
+So your sensors and equipment wire to a **microcontroller** such as an ESP32,
+running firmware of your choice, and **smart plugs** can switch mains loads
+like a grow light or heater. Canopy finds those boards on your local network,
+records what their sensors measure, and switches equipment on a photoperiod,
+on a timer, or when a reading crosses a threshold.
 
 Everything stays on your network. Canopy talks to devices directly over MQTT
 and HTTP, keeps its data in a local SQLite database, and needs no internet
@@ -93,10 +96,18 @@ averages. Each finished grow is archived to its own file.
 
 ```mermaid
 flowchart LR
-  subgraph devices["Devices on your LAN"]
-    S["Sensors<br>(temperature, humidity,<br>soil moisture…)"]
-    A["Switches<br>(smart plugs, relays,<br>dimmers)"]
+  subgraph node["Microcontroller node, e.g. an ESP32"]
+    direction TB
+    P1["Soil probe<br>(analog pin)"]
+    P2["Temperature/RH sensor<br>(I²C)"]
+    MCU["Firmware<br>ESPHome, Tasmota, your own…"]
+    P3["Fan, relay,<br>LED driver<br>(PWM and relay pins)"]
+    P1 --> MCU
+    P2 --> MCU
+    MCU --> P3
   end
+
+  SP["Smart plug (optional)<br>switches a mains load:<br>grow light, heater"]
 
   subgraph host["Controller host: PC, mini PC or Raspberry Pi"]
     B["MQTT broker<br>port 1883"]
@@ -110,20 +121,25 @@ flowchart LR
 
   UI["Canopy app<br>(desktop window)"]
 
-  S -- "readings (MQTT)" --> B
-  B -- "commands (MQTT)" --> A
-  A -- "state (MQTT)" --> B
-  C -. "discovery (mDNS, HTTP)" .-> devices
+  MCU <-->|"readings and commands<br>(MQTT over Wi-Fi or Ethernet)"| B
+  SP <-->|"state and commands (MQTT)"| B
   UI <--> H
 ```
 
-- **Devices connect to the controller**, not the other way round. Each one
+- **A device is a board, not a sensor.** Sensors and equipment wire to a
+  microcontroller node, which reads them, drives its outputs, and talks to
+  the controller over the network. A smart plug or relay is a board too.
+  Canopy shows each board as one device, with all its sensors and outputs.
+  Nothing is wired to the controller's machine.
+- **Boards connect to the controller**, not the other way round. Each one
   publishes its readings to Canopy's built-in MQTT broker and listens there
-  for commands. Devices are found when they announce themselves using the
-  [Home Assistant MQTT discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery)
-  format (Canopy follows the format only, and needs no Home Assistant), or
-  over mDNS.
-- **The controller makes every decision.** Devices only measure and switch.
+  for commands. Canopy learns what a board has when it announces itself in
+  the [Home Assistant MQTT discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery)
+  format (Canopy follows the format only, and needs no Home Assistant). See
+  [Supported devices](#supported-devices).
+- **The controller makes every decision.** Boards only measure, switch,
+  and keep their own failsafes (such as a maximum on-time) for when the
+  controller cannot be reached.
   Schedules run in the tent's own timezone, and a controller that restarts
   part-way through the light period switches the lights back on.
 - **The app is a client.** It talks to the controller over HTTP and a
@@ -173,8 +189,10 @@ Alpine, and 32-bit systems.
   grows with the number of sensors and how often they report.
 - **A network** your devices and the controller share. Devices need to reach
   the controller's address on port 1883.
-- **Devices** that speak MQTT with Home Assistant discovery, or Shelly
-  Gen 1. See [Supported devices](#supported-devices).
+- **Boards**: microcontroller nodes and smart switches whose firmware
+  publishes over MQTT in the Home Assistant discovery format. See
+  [Hardware setups](#hardware-setups) and
+  [Supported devices](#supported-devices).
 
 > [!NOTE]
 > **To do:** measured CPU, memory and disk figures for a typical tent, once
@@ -196,8 +214,28 @@ controller-only tarball, and keep the app on your desktop.
 > built, an SSH tunnel works: `ssh -L 7001:127.0.0.1:7001 <pi-address>`, then
 > open the app on your desktop.
 
-For devices, start small: one temperature and humidity sensor, a switched
-grow light, and a fan. That exercises reading, scheduling and a rule.
+### Hardware setups
+
+Three ways to put the hardware together. Canopy treats them all the same:
+automations drive roles such as "grow light", so you can change the
+hardware behind a role later without touching them.
+
+| | Microcontroller nodes | Smart switches only | Hybrid |
+|---|---|---|---|
+| **What it is** | Sensors and equipment wired to one or more nodes (an ESP32, say) | Smart plugs and network sensors, no wiring | Smart plugs for mains loads, a node for sensors and low-voltage gear |
+| **Sensors** | Anything with pins: analog probes, I²C, 1-Wire, serial | Mostly temperature and humidity; few others come ready to connect | Anything, on the node |
+| **Equipment** | PWM fans with speed control, dimmable LED strips, relays; mains through a relay module or contactor | On/off for anything that plugs in | Mains on plugs; speed and dimming on the node |
+| **Wiring** | Some: low-voltage, headers and jumper wires; mains needs care | None | Low-voltage only |
+| **Failsafes** | In the node's firmware | Plug auto-off timers | Both |
+
+**Hybrid is the recommended start**: one node with a temperature and
+humidity sensor, a soil probe and a fan, and a smart plug for the light.
+That covers reading, scheduling and a rule, and keeps your hands off mains
+wiring.
+
+> [!NOTE]
+> **To do:** an example node, a ready-made ESPHome configuration for that
+> setup, so building it is wiring and flashing.
 
 ## Install
 
@@ -298,7 +336,9 @@ everything in Canopy belongs to one.
 
 1. **Open Canopy.** If it says the controller isn't answering, see
    [Troubleshooting](#troubleshooting).
-2. **Connect your devices to your Wi-Fi** using their own app or setup page.
+2. **Get your boards on the network.** Wire your sensors and equipment to
+   your node and flash its firmware; connect nodes and smart plugs to your
+   Wi-Fi with their own setup page or app.
 3. **Point each device at the controller.** Set its MQTT server to the
    controller's address, port 1883. **Settings → Device connections** lists
    the address for each network interface, with the shared login for devices
@@ -309,8 +349,8 @@ everything in Canopy belongs to one.
    while devices announce themselves. Power-cycle a device if it does not
    show up. Add the ones you want.
 5. **Give each device its own login.** Each device card has a **Broker login**
-   button. Shelly devices are sent theirs automatically; for ESPHome and
-   Tasmota, copy it into the device's MQTT settings.
+   button. Shelly devices are sent theirs automatically; for anything else,
+   copy it into the board's MQTT settings and flash or restart it.
 6. **Assign roles.** In **Settings → Device roles**, say what each device is
    for: canopy temperature, grow light, exhaust fan, and so on. Automations
    drive roles, not devices.
@@ -327,21 +367,35 @@ Once every device has its own login, turn on **Require the password** in
 connect.
 
 > [!NOTE]
-> **To do:** a setup walkthrough per device family (Shelly, ESPHome,
-> Tasmota), written during real-device testing.
+> **To do:** a setup walkthrough per firmware (ESPHome, Tasmota, Shelly,
+> custom), written during real-device testing.
 
 ## Supported devices
 
-Canopy works with devices that publish over MQTT using the Home Assistant
-discovery format, and with Shelly Gen 1 devices.
+> Canopy works with any microcontroller firmware that publishes over MQTT
+> using the Home Assistant discovery format.
 
-| Family | Found by | Status |
+Compatibility comes from that format, not from a brand. MQTT alone is only
+the transport: a message such as `23.4` on `node1/sensor/a` does not say
+what it measures. The discovery format is how a board tells Canopy its
+topics, what each value is and its unit, the words that switch each output,
+and which channels belong to it. Many firmwares already speak it:
+
+| Firmware | How it connects | Status |
 |---|---|---|
-| Generic MQTT (Home Assistant discovery) | MQTT discovery | Works with the simulator |
-| ESPHome | MQTT discovery | Not yet tested on hardware. **To do:** ESPHome's shortened discovery keys are not read yet |
-| Tasmota | MQTT discovery (Home Assistant mode) | Not yet tested on hardware. Tasmota's own discovery format is not supported |
-| Shelly Gen 1 | MQTT announce, mDNS | Not yet tested on hardware |
+| [ESPHome](https://esphome.io) | MQTT discovery (add the `mqtt:` component) | Not yet tested on hardware. **To do:** reading ESPHome's shortened discovery keys |
+| [Tasmota](https://tasmota.github.io) | MQTT discovery in Home Assistant mode (`SetOption19 1`) | Not yet tested on hardware. **To do:** value templates, which Tasmota's sensor readings use. Tasmota's own discovery format is not supported |
+| [OpenMQTTGateway](https://docs.openmqttgateway.com) | MQTT discovery | Not yet tested |
+| Your own Arduino or MicroPython code | MQTT discovery, published by hand or with a library such as [ArduinoHA](https://github.com/dawidchyrzynski/arduino-home-assistant) | Not yet tested on hardware. Canopy's device simulator announces itself this way, and works |
+| Shelly Gen 1 | Shelly's own MQTT announce, and mDNS | Not yet tested on hardware |
 | Shelly Gen 2 and later (Plus, Pro, Gen 3, Gen 4) | — | **To do:** not supported yet |
+
+Plugs sold pre-flashed with ESPHome or Tasmota count as that firmware.
+
+> [!NOTE]
+> **To do:** adding a device by hand, for firmware that publishes over MQTT
+> but does not announce itself: you would enter its topics, what each value
+> is, and its on/off words.
 
 **Roles** say what a device is for. Sensing: canopy temperature, canopy
 humidity, canopy light, root-zone moisture, CO₂, reservoir temperature, pH
@@ -360,8 +414,14 @@ them.
   [How it works](#how-it-works)).
 - **The app must run on the controller's machine**, or reach it through an
   SSH tunnel.
+- **Only firmware that announces itself** in the Home Assistant discovery
+  format can be added; adding a device by hand is still to do.
+- **Part of the discovery format is not read yet**: shortened keys, which
+  ESPHome and Tasmota send, and value templates. Until they are, real
+  firmware may pair with missing sensors or not at all.
 - **Shelly Gen 2 and later are not supported**, which covers the Shelly
-  devices sold today.
+  devices sold today. Plugs pre-flashed with ESPHome or Tasmota are the
+  alternative.
 - **One tent per workspace.** Several tents means several workspaces, each
   viewed on its own.
 - **No manual switches in the app**, by design: automations switch
