@@ -37,6 +37,85 @@ CI; don't regress it.
 
 ---
 
+## License and business model
+
+Decided 2026-10-08.
+
+**Canopy is open source under the AGPL-3.0, for everyone, companies
+included.** Charging corporations through the licence was considered and
+rejected:
+
+- A licence that restricts commercial use is *source-available*, not open
+  source, and loses the community that label brings.
+- A solo developer cannot enforce it against farms anyway.
+- A farm that runs Canopy and outgrows doing it alone is a lead for paid
+  work, not lost revenue.
+
+**Revenue comes from around the software**, as Home Assistant's comes
+through Nabu Casa, in the order it can start:
+
+1. Setup contracts for farms and greenhouses.
+2. Support agreements.
+3. A private, plug-and-play controller product: our own microcontroller
+   firmware, built to take the widest range of sensors and devices. It is
+   a separate program talking to Canopy over MQTT, so the AGPL does not
+   reach it.
+4. Perhaps later, opt-in remote access as a subscription. Canopy stays
+   local-first without it.
+
+**Why the AGPL-3.0, and not GPL or Apache**: nobody can take Canopy closed,
+not even as a hosted service. A competitor cannot build a closed remote-
+access product on it, which matters if remote access becomes one of ours.
+Using Canopy, unmodified or modified, inside a farm triggers nothing.
+`AGPL-3.0-only`, not "or later", so the terms do not change with a future
+FSF version.
+
+- **Copyright holder: LASR-0** for now, to be changed to a business when
+  Canopy becomes a product. The CLA lets the rights pass to a successor
+  company.
+- **The CLA** (`CLA.md`, adapted from Apache's individual CLA): contributors
+  keep their copyright, and grant a licence that allows relicensing, which
+  keeps a separate commercial licence possible (for a hardware maker that
+  wants Canopy inside a closed product, say). In return, every accepted
+  contribution stays available under the AGPL-3.0 or another OSI-approved
+  licence. Agreed by a line in the first pull request until an automated
+  check (CLA Assistant) is worth setting up.
+- **The protection is the name, not the licence.** Anyone may sell setup
+  services or hardware built on Canopy. A trademark keeps "Canopy" and
+  "Works with Canopy" ours.
+
+Done: `LICENSE` (the FSF's text, checksum-verified), `"license":
+"AGPL-3.0-only"` in every package.json, `CLA.md`, `CONTRIBUTING.md`, the
+README's licence, contributing and commercial sections, and the licence
+shipped in the controller folder (`stage.mjs`), which every package and the
+tarball carry.
+
+Still to do, **after Phase 10**: none of it starts until the prototype rig
+has passed every stage of the test plan (stage 6, the soak, included). Then
+Canopy starts becoming a product, on the Home Assistant model above.
+
+1. **Check the name before investing in it.** "Canopy" is crowded:
+   Canopy Growth Corporation is a large cannabis company, and the word is
+   common in agriculture and tech. Search the trademark registers (IP
+   Australia, and wherever the product will sell) in the relevant classes
+   before filing.
+2. **Third-party notices for the bundled code.** Node, better-sqlite3 and
+   WinSW ship their licences beside the controller, and Electron its own.
+   But esbuild and Vite bundle hundreds of MIT, ISC, BSD and Apache
+   packages into the controller and the app, and their notices are dropped.
+   Generate a `THIRD_PARTY_NOTICES` file at build time (`pnpm licenses
+   list`) and ship it in both. Checked 2026-10-08: everything is
+   permissive, nothing GPL. MPL-2.0 appears only in lightningcss, a build
+   tool that is not shipped.
+3. **A source link in Settings → About**, to the repository at the running
+   version. It is how a modified version meets the AGPL's network clause
+   (section 13), and good practice for ours.
+4. **A lawyer's review of the CLA and of any commercial licence**, before
+   the first outside contribution or commercial sale.
+5. **Contact details** in the README's commercial section.
+
+---
+
 ## Current state (verified, not aspirational)
 
 `HANDOFF.md` had drifted badly out of date — it described the backend as
@@ -3043,6 +3122,15 @@ revisited.
 **TLS comes after the rig.** It depends on per-device identity (G) and on
 which device firmwares can take a certificate, which this testing will
 show.
+
+### After Phase 10 — towards a product
+
+Decided 2026-10-08. Once the prototype rig has passed every stage of the
+test plan, Canopy starts becoming something to sell, on the Home Assistant
+model: free AGPL software, with revenue from setup contracts, support and a
+private controller product. The groundwork comes first; it is listed under
+"License and business model" (the name check, third-party notices, a source
+link in About, a lawyer's review, contact details).
 
 ### Documentation — a README first
 
