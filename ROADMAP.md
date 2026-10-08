@@ -305,7 +305,7 @@ its HTTP API. ESPHome and generic MQTT firmware still take it by hand. The
 shared credential stays, as the "any device" login. See Phase 8 G.
 
 **TLS** comes after v1, after Tier 3 and after the real-device testing that
-follows Phase 9. Decided 2026-10-01; see "After Phase 9".
+follows Phase 9. Decided 2026-10-01; see Phase 10.
 
 ---
 
@@ -2049,7 +2049,8 @@ Home Assistant discovery allows abbreviated keys (`stat_t`, `cmd_t`,
 them. `parseHaDiscovery` reads only the full names, so such a device
 would likely pair with no topics: nothing ingested and nothing to command.
 The simulator uses full names, which is why nothing has shown it. Worth
-fixing before the real-device testing.
+fixing before the real-device testing: it blocks any ESPHome board in
+Phase 10 (gap 1).
 
 #### C. Slow 6H and 24H charts ✅ built — awaiting a hands-on check
 
@@ -2230,7 +2231,7 @@ Settle two things before building:
   can't do this. Load it lazily when the view is opened, so it stays out of
   the main bundle.
 
-#### The spike ✅ done on WSLg, 2026-10-06 — Hyprland still to check
+#### The spike ✅ done on WSLg, 2026-10-06, and on Hyprland, 2026-10-07
 
 Built as the real view rather than a throwaway, so what it draws stays
 (`components/setup3d/TentView.tsx`).
@@ -2280,9 +2281,10 @@ Built as the real view rather than a throwaway, so what it draws stays
    and each placed device as a block with a nub on the side it faces
    (`rotationDeg`). Frames are drawn on demand, so a still view costs
    nothing. (Superseded in look by "The look" below; the camera stands.)
-7. **Still to check at home**: on Hyprland, `pnpm dev`, Setup View → 3D
-   view, read the diagnostics bar and press Spin test. Native Mesa should
-   give the real GPU with no setting.
+7. **Hyprland ✅ 2026-10-07**: the view rendered correctly on Omarchy
+   (NVIDIA, Wayland) with no driver setting, and without the visual bugs
+   `GALLIUM_DRIVER=d3d12` causes on WSLg. Turning it was slow, though; see
+   "On Omarchy" below.
 
 #### The look ✅ built, 2026-10-07 — after `prototype/3dReferences.png`
 
@@ -2401,7 +2403,7 @@ offscreen at each step and comparing against it.
      through the edge). Nothing stands in the middle of the view any more.
      The roof seams, floor tray and joints stay, so the tent keeps its
      outline.
-6. **Still to check at home**: the spike's Hyprland check (above).
+6. **The Hyprland check** ✅ 2026-10-07, see "On Omarchy" below.
 
 #### Polish ✅ tent, pot and soil, 2026-10-07 — the other models next
 
@@ -2546,7 +2548,49 @@ After the reference, and checked offscreen against it at each step.
 - Measured: the 6 m tent of 36 flowering plants, 986k triangles, 46–47 fps.
 
 **Phase 9 is done for v1.** What is left is the walkthrough below, in the
-real app with every role, and the Hyprland check.
+real app with every role, and the slow turning found on Omarchy (next).
+
+#### On Omarchy, 2026-10-07 — it looks right, but turns slowly
+
+The first run on native Linux (Omarchy: Arch, Hyprland, NVIDIA).
+
+- **Rendering is right.** The view looked as intended, with no visual bugs.
+  WebGL needed no `GALLIUM_DRIVER` or any other setting, and the bugs seen on
+  WSLg with d3d12 compositing did not appear, so they belong to the work
+  machine's workaround.
+- **Turning lagged** *(open)*. A dev build, with the diagnostics bar. It
+  was worst at the largest tent, and it seemed to get worse the longer the
+  app stayed open, across switches between pages. **After the tent was
+  taken to the maximum and back to 120 × 120 cm, the small tent stayed
+  laggy**, so something seems to outlast the big scene rather than cost
+  only while it is drawn. The system's RAM use did not grow. To
+  investigate on the home machine; nothing is concluded yet.
+  - **First test**: fresh start, a 120 cm tent, Spin test; then the tent to
+    the maximum and back, Spin test again. If the second is slower, the
+    resize leaks. The roadmap's disposal check (12 mounts and unmounts of
+    the view, "Robustness") never resized the tent.
+  - **The numbers**: the WSL machine measured 46–47 fps for the 6 m tent on
+    Intel Iris Xe, so a discrete NVIDIA GPU should do better. Take the
+    diagnostics bar (renderer string, Spin test fps and worst frame, draws,
+    triangles) on a fresh start, then again after an hour or more with the
+    same tent, to show whether the slowdown is real and how large it is.
+  - **Steady RAM does not rule out a leak.** On a discrete card, GPU memory
+    is not counted in system RAM. Watch the GPU process in `nvidia-smi`
+    while the app runs, and the renderer's `gl.info.memory` (geometries,
+    textures), which the bar does not show yet.
+  - **A lead from the code, unconfirmed**, and on its own it would not
+    explain a small tent staying slow: `OverheadLight` (tent.tsx) flags
+    its shadow map for a redraw in an effect with no dependency list, so on
+    every render of it, not only when the tent's contents change. It
+    re-renders with `TentView`, which re-renders when a device's status
+    changes, so live data may redraw a 2048² shadow map of the whole scene
+    over and over. The `Baked` version string also includes each device's
+    on/off state, which re-merges models when one changes. Count renders and
+    shadow redraws with the simulator running to check.
+  - **Also to rule out**: `Frame latency is negative` from Chromium on this
+    NVIDIA + Wayland pairing (see "Omarchy"), or vsync under Hyprland;
+    whether the installed package behaves the same; and whether a restart
+    clears the slowdown.
 
 #### Model walkthrough — the checklist
 
@@ -2623,19 +2667,327 @@ scope for v1. Suggested, not decided:
 | Dissolved oxygen, ORP, VOC, smoke, pot scales, cameras | Specialist or not a sensor the controller acts on | Out of scope for v1 |
 
 
-### After Phase 9 — real devices, then TLS
+### Next on Omarchy (home)
 
-Decided 2026-10-01. Once Phase 9 is done, the whole project is tested with
-real hardware: sensors and switches (ESP32 boards on ESPHome or Tasmota, or
-ready-made Shelly devices), and the controller installed on a Linux
-single-board computer such as a Raspberry Pi 4 or 5, using the linux-arm64
-controller tarball (B.6). The controller cannot run on a microcontroller,
-because it needs Linux, Node and SQLite. Bugs found with real data are fixed
-then.
+Noted 2026-10-08, for the next session on the home machine, in this order:
 
-**TLS comes after that.** It depends on per-device identity (G) and on which
-device firmwares can take a certificate, which the real-device testing will
+1. **The slow turning** (Phase 9, "On Omarchy"): measure it, then find the
+   cause.
+2. **Rebuild and reinstall with pacman, and run the controller headless.**
+   Build as in Phase 8 B.9 (`pnpm build:controller`, then in
+   `packages/frontend` `npx electron-vite build && npx electron-builder
+   --linux pacman`), `pacman -U` the result over the 2026-10-01 install, and
+   check the service again: enabled and running, the controller working with
+   the app closed and after a reboot, and the app connecting to it when
+   opened. That covers the upgrade path on a real install, which until now
+   was only covered by `test-install.sh`.
+3. **The model walkthrough** (Phase 9 checklist), if not finished at work.
+4. **The window under Hyprland** (dragging by the titlebar, the window
+   controls). Tiled, there is nothing to drag. Floating the window
+   (Hyprland's `togglefloating`) may be enough to test it, before reaching
+   for a VM or another window manager.
+
+### Phase 10 — Real devices: the micro-greens rig, then TLS
+
+Decided 2026-10-01: once Phase 9 is done, the whole project is tested with
+real hardware. The controller cannot run on a microcontroller, because it
+needs Linux, Node and SQLite, so it runs on a PC or a Linux single-board
+computer (a Raspberry Pi 4 or 5 on the linux-arm64 controller tarball, B.6).
+Bugs found with real data are fixed then.
+
+The test plan (2026-10-08, folded in here and checked against the code the
+same day) starts small: **one micro-greens tray with four devices**, two
+sensors and two actuators. That covers every path Canopy has to prove:
+reading a value, switching a load, a schedule, and a loop closed on a
+sensor. Anything marked a lead below is unverified: check it against the
+code or the device's own docs before building on it.
+
+#### The rig
+
+| Device | Kind | What Canopy does with it | Role | Why it is in the first rig |
+|---|---|---|---|---|
+| Grow light | Actuator | On/off on a photoperiod window; dimming optional | `light` | Proves schedules and switching |
+| Circulation fan | Actuator | On/off, or cycled; speed optional | `circ` | A second actuator, and a sensor-driven rule (on above a temperature) |
+| Air temperature (and humidity, if the sensor has it) | Sensor | Logged, charted, a rule trigger | `canopy_temp`, `canopy_rh` | Proves telemetry, retention and triggers |
+| Soil moisture probe | Sensor | Logged, alert when dry | `rootzone` (`soil_moisture`) | Proves an analog reading and alerting |
+
+The roles are Canopy's existing `RoleKind`s. The plan's working names
+(`light.main`, `fan.circulation`, `climate.canopy_air`,
+`substrate.moisture`) map onto them; Canopy has no dotted roles.
+
+**In scope:** discovery, telemetry, persistence, roles, schedules, simple
+threshold automations, alerts, failsafe behaviour.
+**Out of scope for this phase:** pH/EC, dosing, reservoirs, humidifiers and
+dehumidifiers, carbon filters, CO₂, cameras, vendor clouds (AC Infinity,
+Spider Farmer, VIVOSUN), and more than one tent. They come back once the
+core loop is proven.
+
+#### Architecture for the test
+
+One controller makes every decision. Edge devices only measure, switch and
+protect themselves. The v1 scope is unchanged: local HTTP and MQTT, the
+embedded broker, no Home Assistant, no vendor cloud. Three rules, whatever
+the edge hardware:
+
+- **The controller never lives on the edge.** ESP32s and Shellys are
+  peripherals. (Already the architecture.)
+- **Every actuator fails safe on its own.** If the controller or the Wi-Fi
+  is down, each device falls back to a maximum on-time or an auto-off it
+  holds itself. Canopy configures or documents these; it does not replace
+  them. New for this phase.
+- **Automations target roles, not devices**, so swapping a Shelly for an
+  ESP32 behind `circ` touches no automation. Already how actions resolve
+  (Phase 5). One caveat: a rule's *trigger* is a metric across the
+  workspace (`RuleTrigger.metric`), not a sensor role. With one temperature
+  sensor that makes no difference; with two it would.
+
+**The controller host and the UI.** The plan leans to a Pi or mini PC,
+because the soak needs a box that is always on. But the UI on another
+machine is not built (8 C.7): the controller's HTTP binds `127.0.0.1`, and
+`BACKEND_URL` is fixed at build time. Opening the HTTP port to the LAN
+needs authentication on the API first, since it can drive hardware. Until
+then there are two ways to run the test: the controller and the UI on the
+same machine (the home PC), or an SSH tunnel
+(`ssh -L 7001:127.0.0.1:7001 <host>`) so a stock UI's `localhost:7001`
+reaches the Pi. The tunnel needs no code change. MQTT already listens on
+every interface, so the devices reach the controller either way.
+
+#### Devices and hardware
+
+Each device has a low-voltage or plug-in path, so nothing in the first rig
+needs mains wiring by hand.
+
+| Device | Signal | Candidate hardware | What Canopy sees |
+|---|---|---|---|
+| Grow light | Mains on/off; or 12/24 V PWM for an LED strip | A smart plug (Shelly, or a plug flashed with ESPHome or Tasmota); or ESP32 + MOSFET driving a strip | A switch; a dimmer if PWM |
+| Circulation fan | 12 V 4-pin PWM (PC fan); or a USB or mains fan on/off | ESP32 PWM pin + tach input; or a smart plug | A switch, or a fan with speed %; RPM as a health signal |
+| Air temperature | I²C (SHT4x/SHT3x: temp + RH) or 1-Wire (DS18B20: temp only) | ESP32 node; or Shelly Plus Add-on; or Shelly H&T | Temperature, and humidity if present |
+| Soil moisture | Analog voltage (capacitive probe) | ESP32 ADC1 pin, or ADS1115 over I²C; or Shelly Plus Add-on analog input | Moisture %, from a raw reading and a dry/wet calibration |
+
+Notes that affect the software:
+
+- **Soil readings need calibration.** A capacitive probe gives a voltage,
+  which has to be mapped to % against a dry and a wet reference, on the
+  node or in Canopy (see the decisions).
+- **Micro-greens media is shallow.** Hemp or coco mats are 1–3 cm deep, so
+  a probe may not sit at its rated depth. Treat moisture as a trend and an
+  alert, not a precise control input, in this phase.
+- **A PWM fan is two capabilities**: speed out and RPM in. RPM is a cheap
+  fan-failure detector, worth surfacing in Maintenance.
+- **Battery sensors sleep.** A battery Shelly H&T reports on a change or on
+  an interval, not continuously. Canopy has to treat a quiet sensor as
+  normal up to its expected interval.
+
+**Edge hardware: three options**, not decided. The plan recommends C,
+because it exercises two adapter families in one rig at low cost. The
+software must not assume any one of them.
+
+| | A: all Shelly | B: all ESP32 (ESPHome) | C: hybrid (recommended) |
+|---|---|---|---|
+| Light and fan switching | Shelly plugs | ESP32 + MOSFET (low-voltage loads only) | Shelly plug for mains; ESP32 for a PWM fan |
+| Sensors | Plus Add-on (temp, analog) or H&T | ESP32 with SHT4x + capacitive probe | ESP32 sensor node |
+| Fan speed | No (on/off only) | Yes | Yes |
+| Soldering and wiring | None | Some (headers, jumper wires) | Some, low-voltage only |
+| Adapters exercised | Shelly | ESPHome over MQTT | Shelly + ESPHome |
+| Failsafe on the device | Plug auto-off timers | In the ESPHome config | Both |
+| Main risk | Analog soil input a weaker fit | Mains loads need a plug anyway | Two families to debug at once |
+| **Canopy today** | **Blocked**: Shelly Gen 2+ (gap 2) | Abbreviated keys (gap 1), stray sensors (gap 3) | Both of A's and B's gaps |
+
+#### What Canopy needs first
+
+Found by checking the plan against the code, 2026-10-08. Ordered by what
+they block.
+
+1. **Abbreviated discovery keys** ("Before Phase 9", B, still open).
+   ESPHome and Tasmota send `stat_t`, `cmd_t`, `dev`, `ids` and a `~` base,
+   and `parseHaDiscovery` reads only full names, so an ESPHome board would
+   likely pair with no topics. Blocks discovery for options B and C.
+2. **Shelly Gen 2 and later are not supported.** Canopy speaks Shelly Gen 1:
+   the `shellies/announce` topic, Gen 1's topic layout, and lowercase
+   `on`/`off`. Gen 2+ (Plus, Pro, Gen 3, Gen 4) announces nothing on MQTT
+   that Canopy reads, and found by mDNS it gets no capabilities, because
+   `capsForModel` matches model prefixes such as `shellyplug`, which
+   `shellyplusplugs` does not start with. It is also never polled or driven
+   over HTTP. The Shelly plugs sold now are Gen 2 or later, so options A
+   and C need this. Pushing the broker login (`shelly-push.ts`) already
+   handles Gen 2. Needed: identify the device (`Shelly.GetDeviceInfo`),
+   build capabilities from its components (`Shelly.GetConfig`), and its
+   MQTT topics and command format (lead: `<prefix>/status/switch:0` for
+   state and `<prefix>/command/switch:0` for commands, to confirm against
+   Shelly's Gen 2 docs).
+3. **Unrecognised sensors are recorded as temperature** (a known limit
+   since Phase 3). A sensor whose `device_class` is not in
+   `SENSOR_COMPONENT_MAP` falls back to temperature/°C. An ESPHome node
+   usually also announces its Wi-Fi signal and uptime, and a tach would be
+   another, so each would write mislabelled temperature rows from day one.
+   Skip what has no mapping instead. Needed before stage 2.
+4. **An expected interval per sensor.** A device goes offline after a fixed
+   5 minutes of silence (`heartbeat.ts`), per device, not per sensor. A
+   battery H&T would go offline and back all day. Needed: an expected
+   interval per device or capability. Check by hand that a quiet sensor's
+   last value is not shown as current.
+5. **A scan only hears announcements made while it is open.** Retained
+   discovery configs are not replayed into a scan, and Canopy publishes no
+   `homeassistant/status` birth message, so a board already connected (one
+   flashed with the shared login, say) is not found until it reconnects.
+   Publishing `online` to `homeassistant/status` when a scan opens should
+   make ESPHome announce again (lead for Tasmota). Small.
+6. **Fan speed**, only if a PWM fan is chosen. The `fan` component is
+   on/off only (`variable: false`); Home Assistant's
+   `percentage_command_topic` and `percentage_state_topic` are not captured.
+7. **Fan RPM**, optional. No `rpm` metric exists, and nothing in
+   Maintenance reads one.
+8. **A controller-side failsafe**, if wanted. `failsafe` is a declared
+   automation kind (and `failsafe_trip` an event type) that nothing
+   implements. A rule runs on readings as they arrive, so a silent sensor
+   triggers nothing; stage 5's "automations stop acting on a stale value"
+   holds by construction. But nothing moves the fan to a safe state either,
+   so it stays wherever the last rule left it. Device-side failsafes may be
+   enough for this phase.
+9. **The UI on another machine** (8 C.7), only if the tunnel is not enough.
+
+#### Leads from the plan, checked
+
+1. **Retained discovery and a broker restart** ✅ checked. aedes keeps
+   retained messages in memory, so they are lost on restart. That does not
+   matter for paired devices: they are stored in the database, the ingest
+   index is rebuilt from it, and the restart drops every connection, so
+   firmware reconnects and reports again. It matters for scanning (gap 5).
+2. **Shelly uses mDNS and RPC, not HA discovery** ✅ checked. Gen 2+ uses
+   its own topics and HTTP RPC, and Canopy has no RPC discovery (gap 2).
+3. **Tasmota's discovery format** ✅ checked. Canopy reads only
+   `homeassistant/…/config`, not Tasmota's own `tasmota/discovery/…`. A
+   Tasmota device would need its legacy HA mode (`SetOption19 1`; lead:
+   confirm current Tasmota still has it), and its JSON `tele/…/SENSOR`
+   readings rely on `value_template`, which Canopy does not parse (Phase 3).
+   No option uses Tasmota, so leave it out of the first rig.
+4. **ESPHome needs MQTT turned on.** Each node needs the `mqtt:` component
+   with discovery on. Lead: the native `api:` can stay on alongside it for
+   debugging. The broker login is set by hand: the shared login for the
+   first flash (or none, during a scan), then the device's own login from
+   its card after pairing (G.8), and flashed again.
+5. **ESP32 analog pins** (hardware). ADC2 stops working while Wi-Fi is on,
+   so soil probes go on ADC1 pins. Check the attenuation covers the probe's
+   full range.
+6. **Shelly Plus Add-on analog range** (hardware). Rated for a wider range
+   than a capacitive probe's 0–3 V, which may cost resolution. Verify before
+   choosing A for soil.
+7. **Australian plugs** (hardware). Which Shelly or pre-flashed
+   ESPHome/Tasmota plugs are sold in the AU plug format with RCM approval.
+8. **Device-side failsafes** (hardware). How a maximum on-time is set on
+   each: Shelly auto-off timers, and an ESPHome action on MQTT disconnect.
+9. **Electron on Windows** ✅ resolved before the plan was written. It
+   builds and runs, and the installer and service were installed and
+   tested on a Windows runner (8 D, E). The work machine cannot install the
+   service (no admin), but runs the UI.
+
+#### Open decisions
+
+The first four set what gets bought, so they block stage 0. The rest can wait
+for their stage. Each needs a sign-off before it is built on.
+
+| Decision | Options | Leaning | Needed by |
+|---|---|---|---|
+| Edge hardware | A: all Shelly · B: all ESP32 · C: hybrid | C, which needs gaps 1–3 | Stage 0 |
+| Controller host | Home PC · Raspberry Pi · mini PC | Pi or mini PC for the soak; the home PC is fine for stages 0–4 | Stage 0 |
+| Grow light | Mains LED panel (on/off by plug) · 12/24 V LED strip (PWM dimming) | Open | Stage 0 |
+| Fan | 12 V 4-pin PWM · USB or mains clip fan | PWM, for speed and RPM (needs gaps 6 and 7) | Stage 0 |
+| UI for a remote host | SSH tunnel · build 8 C.7 with API auth | Tunnel for this phase | Stage 0 |
+| Temperature sensor | SHT4x (temp + RH) · DS18B20 (temp only) | SHT4x, so humidity exists from day one | Stage 2 |
+| Where soil calibration lives | On the node (publishes %) · in Canopy (stores raw, maps to %) | On the node for this phase: ESPHome's `calibrate_linear` filter does it with no Canopy change, and `soil_moisture` is already a % metric | Stage 2 |
+| Broker | Embedded aedes only · also an external broker (Mosquitto) | Embedded only, per v1 scope | Stage 1 |
+| Safe state per device when the controller is down | Light: off, or hold with a maximum on-time · Fan: on or off | Open | Stage 5 |
+| Controller-side failsafe (gap 8) | Build it · device-side only | Open | Stage 5 |
+| Telemetry cadence and test retention | An interval per sensor; retention tier lengths | Open | Stage 2 |
+| Alert delivery | In-app only · also push or email | In-app only for this phase | Stage 4 |
+
+#### Test stages and acceptance criteria
+
+Called stages, not phases, to keep them apart from the roadmap's. Each is
+gated on the one before, and done when every box under it is ticked.
+Timings and thresholds are starting defaults to confirm.
+
+**Stage 0: bench up**
+
+- [ ] The controller runs as the OS service on the test host and survives a
+      reboot
+- [ ] The broker is reachable from the LAN; the UI reaches the controller
+      over HTTP and WebSocket (locally, or through the tunnel)
+- [ ] The app opens on Windows and on the test host
+
+**Stage 1: discovery**
+
+- [ ] Each device appears with the right family, protocol and capabilities,
+      with no manual entry, and one board is one device
+- [ ] A device that reboots comes back as the same device, not a duplicate
+- [ ] After a controller restart, every paired device reconnects and
+      reports again without touching it (paired devices are stored, not
+      rediscovered)
+- [ ] Each device on its own broker login; Settings names none still on the
+      shared one
+
+**Stage 2: telemetry and persistence**
+
+- [ ] Temperature and soil readings arrive at their expected cadence and are
+      stored, and nothing else is stored as a reading (gap 3)
+- [ ] Retention tiers roll up as designed; an export works
+- [ ] A sensor that stops reporting is marked offline after its expected
+      interval, and its last value is not shown as current
+
+**Stage 3: control**
+
+- [ ] Light and fan switch within about 2 seconds of a command
+- [ ] A change made on the device itself (button, local web page) is
+      reflected in Canopy (actuator state, "Before Phase 9" A)
+- [ ] Fan speed works end to end, if the fan has it
+
+The UI has no manual switch, by decision ("Before Phase 9", A: switching
+stays with automations, so nothing in the UI fights the next tick). The
+plan's "switch from the UI" is therefore a command through
+`POST /devices/:id/actuate`, or an automation, unless the decision is
+revisited.
+
+**Stage 4: roles and automation**
+
+- [ ] Each device bound to its role; automations target roles
+- [ ] The light follows a photoperiod window (default 16 h on, 8 h off)
+- [ ] The fan turns on above a temperature and off below a lower one,
+      without chatter: two rules with a gap between their thresholds, and a
+      dwell (`forSeconds`) on each
+- [ ] A dry-substrate alert fires once per event, not on every reading
+      (threshold alerts are edge-triggered, Phase 6)
+- [ ] Swapping the hardware behind a role needs no automation changes
+
+**Stage 5: failure and failsafe**
+
+- [ ] Controller stopped: light and fan reach their safe state, or hold
+      under a device-side maximum on-time
+- [ ] Wi-Fi down for 10 minutes: devices keep their failsafes; Canopy shows
+      the gap honestly when it returns
+- [ ] Sensor unplugged: flagged, and nothing acts on its stale value
+- [ ] The whole rig power-cycled: everything recovers with no manual steps
+
+**Stage 6: soak**
+
+- [ ] One full micro-greens cycle (about 7–14 days) runs unattended
+- [ ] Every incident is in the Journal or Logging
+
+#### Then TLS
+
+**TLS comes after the rig.** It depends on per-device identity (G) and on
+which device firmwares can take a certificate, which this testing will
 show.
+
+### Documentation — a README first
+
+Started 2026-10-08. The repo has no README, only this roadmap, which is a
+working record and not an introduction. The plan is a full README for
+growers and contributors: what Canopy is, what it runs on, installing it
+(desktop packages, the headless controller, the Windows service), supported
+devices and roles, first steps, building from source, and where to go for
+more. The structure follows open-source projects the community regards as
+the standard for documentation; examples are being collected. Needs no
+hardware, so it can go ahead on either machine.
 
 ### Future features (after v1)
 
