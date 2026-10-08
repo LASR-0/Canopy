@@ -4,6 +4,7 @@
   "private": true,
   "main": "out/main/index.js",
   "description": "Electron + React + TypeScript client. Connects to the controller service.",
+  "license": "AGPL-3.0-only",
   "homepage": "https://github.com/LASR-0/Canopy",
   "author": {
     "name": "LASR-0",

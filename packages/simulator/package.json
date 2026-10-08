@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Simulated MQTT grow devices. Lets backend work proceed without hardware or LAN multicast.",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",

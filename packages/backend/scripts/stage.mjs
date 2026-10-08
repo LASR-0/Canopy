@@ -166,6 +166,9 @@ if (platform === "win32") {
 
 await cp(bundle, join(out, "controller.mjs"));
 await cp(`${bundle}.map`, join(out, "controller.mjs.map"));
+// Canopy's own licence (AGPL-3.0), which has to travel with every copy. The
+// desktop packages carry this folder too, so they get it from here.
+await cp(join(root, "../../LICENSE"), join(out, "LICENSE"));
 
 console.log(`staged ${out}`);
 console.log(`  node ${NODE_VERSION} (ABI ${abi}), better-sqlite3 ${sqliteVersion}`);

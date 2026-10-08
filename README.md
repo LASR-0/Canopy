@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/LASR-0/Canopy/actions/workflows/ci.yml"><img src="https://github.com/LASR-0/Canopy/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/LASR-0/Canopy/actions/workflows/package.yml"><img src="https://github.com/LASR-0/Canopy/actions/workflows/package.yml/badge.svg" alt="Packages"></a>
-  <!-- TODO: license badge, once a LICENSE file is added -->
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <!-- TODO: latest release badge, once there is a release -->
 </p>
 
@@ -33,6 +33,7 @@
 - [Dependencies](#dependencies)
 - [Troubleshooting](#troubleshooting)
 - [Building from source](#building-from-source)
+- [Commercial setup and support](#commercial-setup-and-support)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -508,13 +509,36 @@ The repo is a pnpm monorepo:
 [ROADMAP.md](ROADMAP.md) records the project's state, its decisions and why
 they were made. Read it before making larger changes.
 
-## Contributing
+## Commercial setup and support
+
+Canopy is free for everyone, businesses included, under the AGPL-3.0.
+Running a farm, a greenhouse or several grow rooms, and would rather not
+build it yourself? The people who make Canopy can design the hardware,
+install it, and support it once it is running.
 
 > [!NOTE]
-> **To do:** contribution guidelines (CONTRIBUTING.md): issues, pull
-> requests, code style, and how to add support for a device family.
+> **To do:** contact details for setup and support enquiries.
+
+## Contributing
+
+Contributions are welcome, especially support for more devices and
+firmware. See [CONTRIBUTING.md](CONTRIBUTING.md). Contributors agree to the
+[Contributor License Agreement](CLA.md) with their first pull request: you
+keep the copyright in your work, and it stays open source.
 
 ## License
 
-> [!NOTE]
-> **To do:** choose a license and add a LICENSE file.
+Copyright © 2026 LASR-0.
+
+Canopy is free software: you can redistribute it and/or modify it under the
+terms of the [GNU Affero General Public License, version 3](LICENSE), as
+published by the Free Software Foundation.
+
+In short: you may use Canopy for any purpose, including commercially, and
+change it as you like. If you distribute Canopy or a changed version, or let
+others use a changed version over a network, you must make its source
+code available under the same licence.
+
+Canopy is distributed in the hope that it will be useful, but **without any
+warranty**; without even the implied warranty of merchantability or fitness
+for a particular purpose. See the licence for details.
