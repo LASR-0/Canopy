@@ -86,7 +86,8 @@ function ribbedTube(curve: THREE.Curve<THREE.Vector3>, radius: number): THREE.Bu
     for (let j = 0; j < radial; j++) {
       const a = i * (radial + 1) + j;
       const b = a + radial + 1;
-      index.push(a, b, a + 1, b, b + 1, a + 1);
+      // Wound to face outward: the rings turn from the normal toward the binormal.
+      index.push(a, a + 1, b, b, a + 1, b + 1);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -112,7 +113,8 @@ function Duct({ route, p }: { route: DuctRoute; p: Palette }) {
   return (
     <>
       <mesh geometry={geometry} castShadow receiveShadow>
-        <meshStandardMaterial color={p.duct} roughness={0.45} metalness={0.15} />
+        {/* Double-sided: its open end outside the tent shows the inside of the tube. */}
+        <meshStandardMaterial color={p.duct} roughness={0.45} metalness={0.15} side={THREE.DoubleSide} />
       </mesh>
       {collar && (
         <mesh position={route.end} rotation={collar}>
