@@ -2597,6 +2597,11 @@ After the reference, and checked offscreen against it at each step.
   height only while it is still at the old role's, so a height set by hand
   is never overwritten. Devices placed before this keep their heights.
 - Measured: the 6 m tent with the roof open, 47–48 fps, unchanged.
+- **Fixed 2026-10-08: ducts looked see-through.** The ribbed tube's triangles
+  were wound inside out, so its outside was culled and the far inner wall
+  showed through, which also made the ports it passes through look hollow.
+  It is now wound outward and drawn double-sided, so its open end outside
+  the tent shows the inside of the tube.
 
 #### Camera, ground and plants — Phase 9 wrapped for v1, 2026-10-07
 
@@ -2666,6 +2671,10 @@ The first run on native Linux (Omarchy: Arch, Hyprland, NVIDIA).
     over and over. The `Baked` version string also includes each device's
     on/off state, which re-merges models when one changes. Count renders and
     shadow redraws with the simulator running to check.
+  - **2026-10-08, a fresh start**: no lag after several minutes at a normal
+    tent size. That points at taking the tent to 600 × 600 cm as the cause,
+    which fits something outliving the big scene. The resize test above is
+    next.
   - **Also to rule out**: `Frame latency is negative` from Chromium on this
     NVIDIA + Wayland pairing (see "Omarchy"), or vsync under Hyprland;
     whether the installed package behaves the same; and whether a restart
@@ -2760,7 +2769,8 @@ Noted 2026-10-08, for the next session on the home machine, in this order:
    the app closed and after a reboot, and the app connecting to it when
    opened. That covers the upgrade path on a real install, which until now
    was only covered by `test-install.sh`.
-3. **The model walkthrough** (Phase 9 checklist), if not finished at work.
+3. **The model walkthrough** (Phase 9 checklist) ✅ done 2026-10-08: every
+   model at an acceptable level for now.
 4. **The window under Hyprland** (dragging by the titlebar, the window
    controls). Tiled, there is nothing to drag. Floating the window
    (Hyprland's `togglefloating`) may be enough to test it, before reaching
